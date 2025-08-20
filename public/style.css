@@ -1,0 +1,444 @@
+/* 전체 페이지 스타일 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    height: 100%;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* 메인 컨테이너 */
+.container {
+    text-align: center;
+    background: white;
+    padding: 50px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    max-width: 600px;
+    width: 90%;
+}
+
+/* 제목 스타일 */
+h1 {
+    color: #333;
+    font-size: 48px;
+    margin-bottom: 15px;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 16px;
+}
+
+/* API 설정 영역 */
+.api-setup {
+    background: #f0f8ff;
+    padding: 30px;
+    border-radius: 15px;
+    border: 2px dashed #667eea;
+    margin-bottom: 30px;
+}
+
+.api-setup h3 {
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.input-field {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.cost-info {
+    background: #e8f5e8;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    font-size: 14px;
+    color: #2e7d32;
+}
+
+/* 카테고리 컨테이너 */
+.category-container {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 25px;
+    margin-bottom: 25px;
+    border: 2px solid #e9ecef;
+}
+
+.category-container h3 {
+    margin-bottom: 20px;
+    color: #333;
+    text-align: center;
+}
+
+/* 카테고리 버튼들 */
+.category-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.category-btn {
+    background: linear-gradient(45deg, #e9ecef, #f8f9fa);
+    color: #6c757d;
+    border: 2px solid #dee2e6;
+    padding: 12px 20px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    min-width: 120px;
+}
+
+.category-btn:hover:not(.disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.category-btn.active {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border-color: #667eea;
+}
+
+.category-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.category-icon {
+    margin-right: 8px;
+}
+
+/* 검색창 스타일 */
+.search-input {
+    width: 100%;
+    padding: 20px 25px;
+    font-size: 18px;
+    border: 3px solid #e0e0e0;
+    border-radius: 50px;
+    outline: none;
+    transition: all 0.3s ease;
+    background: #f9f9f9;
+    margin-bottom: 15px;
+}
+
+.search-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+    background: white;
+}
+
+/* 텍스트 영역 */
+.search-textarea {
+    width: 100%;
+    padding: 20px 25px;
+    font-size: 18px;
+    border: 3px solid #e0e0e0;
+    border-radius: 20px;
+    outline: none;
+    transition: all 0.3s ease;
+    background: #f9f9f9;
+    resize: vertical;
+    min-height: 120px;
+    font-family: inherit;
+}
+
+.search-textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+    background: white;
+}
+
+/* 버튼 스타일 */
+.search-button {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 16px;
+    border-radius: 50px;
+    cursor: pointer;
+    margin: 0 10px;
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+.search-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+.search-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* 복사 버튼 */
+.copy-button {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    margin: 5px;
+}
+
+.copy-button:hover {
+    background: #218838;
+    transform: translateY(-1px);
+}
+
+/* 저장 버튼 */
+.save-button {
+    background: #ffc107;
+    color: #212529;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    margin: 5px;
+}
+
+.save-button:hover {
+    background: #e0a800;
+    transform: translateY(-1px);
+}
+
+/* 푸터 스타일 */
+.footer {
+    margin-top: 40px;
+    color: #666;
+    font-size: 14px;
+}
+
+/* 상태 메시지 */
+.status-message {
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.status-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* AI 질문 시스템 스타일 */
+.ai-questions {
+    margin-top: 30px;
+    background: #f0f8ff;
+    border-radius: 15px;
+    padding: 25px;
+    border: 2px solid #667eea;
+}
+
+.ai-questions h3 {
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.questions-container {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+}
+
+.ai-message {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+.questions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.question-item {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+}
+
+.question-text {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.question-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* 개선된 옵션 버튼 스타일 */
+.option-button {
+    background: white;
+    border: 2px solid #e9ecef;
+    padding: 8px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    position: relative;
+}
+
+.option-button:hover {
+    border-color: #667eea;
+    background: #e8f4f8;
+    transform: translateY(-1px);
+}
+
+/* 선택된 버튼 스타일 - 더 명확하게 */
+.option-button.selected {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    border-color: #667eea;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    transform: translateY(-2px);
+}
+
+.option-button.selected::after {
+    content: "✓";
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #28a745;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.text-input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.text-input:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+}
+
+/* 커스텀 입력창 스타일 */
+.custom-input {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px dashed #667eea;
+}
+
+.custom-input input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.custom-input input:focus {
+    border-color: #667eea;
+    outline: none;
+}
+
+.questions-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 600px) {
+    .container {
+        padding: 30px;
+        margin: 20px;
+    }
+    
+    h1 {
+        font-size: 32px;
+    }
+    
+    .search-input, .search-textarea {
+        font-size: 16px;
+        padding: 15px 20px;
+    }
+    
+    .category-buttons, .subcategory-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .category-btn, .subcategory-btn {
+        width: 100%;
+        max-width: 200px;
+    }
+    
+    .question-options {
+        flex-direction: column;
+    }
+    
+    .option-button {
+        width: 100%;
+    }
+}
