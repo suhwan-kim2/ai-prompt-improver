@@ -23,10 +23,5 @@
   ],
   "env": {
     "OPENAI_API_KEY": "@openai_api_key"
-  },
-  "functions": {
-    "server.js": {
-      "maxDuration": 30
-    }
   }
 }
