@@ -1,3 +1,6 @@
+// server.js의 맨 위에 추가
+console.log('API 키 확인:', process.env.OPENAI_API_KEY ? '있음' : '없음');
+console.log('API 키 앞 10자리:', process.env.OPENAI_API_KEY?.substring(0, 10));
 // server.js - Express 서버
 const express = require('express');
 const cors = require('cors');
