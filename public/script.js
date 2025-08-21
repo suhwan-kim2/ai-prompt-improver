@@ -1064,7 +1064,8 @@ function showStatus(message, type) {
             statusDiv.style.display = 'none';
         }, 3000);
     }
-}.insertAdjacentHTML('beforeend', qualityHTML);
+    resultDiv.insertAdjacentHTML('beforeend', autoSystemHTML);
+}
     
     // 완전 자동화 결정 (95점 기준)
     if (qualityData.score < 95) {
