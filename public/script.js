@@ -347,7 +347,7 @@ function showDetailedGuide() {
 
 // 일반모드 가이드
 function getNormalModeGuide() {
-    return 
+    return (
         '<div class="guide-section">' +
             '<h3>🚀 일반모드 특징</h3>' +
             '<ul>' +
@@ -378,12 +378,13 @@ function getNormalModeGuide() {
                 '<li>만족하지 않으면 추가 질문 활용</li>' +
                 '<li>"기타" 선택 후 직접 입력 가능</li>' +
             '</ul>' +
-        '</div>';
+        '</div>'
+    );
 }
 
 // 전문가모드 가이드
 function getExpertModeGuide() {
-    return 
+    return (
         '<div class="guide-section">' +
             '<h3>🎯 전문가모드 특징</h3>' +
             '<ul>' +
@@ -424,7 +425,8 @@ function getExpertModeGuide() {
                 '<li>피해야 할 요소나 제약사항</li>' +
                 '<li>이상적인 결과물에 대한 구체적 설명</li>' +
             '</ul>' +
-        '</div>';
+        '</div>'
+    );
 }
 
 // 모달 닫기
