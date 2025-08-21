@@ -63,7 +63,23 @@ app.post('/api/improve-prompt', async (req, res) => {
             // 중복 방지를 위한 이전 질문 컨텍스트 추가
             if (previousQuestions) {
                 userPrompt += `\n\n이전에 이미 물어본 질문들 (절대 중복 금지):\n${previousQuestions}`;
-                userPrompt += `\n\n** 중요: 위 질문들과 완전히 다른 새로운 관점의 질문을 만드세요 **`;
+                userPrompt += `\n\n** 엄격한 중복 금지 규칙 **`;
+                userPrompt += `\n- 위 질문들과 키워드나 주제가 겹치면 절대 안됨`;
+                userPrompt += `\n- 완전히 새로운 관점에서만 질문 생성`;
+                userPrompt += `\n- 같은 단어(스타일, 길이, 감정 등)를 재사용하지 말 것`;
+                
+                if (isExpertMode && round === 1) {
+                    userPrompt += `\n\n1차 심층질문 가이드 (기본질문과 완전히 달라야 함):`;
+                    userPrompt += `\n- 기본질문이 "무엇"을 물었다면 → "왜"를 물어보기`;
+                    userPrompt += `\n- 기본질문이 "어떤"을 물었다면 → "목적/이유"를 물어보기`;
+                    userPrompt += `\n- 예: 스타일→목적, 분위기→타겟관객, 특징→사용용도`;
+                } else if (isExpertMode && round === 2) {
+                    userPrompt += `\n\n2차 심층질문 가이드 (1차와도 완전히 달라야 함):`;
+                    userPrompt += `\n- 실행/제작 관점에서 질문`;
+                    userPrompt += `\n- 성과/결과 측정 관점에서 질문`;
+                    userPrompt += `\n- 예외상황/제약조건 관점에서 질문`;
+                    userPrompt += `\n- 예: 제작기간, 예산, 플랫폼, 성공기준, 위험요소`;
+                }
             }
         } else if (step === 'additional-questions') {
             // 추가 질문 생성
