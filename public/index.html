@@ -12,54 +12,35 @@
         <h1>🤖 AI 프롬프트 개선기</h1>
         <p class="subtitle">한글로 입력하면 AI가 더 잘 이해하는 프롬프트로 무료 개선해드립니다!</p>
         
+        <!-- 사용법 가이드 섹션 -->
+        <div class="how-to-use">
+            <h3>🚀 간단한 3단계로 완성!</h3>
+            <div class="steps">
+                <div class="step">
+                    <span class="step-number">1️⃣</span>
+                    <span class="step-text">원하는 작업을 한글로 입력</span>
+                </div>
+                <div class="step">
+                    <span class="step-number">2️⃣</span>
+                    <span class="step-text">AI 질문에 답변 (선택사항)</span>
+                </div>
+                <div class="step">
+                    <span class="step-number">3️⃣</span>
+                    <span class="step-text">개선된 프롬프트 복사해서 사용</span>
+                </div>
+            </div>
+            <button class="guide-button" onclick="showDetailedGuide()">📖 자세한 사용법 보기</button>
+        </div>
+        
         <!-- 메인 콘텐츠 -->
         <div class="main-content">
-            <!-- 카테고리 선택 -->
-            <div class="category-container">
-                <h3>📁 관련 분야 선택 (선택사항)</h3>
-                <div class="category-buttons">
-                    <button class="category-btn" data-category="image" onclick="toggleCategory('image', this)">
-                        <span class="category-icon">🎨</span>
-                        <span>이미지 생성</span>
-                    </button>
-                    <button class="category-btn" data-category="video" onclick="toggleCategory('video', this)">
-                        <span class="category-icon">🎬</span>
-                        <span>영상 생성</span>
-                    </button>
-                    <button class="category-btn" data-category="writing" onclick="toggleCategory('writing', this)">
-                        <span class="category-icon">✍️</span>
-                        <span>글쓰기/창작</span>
-                    </button>
-                    <button class="category-btn" data-category="coding" onclick="toggleCategory('coding', this)">
-                        <span class="category-icon">💻</span>
-                        <span>코딩/개발</span>
-                    </button>
-                    <button class="category-btn" data-category="mcp" onclick="toggleCategory('mcp', this)">
-                        <span class="category-icon">🔧</span>
-                        <span>MCP 서버</span>
-                    </button>
-                    <button class="category-btn" data-category="website" onclick="toggleCategory('website', this)">
-                        <span class="category-icon">🌐</span>
-                        <span>웹사이트</span>
-                    </button>
-                    <button class="category-btn" data-category="data" onclick="toggleCategory('data', this)">
-                        <span class="category-icon">📊</span>
-                        <span>데이터 분석</span>
-                    </button>
-                    <button class="category-btn" data-category="presentation" onclick="toggleCategory('presentation', this)">
-                        <span class="category-icon">📈</span>
-                        <span>프레젠테이션</span>
-                    </button>
-                </div>
-                <div class="selected-categories" id="selectedCategories"></div>
-            </div>
-            
             <!-- 검색 입력 -->
             <div style="margin-bottom: 20px;">
                 <textarea 
                     class="search-textarea" 
                     id="searchInput"
-                    placeholder="개선하고 싶은 프롬프트를 한글로 입력하세요..."
+                    placeholder="개선하고 싶은 프롬프트를 한글로 입력하세요...
+예시: '웹사이트 만들어줘', '이미지 생성해줘', '회사 보고서 써줘'"
                 ></textarea>
             </div>
             
@@ -76,8 +57,26 @@
             <div class="questions-container">
                 <div class="ai-message" id="aiMessage"></div>
                 <div class="questions-list" id="questionsList"></div>
-                <div class="questions-actions">
-                    <button class="search-button" onclick="processAIAnswers()">✅ 답변 완료</button>
+                
+                <!-- 새로운 답변 완료 선택지 -->
+                <div class="answer-completion-choice" id="answerChoice" style="display: none;">
+                    <h4 style="color: #333; margin-bottom: 15px;">🤔 답변이 완료되었나요?</h4>
+                    <div class="choice-buttons">
+                        <button class="search-button" onclick="proceedWithCurrentAnswers()" style="background: #28a745;">
+                            ✅ 현재 답변으로 개선하기
+                        </button>
+                        <button class="search-button" onclick="requestMoreQuestions()" style="background: #667eea;">
+                            🔄 더 자세한 질문으로 개선하기
+                        </button>
+                        <button class="search-button" onclick="skipAllQuestions()" style="background: #ffc107; color: #212529;">
+                            ⏭️ 질문 건너뛰고 바로 개선
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 기존 버튼들 (초기에만 표시) -->
+                <div class="questions-actions" id="initialActions">
+                    <button class="search-button" onclick="showAnswerChoice()">✅ 답변 완료</button>
                     <button class="search-button" onclick="skipAIQuestions()" style="background: #28a745;">⏭️ 질문 건너뛰기</button>
                 </div>
             </div>
@@ -105,11 +104,108 @@
         <!-- 상태 메시지 -->
         <div id="statusMessage" style="display: none;"></div>
         
+        <!-- 자세한 사용법 모달 -->
+        <div id="guideModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📖 AI 프롬프트 개선기 사용법</h2>
+                    <span class="close" onclick="closeDetailedGuide()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="guide-section">
+                        <h3>🎯 어떤 걸 입력하나요?</h3>
+                        <div class="examples">
+                            <span class="example">✅ "웹사이트 만들어줘"</span>
+                            <span class="example">✅ "이미지 생성해줘"</span>
+                            <span class="example">✅ "회사 보고서 써줘"</span>
+                            <span class="example">✅ "파이썬 코드 만들어줘"</span>
+                            <span class="example">✅ "데이터 분석해줘"</span>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>🤖 AI 질문 시스템</h3>
+                        <ul>
+                            <li>AI가 내용을 파악해서 맞춤 질문 생성</li>
+                            <li>원하는 만큼 답변 (건너뛰기도 가능)</li>
+                            <li>더 자세한 질문 요청 가능</li>
+                            <li>중복 선택 지원으로 정확한 답변</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>✨ 자동 개선 시스템</h3>
+                        <ul>
+                            <li>AI가 품질을 자동 평가 (100점 만점)</li>
+                            <li>95점 미만시 자동 재개선 옵션 제공</li>
+                            <li>완전 자동 vs 빠른 개선 선택 가능</li>
+                            <li>만족할 때까지 재개선 가능</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>📋 결과 활용법</h3>
+                        <ul>
+                            <li>개선된 프롬프트를 ChatGPT/Claude에 입력</li>
+                            <li>훨씬 더 정확하고 상세한 결과 획득</li>
+                            <li>즐겨찾기 저장으로 재사용 가능</li>
+                            <li>복사 버튼으로 간편하게 사용</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>💡 더 좋은 결과를 위한 팁</h3>
+                        <div class="tips">
+                            <div class="tip">🎨 구체적일수록 더 좋은 질문이 생성됩니다</div>
+                            <div class="tip">🔧 "기타" 선택 후 직접 입력하면 맞춤형 개선 가능</div>
+                            <div class="tip">🔄 만족스럽지 않으면 "재개선" 요청하세요</div>
+                            <div class="tip">📊 여러 버전을 비교해보세요</div>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>⚡ 이런 분야에 특히 유용해요</h3>
+                        <div class="useful-areas">
+                            <span class="area">🎨 이미지/영상 생성 프롬프트</span>
+                            <span class="area">💻 코딩 요청사항 정리</span>
+                            <span class="area">📊 데이터 분석 요구사항</span>
+                            <span class="area">✍️ 글쓰기/번역 지시사항</span>
+                            <span class="area">🌐 웹개발 명세서 작성</span>
+                            <span class="area">📈 프레젠테이션 기획</span>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>📝 실제 개선 예시</h3>
+                        <div class="example-comparison">
+                            <div class="before">
+                                <h4>❌ 개선 전</h4>
+                                <p>"웹사이트 만들어줘"</p>
+                            </div>
+                            <div class="after">
+                                <h4>✅ 개선 후</h4>
+                                <p>"반응형 웹사이트를 제작해주세요.<br>
+                                - 목적: 개인 포트폴리오 사이트<br>
+                                - 스타일: 미니멀하고 모던한 디자인<br>
+                                - 색상: 화이트/그레이 기반, 포인트 컬러는 네이비<br>
+                                - 구성: 홈, 소개, 프로젝트, 연락처 페이지<br>
+                                - 기능: 부드러운 스크롤, 프로젝트 필터링<br>
+                                - 반응형: 모바일/태블릿/데스크탑 최적화"</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="search-button" onclick="closeDetailedGuide()">시작하기</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- 푸터 -->
         <div class="footer">
-            <p>🚀 AI 프롬프트 개선기 v3.0 | 완전 무료 온라인 도구</p>
+            <p>🚀 AI 프롬프트 개선기 v4.0 | 완전 무료 온라인 도구</p>
             <p style="font-size: 12px; color: #999; margin-top: 5px;">
-                Made with ❤️ | 서버에서 제공하는 무료 서비스
+                Made with ❤️ | AI 자동 분야 판단 + 95점 고품질 시스템
             </p>
         </div>
     </div>
