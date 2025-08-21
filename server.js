@@ -259,4 +259,244 @@ JSON 형식으로 응답:
 }`;
 }
 
-// 🆕 적응형 프롬프트 개선 시스템 프롬프트 (일반
+// 🆕 적응형 프롬프트 개선 시스템 프롬프트 (일반/전문가 모드 지원)
+function getAdaptiveImprovementPrompt(isExpertMode, rounds) {
+    const basePrompt = `당신은 모든 분야의 최고 전문가이자 프롬프트 엔지니어링 마스터입니다.
+
+현재 모드: ${isExpertMode ? '전문가모드' : '일반모드'}
+질문 라운드 수: ${rounds || 1}회차
+
+사용자의 초기 입력을 분석해서 분야를 자동으로 판단하고, 해당 분야에 최적화된 최고 품질의 프롬프트를 작성해주세요.`;
+
+    if (isExpertMode) {
+        return basePrompt + `
+
+전문가모드 개선 전략:
+- 다회차 질문을 통해 수집된 심층 정보 활용
+- 사용자의 숨겨진 의도와 요청사항 정확히 반영
+- 창작자/전문가 수준의 세밀한 요구사항 포함
+- 업계 표준과 베스트 프랙티스 적용
+
+분야별 전문가급 개선:
+- 개발: 상세한 아키텍처, 성능 최적화, 보안 고려사항, 확장성
+- 이미지생성: 전문적 촬영 기법, 라이팅, 컴포지션, 색상 이론
+- 글쓰기: 고급 수사법, 독자 심리, 브랜드 톤앤매너, 전략적 메시징
+- 비즈니스: 시장 분석, 경쟁 우위, ROI 고려, 리스크 관리
+
+개선 기준 (전문가급):
+1. 전문성: 해당 분야 전문가 수준의 디테일
+2. 완성도: 실무에서 바로 활용 가능한 수준
+3. 구체성: 모호함 없는 명확한 지시사항
+4. 전략성: 목표 달성을 위한 체계적 접근
+5. 혁신성: 차별화된 접근법과 창의적 요소
+
+최종 프롬프트만 제공하고, 설명은 생략하세요.`;
+    } else {
+        return basePrompt + `
+
+일반모드 개선 전략:
+- 빠르고 효율적인 개선 중심
+- 핵심 요소에 집중한 간결한 프롬프트
+- 사용자가 쉽게 이해하고 활용할 수 있는 수준
+- 기본적인 품질 기준 충족
+
+분야별 일반 개선:
+- 개발: 기본 기능, 주요 기술스택, 기본 요구사항
+- 이미지생성: 기본 스타일, 색상, 구도, 품질
+- 글쓰기: 기본 톤, 형식, 길이, 목적
+- 비즈니스: 기본 목표, 타겟, 방향성
+
+개선 기준 (일반):
+1. 명확성: 이해하기 쉽고 구체적으로
+2. 실용성: 바로 사용 가능한 수준으로
+3. 완성도: 필요한 핵심 요소 포함
+4. 효율성: 간결하면서도 효과적으로
+5. 접근성: 일반 사용자도 쉽게 활용
+
+최종 프롬프트만 제공하고, 설명은 생략하세요.`;
+    }
+}
+
+// 🆕 추가 답변 기반 개선 프롬프트
+function getAdditionalImprovementPrompt() {
+    return `당신은 프롬프트 개선 전문가입니다. 추가 질문에 대한 답변을 바탕으로 현재 프롬프트를 더욱 정밀하게 개선해주세요.
+
+개선 방향:
+- 추가 답변에서 드러난 사용자의 숨겨진 의도 반영
+- 요청사항에 명시된 세부 조건들 정확히 포함
+- 기존 프롬프트의 약점 보완
+- 더 높은 품질과 정확도 달성
+
+중요 원칙:
+1. 추가 답변의 모든 내용을 빠뜨리지 말고 반영
+2. 사용자가 명시한 요청사항을 정확히 해석
+3. 기존 프롬프트의 좋은 부분은 유지
+4. 새로운 정보로 더 구체화하고 정밀화
+
+개선된 프롬프트만 제공하고, 설명은 생략하세요.`;
+}
+
+// 🆕 품질 평가 프롬프트 (90점 기준)
+function getEvaluationPrompt90() {
+    return `당신은 프롬프트 품질 평가 전문가입니다. 주어진 프롬프트를 100점 만점으로 평가해주세요.
+
+AI가 이 프롬프트를 받았을 때 얼마나 정확하고 유용한 결과를 낼 수 있을지를 기준으로 평가하세요.
+
+평가 관점:
+- 얼마나 구체적이고 명확한가?
+- 필요한 정보가 충분히 포함되어 있는가?
+- 실제로 실행 가능한 수준인가?
+- 애매하거나 모호한 부분이 있는가?
+- AI가 이해하기 쉬운 구조인가?
+
+점수 가이드:
+- 90-100점: AI가 완벽하게 이해하고 고품질 결과 생성 가능
+- 80-89점: 매우 좋음, 양질의 결과 예상
+- 70-79점: 양호, 괜찮은 결과 예상  
+- 60-69점: 보통, 기본적인 결과 예상
+- 60점 미만: 부족, 개선 필요
+
+JSON 응답:
+{
+  "score": 점수(1-100),
+  "strengths": ["강점1", "강점2"],
+  "improvements": ["개선점1", "개선점2"],
+  "needsReimprovement": true/false,
+  "recommendation": "개선 방향 제시"
+}`;
+}
+
+// 🆕 자동 개선 프롬프트 (90점 기준)
+function getAutoImprovementPrompt90() {
+    return `당신은 프롬프트 개선 전문가입니다. 주어진 프롬프트를 90점 이상 수준으로 자동 개선해주세요.
+
+90점급 프롬프트 필수 요소:
+1. 명확한 역할 정의 ("당신은 ~전문가입니다")
+2. 구체적이고 상세한 요구사항 명시
+3. 원하는 출력 형식과 구조 지정
+4. 기술적 세부사항 및 제약조건 포함
+5. 예상 결과물의 형태와 품질 기준 제시
+6. 실행 가능한 단계별 지침 (필요시)
+7. 성공 측정 방법 명시 (필요시)
+8. 맥락과 배경 정보 포함
+9. 톤앤매너나 스타일 가이드 명시
+10. 구체적인 예시나 참고자료 제시 (필요시)
+
+개선 원칙:
+- "대충", "적당히", "좋게" 같은 애매한 표현 제거
+- 구체적인 수치, 색상, 스타일 명시
+- 전문 용어와 정확한 기술명 사용
+- 단계별 구조화된 지시사항
+- 예외상황과 대안 고려
+
+개선된 프롬프트만 응답하세요.`;
+}
+
+// 개선 프롬프트 구성
+function buildImprovementPrompt(userInput, questions, answers, isExpertMode) {
+    let prompt = `원본 프롬프트: "${userInput}"\n\n`;
+    
+    if (questions && answers) {
+        prompt += `사용자 ${isExpertMode ? '전문가모드' : '일반모드'} 답변 정보:\n`;
+        
+        // answers가 문자열인 경우와 객체인 경우 모두 처리
+        if (typeof answers === 'string') {
+            prompt += answers;
+        } else {
+            Object.entries(answers).forEach(([index, answerData]) => {
+                const question = questions[parseInt(index)]?.question || `질문 ${parseInt(index) + 1}`;
+                
+                if (typeof answerData === 'object' && answerData.answers) {
+                    const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
+                    const requestText = answerData.request ? `\n요청사항: ${answerData.request}` : '';
+                    prompt += `Q: ${question}\nA: ${answerText}${requestText}\n\n`;
+                } else {
+                    const answerText = Array.isArray(answerData) ? answerData.join(', ') : answerData;
+                    prompt += `Q: ${question}\nA: ${answerText}\n\n`;
+                }
+            });
+        }
+    }
+    
+    prompt += `위 정보를 바탕으로 원본 프롬프트를 ${isExpertMode ? '전문가급으로' : '효율적으로'} 개선해주세요.
+
+중요한 규칙:
+1. 사용자가 제공한 정보를 정확히 그대로 반영하세요
+2. 사용자가 선택한 옵션이나 입력한 내용을 바꾸거나 반대로 해석하지 마세요
+3. 모든 답변 내용과 요청사항을 빠뜨리지 말고 포함하세요
+4. 사용자가 명시한 것만 사용하고 추측하지 마세요
+
+${isExpertMode ? '전문가모드' : '일반모드'} 개선 지침:
+1. 명확하고 구체적인 지시사항으로 변경
+2. 원하는 결과물의 형식과 스타일 명시
+3. 사용자가 제공한 모든 컨텍스트와 요구사항 포함
+4. AI가 이해하기 쉬운 구조로 작성
+5. 사용자의 모든 답변과 요청사항을 정확히 반영
+
+개선된 프롬프트만 응답해주세요:`;
+    
+    return prompt;
+}
+
+// 🆕 헬스체크 엔드포인트
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        version: '5.0',
+        features: [
+            '일반모드 vs 전문가모드',
+            '동적 질문 개수 (1-6개)',
+            '다회차 심층 질문 (전문가모드)',
+            '90점 기준 자동 재개선',
+            '추가 질문 시스템',
+            '의도 파악 기반 개선',
+            '요청사항 입력 지원'
+        ],
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 🆕 통계 엔드포인트 (개발용)
+app.get('/api/stats', (req, res) => {
+    res.json({
+        version: '5.0',
+        modes: {
+            normal: '일반모드 - 빠른 개선',
+            expert: '전문가모드 - 심층 분석'
+        },
+        features: {
+            dynamicQuestions: '1-6개 동적 질문',
+            multiRoundQuestions: '2-3회차 심층 질문',
+            autoImprovement: '90점 기준 자동 재개선',
+            intentAnalysis: '의도 파악 시스템',
+            requestInput: '요청사항 입력 지원'
+        },
+        topCategories: [
+            '개발/코딩',
+            '이미지 생성', 
+            '글쓰기/번역',
+            '웹사이트 개발',
+            '데이터 분석',
+            '비즈니스 전략'
+        ]
+    });
+});
+
+// 서버 시작
+app.listen(PORT, () => {
+    console.log(`🚀 AI 프롬프트 개선기 v5.0 서버가 포트 ${PORT}에서 실행 중입니다!`);
+    console.log(`📱 로컬에서 테스트: http://localhost:${PORT}`);
+    console.log(`✨ v5.0 새로운 기능:`);
+    console.log(`   - 🚀 일반모드: 빠른 개선 (1-6개 동적 질문)`);
+    console.log(`   - 🎯 전문가모드: 심층 분석 (2-3회차 질문)`);
+    console.log(`   - 🔄 90점 기준 자동 재개선`);
+    console.log(`   - 📈 추가 질문으로 점수 향상`);
+    console.log(`   - 💡 요청사항 입력으로 의도 파악`);
+    console.log(`   - 🎨 분야별 맞춤 질문 생성`);
+    
+    if (!OPENAI_API_KEY) {
+        console.warn('⚠️  OPENAI_API_KEY 환경변수가 설정되지 않았습니다!');
+    } else {
+        console.log('✅ OpenAI API 키 확인됨');
+    }
+});
