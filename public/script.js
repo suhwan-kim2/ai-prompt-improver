@@ -65,14 +65,24 @@ async function improvePrompt() {
 
 // 이전 결과 완전 초기화
 function clearPreviousResults() {
-    document.getElementById('aiQuestions').style.display = 'none';
-    document.getElementById('improvedResult').style.display = 'none';
+    const aiQuestionsDiv = document.getElementById('aiQuestions');
+    const improvedResultDiv = document.getElementById('improvedResult');
     
-    const resultDiv = document.getElementById('improvedResult');
-    const dynamicSections = resultDiv.querySelectorAll(
-        '.quality-section, .auto-system-section, .final-quality-section, .satisfaction-section'
-    );
-    dynamicSections.forEach(section => section.remove());
+    if (aiQuestionsDiv) {
+        aiQuestionsDiv.style.display = 'none';
+    }
+    if (improvedResultDiv) {
+        improvedResultDiv.style.display = 'none';
+    }
+    
+    if (improvedResultDiv) {
+        const dynamicSections = improvedResultDiv.querySelectorAll(
+            '.quality-section, .auto-system-section, .final-quality-section, .satisfaction-section'
+        );
+        dynamicSections.forEach(function(section) {
+            section.remove();
+        });
+    }
     
     currentQuestions = [];
     currentAnswers = {};
@@ -136,17 +146,27 @@ function displayAIQuestions(questions) {
     const questionsContainer = document.getElementById('questionsList');
     const aiMessage = document.getElementById('aiMessage');
     
+    if (!questionsContainer || !aiMessage) {
+        console.error('질문 컨테이너를 찾을 수 없습니다');
+        return;
+    }
+    
     aiMessage.innerHTML = '더 좋은 프롬프트를 만들기 위해 몇 가지 질문에 답해주세요! (선택사항)';
     
     let questionsHTML = '';
     
     questions.forEach(function(q, index) {
-        questionsHTML += '<div class="question-item"><div class="question-text">' + q.question + '</div><div class="question-options">';
+        questionsHTML += '<div class="question-item">';
+        questionsHTML += '<div class="question-text">' + escapeHtml(q.question) + '</div>';
+        questionsHTML += '<div class="question-options">';
         
         if (q.type === 'choice' && q.options) {
             q.options.forEach(function(option) {
-                const escapedOption = option.replace(/'/g, "\\'");
-                questionsHTML += '<button class="option-button" onclick="selectOption(' + index + ', \'' + escapedOption + '\')">' + option + '</button>';
+                const safeOption = escapeHtml(option);
+                const safeIndex = index.toString();
+                questionsHTML += '<button class="option-button" onclick="selectOption(' + safeIndex + ', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
+                questionsHTML += safeOption;
+                questionsHTML += '</button>';
             });
         } else {
             questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + index + ', this.value)">';
@@ -157,15 +177,31 @@ function displayAIQuestions(questions) {
     
     questionsContainer.innerHTML = questionsHTML;
     
-    document.getElementById('initialActions').style.display = 'flex';
-    document.getElementById('answerChoice').style.display = 'none';
-    document.getElementById('aiQuestions').style.display = 'block';
+    const initialActions = document.getElementById('initialActions');
+    const answerChoice = document.getElementById('answerChoice');
+    const aiQuestions = document.getElementById('aiQuestions');
+    
+    if (initialActions) initialActions.style.display = 'flex';
+    if (answerChoice) answerChoice.style.display = 'none';
+    if (aiQuestions) aiQuestions.style.display = 'block';
+}
+
+// HTML 이스케이프 함수
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // 옵션 선택
 function selectOption(questionIndex, answer) {
-    const questionItem = document.querySelectorAll('.question-item')[questionIndex];
+    const questionItems = document.querySelectorAll('.question-item');
+    if (!questionItems[questionIndex]) return;
+    
+    const questionItem = questionItems[questionIndex];
     const question = currentQuestions[questionIndex];
+    
+    if (!question) return;
     
     if (question.type === 'text') {
         currentAnswers[questionIndex] = answer;
@@ -198,14 +234,18 @@ function selectOption(questionIndex, answer) {
     
     if (currentAnswers[questionIndex].includes('기타')) {
         if (!customInputDiv) {
-            const customInputHTML = '<div class="custom-input" style="margin-top: 10px;"><input type="text" class="text-input" placeholder="직접 입력해주세요..." onchange="addCustomAnswer(' + questionIndex + ', this.value)" style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;"></div>';
+            const customInputHTML = '<div class="custom-input" style="margin-top: 10px;">' +
+                '<input type="text" class="text-input" placeholder="직접 입력해주세요..." ' +
+                'onchange="addCustomAnswer(' + questionIndex + ', this.value)" ' +
+                'style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;">' +
+                '</div>';
             questionItem.querySelector('.question-options').insertAdjacentHTML('beforeend', customInputHTML);
         }
     } else {
         if (customInputDiv) {
             customInputDiv.remove();
             currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-                return item === '기타' || question.options.includes(item);
+                return item === '기타' || (question.options && question.options.includes(item));
             });
         }
     }
@@ -213,24 +253,29 @@ function selectOption(questionIndex, answer) {
 
 // 기타 입력 처리
 function addCustomAnswer(questionIndex, customValue) {
-    if (customValue.trim()) {
+    if (customValue && customValue.trim()) {
         if (!currentAnswers[questionIndex]) {
             currentAnswers[questionIndex] = [];
         }
         
         const question = currentQuestions[questionIndex];
-        currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-            return item === '기타' || (question.options && question.options.includes(item));
-        });
-        
-        currentAnswers[questionIndex].push(customValue.trim());
+        if (question) {
+            currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
+                return item === '기타' || (question.options && question.options.includes(item));
+            });
+            
+            currentAnswers[questionIndex].push(customValue.trim());
+        }
     }
 }
 
 // 답변 완료 선택지 표시
 function showAnswerChoice() {
-    document.getElementById('initialActions').style.display = 'none';
-    document.getElementById('answerChoice').style.display = 'block';
+    const initialActions = document.getElementById('initialActions');
+    const answerChoice = document.getElementById('answerChoice');
+    
+    if (initialActions) initialActions.style.display = 'none';
+    if (answerChoice) answerChoice.style.display = 'block';
 }
 
 // 현재 답변으로 진행
@@ -246,9 +291,9 @@ async function proceedWithCurrentAnswers() {
             .map(function(entry) {
                 const index = entry[0];
                 const answers = entry[1];
-                const question = currentQuestions[index].question;
+                const question = currentQuestions[index] ? currentQuestions[index].question : '';
                 const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
-                return 'Q' + (parseInt(index)+1) + ': ' + question + '\nA: ' + answerText;
+                return 'Q' + (parseInt(index) + 1) + ': ' + question + '\nA: ' + answerText;
             })
             .join('\n\n');
         
@@ -275,7 +320,7 @@ async function requestMoreQuestions() {
             .map(function(entry) {
                 const index = entry[0];
                 const answers = entry[1];
-                const question = currentQuestions[index].question;
+                const question = currentQuestions[index] ? currentQuestions[index].question : '';
                 const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
                 return 'Q: ' + question + '\nA: ' + answerText;
             })
@@ -319,28 +364,39 @@ async function requestMoreQuestions() {
             currentQuestions = currentQuestions.concat(parsed.questions);
             
             const questionsContainer = document.getElementById('questionsList');
-            let newQuestionsHTML = '';
-            
-            parsed.questions.forEach(function(q, index) {
-                const realIndex = startIndex + index;
-                newQuestionsHTML += '<div class="question-item new-question"><div class="question-text">' + q.question + '</div><div class="question-options">';
+            if (questionsContainer) {
+                let newQuestionsHTML = '';
                 
-                if (q.type === 'choice' && q.options) {
-                    q.options.forEach(function(option) {
-                        const escapedOption = option.replace(/'/g, "\\'");
-                        newQuestionsHTML += '<button class="option-button" onclick="selectOption(' + realIndex + ', \'' + escapedOption + '\')">' + option + '</button>';
-                    });
-                } else {
-                    newQuestionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + realIndex + ', this.value)">';
-                }
+                parsed.questions.forEach(function(q, index) {
+                    const realIndex = startIndex + index;
+                    const safeQuestion = escapeHtml(q.question);
+                    
+                    newQuestionsHTML += '<div class="question-item new-question">';
+                    newQuestionsHTML += '<div class="question-text">' + safeQuestion + '</div>';
+                    newQuestionsHTML += '<div class="question-options">';
+                    
+                    if (q.type === 'choice' && q.options) {
+                        q.options.forEach(function(option) {
+                            const safeOption = escapeHtml(option);
+                            newQuestionsHTML += '<button class="option-button" onclick="selectOption(' + realIndex + ', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
+                            newQuestionsHTML += safeOption;
+                            newQuestionsHTML += '</button>';
+                        });
+                    } else {
+                        newQuestionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + realIndex + ', this.value)">';
+                    }
+                    
+                    newQuestionsHTML += '</div></div>';
+                });
                 
-                newQuestionsHTML += '</div></div>';
-            });
+                questionsContainer.insertAdjacentHTML('beforeend', newQuestionsHTML);
+            }
             
-            questionsContainer.insertAdjacentHTML('beforeend', newQuestionsHTML);
+            const answerChoice = document.getElementById('answerChoice');
+            const initialActions = document.getElementById('initialActions');
             
-            document.getElementById('answerChoice').style.display = 'none';
-            document.getElementById('initialActions').style.display = 'flex';
+            if (answerChoice) answerChoice.style.display = 'none';
+            if (initialActions) initialActions.style.display = 'flex';
             
             showStatus('추가 질문이 생성되었습니다! 더 자세히 답변해주세요.', 'success');
         } else {
@@ -447,20 +503,28 @@ async function directImprovePrompt(originalPrompt) {
 
 // 결과 표시
 function displayResult(original, improved) {
-    document.getElementById('aiQuestions').style.display = 'none';
+    const aiQuestions = document.getElementById('aiQuestions');
+    const originalText = document.getElementById('originalText');
+    const improvedText = document.getElementById('improvedText');
+    const improvedResult = document.getElementById('improvedResult');
     
-    document.getElementById('originalText').textContent = original;
-    document.getElementById('improvedText').textContent = improved;
-    document.getElementById('improvedResult').style.display = 'block';
+    if (aiQuestions) aiQuestions.style.display = 'none';
     
-    const resultDiv = document.getElementById('improvedResult');
-    const dynamicSections = resultDiv.querySelectorAll('.satisfaction-section');
-    dynamicSections.forEach(section => section.remove());
+    if (originalText) originalText.textContent = original;
+    if (improvedText) improvedText.textContent = improved;
+    if (improvedResult) improvedResult.style.display = 'block';
+    
+    if (improvedResult) {
+        const dynamicSections = improvedResult.querySelectorAll('.satisfaction-section');
+        dynamicSections.forEach(function(section) {
+            section.remove();
+        });
+    }
     
     showStatus('프롬프트 개선이 완료되었습니다! 품질을 검증하고 있습니다...', 'processing');
     
-    setTimeout(async function() {
-        await autoQualityCheck(original, improved);
+    setTimeout(function() {
+        autoQualityCheck(original, improved);
     }, 1500);
 }
 
@@ -475,263 +539,9 @@ async function autoQualityCheck(original, improved) {
             body: JSON.stringify({
                 step: 'evaluate',
                 userInput: improved,
-                originalInput: original,
-                quickMode: true
+                originalInput: original
             })
         });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '품질 확인 실패');
-        }
-
-        const parsed = parseQualityResponse(data.result);
-        return {
-            score: parsed.score || 70,
-            feedback: parsed.feedback || parsed.recommendation || '개선되었습니다'
-        };
-    } catch (e) {
-        return { score: 70, feedback: '품질 확인 완료' };
-    }
-}
-
-// 최종 품질 결과 표시
-async function showFinalQualityResult(original, finalImproved, qualityData, attempts) {
-    const resultDiv = document.getElementById('improvedResult');
-    
-    const finalHTML = `
-        <div class="final-quality-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #28a745, #20c997); border-radius: 15px; color: white;">
-            <h4 style="color: white; margin-bottom: 15px;">
-                🏆 자동 개선 완료: ${qualityData.score}/100점 (${attempts}회차)
-            </h4>
-            <p style="margin: 0; opacity: 0.9;">${qualityData.feedback}</p>
-            <p style="margin-top: 10px; font-size: 14px; opacity: 0.8;">AI가 스스로 재질문하고 개선한 결과입니다!</p>
-        </div>
-    `;
-    
-    resultDiv.insertAdjacentHTML('beforeend', finalHTML);
-    
-    setTimeout(function() {
-        askSatisfaction();
-    }, 1000);
-}
-
-// 자동화 섹션들 제거
-function removeAutoSections() {
-    const resultDiv = document.getElementById('improvedResult');
-    const sectionsToRemove = resultDiv.querySelectorAll('.auto-system-section, .final-quality-section');
-    sectionsToRemove.forEach(section => section.remove());
-}
-
-// 현재 버전으로 진행
-function proceedWithCurrent() {
-    const autoSection = document.querySelector('#improvedResult > div:last-child');
-    if (autoSection && autoSection.innerHTML.includes('자동화 시스템')) {
-        autoSection.remove();
-    }
-    
-    showStatus('현재 프롬프트를 사용합니다!', 'success');
-    askSatisfaction();
-}
-
-// 만족도 질문 표시
-function askSatisfaction() {
-    const resultDiv = document.getElementById('improvedResult');
-    
-    const existingSatisfaction = resultDiv.querySelector('.satisfaction-section');
-    if (existingSatisfaction) {
-        existingSatisfaction.remove();
-    }
-    
-    const satisfactionHTML = `
-        <div class="satisfaction-section" style="text-align: center; margin-top: 20px; padding: 20px; background: #f0f8ff; border-radius: 10px;">
-            <h4 style="color: #333; margin-bottom: 15px;">🤔 개선된 프롬프트가 만족스러우신가요?</h4>
-            <button class="search-button" onclick="satisfied()" style="background: #28a745; margin: 0 10px;">😊 만족해요!</button>
-            <button class="search-button" onclick="requestReimprovement()" style="background: #ffc107; color: #212529; margin: 0 10px;">🔄 다시 개선해주세요</button>
-        </div>
-    `;
-    
-    resultDiv.insertAdjacentHTML('beforeend', satisfactionHTML);
-}
-
-// 만족 처리
-function satisfied() {
-    showStatus('감사합니다! 개선된 프롬프트를 잘 활용해보세요! 🎉', 'success');
-    
-    const satisfactionDiv = document.querySelector('#improvedResult > div:last-child');
-    if (satisfactionDiv && satisfactionDiv.innerHTML.includes('만족스러우신가요')) {
-        satisfactionDiv.remove();
-    }
-}
-
-// 재개선 요청
-async function requestReimprovement() {
-    if (isProcessing) return;
-    
-    isProcessing = true;
-    
-    try {
-        showStatus('더 나은 프롬프트로 다시 개선하고 있습니다...', 'processing');
-        
-        const currentImproved = document.getElementById('improvedText').textContent;
-        
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'auto-improve',
-                userInput: currentImproved,
-                originalInput: originalUserInput,
-                reImprove: true
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '재개선 실패');
-        }
-
-        const reImprovedPrompt = data.result;
-        
-        document.getElementById('improvedText').textContent = reImprovedPrompt;
-        
-        const satisfactionDiv = document.querySelector('#improvedResult > div:last-child');
-        if (satisfactionDiv && satisfactionDiv.innerHTML.includes('만족스러우신가요')) {
-            satisfactionDiv.remove();
-        }
-        
-        showStatus('새로운 버전으로 재개선이 완료되었습니다!', 'success');
-        
-        setTimeout(function() {
-            askSatisfaction();
-        }, 1000);
-        
-    } catch (error) {
-        console.error('재개선 오류:', error);
-        showStatus('재개선 중 오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
-    }
-}
-
-// 클립보드에 복사
-async function copyToClipboard() {
-    const improvedText = document.getElementById('improvedText').textContent;
-    
-    try {
-        await navigator.clipboard.writeText(improvedText);
-        showStatus('개선된 프롬프트가 클립보드에 복사되었습니다!', 'success');
-    } catch (err) {
-        const textArea = document.createElement('textarea');
-        textArea.value = improvedText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        showStatus('개선된 프롬프트가 복사되었습니다!', 'success');
-    }
-}
-
-// 즐겨찾기에 저장
-function saveToFavorites() {
-    const original = document.getElementById('originalText').textContent;
-    const improved = document.getElementById('improvedText').textContent;
-    
-    const favorites = JSON.parse(localStorage.getItem('prompt_favorites') || '[]');
-    
-    const newFavorite = {
-        id: Date.now(),
-        original: original,
-        improved: improved,
-        date: new Date().toLocaleDateString('ko-KR')
-    };
-    
-    favorites.unshift(newFavorite);
-    
-    if (favorites.length > 50) {
-        favorites.pop();
-    }
-    
-    localStorage.setItem('prompt_favorites', JSON.stringify(favorites));
-    showStatus('즐겨찾기에 저장되었습니다!', 'success');
-}
-
-// 초기화
-function clearResults() {
-    document.getElementById('searchInput').value = '';
-    clearPreviousResults();
-    originalUserInput = '';
-    isProcessing = false;
-    showStatus('초기화가 완료되었습니다.', 'success');
-}
-
-// 사용법 가이드 모달 함수들
-function showDetailedGuide() {
-    document.getElementById('guideModal').style.display = 'block';
-}
-
-function closeDetailedGuide() {
-    document.getElementById('guideModal').style.display = 'none';
-}
-
-// 모달 외부 클릭시 닫기
-window.onclick = function(event) {
-    const modal = document.getElementById('guideModal');
-    if (event.target == modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// 상태 메시지 표시
-function showStatus(message, type) {
-    const statusDiv = document.getElementById('statusMessage');
-    
-    if (!message) {
-        statusDiv.style.display = 'none';
-        return;
-    }
-    
-    statusDiv.style.display = 'block';
-    statusDiv.textContent = message;
-    
-    statusDiv.className = '';
-    
-    switch(type) {
-        case 'success':
-            statusDiv.className = 'status-message status-success';
-            break;
-        case 'error':
-            statusDiv.className = 'status-message status-error';
-            break;
-        case 'processing':
-            statusDiv.className = 'status-message';
-            statusDiv.style.background = '#e3f2fd';
-            statusDiv.style.color = '#1976d2';
-            statusDiv.style.border = '1px solid #bbdefb';
-            break;
-        default:
-            statusDiv.className = 'status-message';
-    }
-    
-    if (type === 'success' || type === 'error') {
-        setTimeout(function() {
-            statusDiv.style.display = 'none';
-        }, 3000);
-    }
-}
-              
 
         if (!response.ok) {
             throw new Error('서버 오류: ' + response.status);
@@ -778,38 +588,51 @@ function parseQualityResponse(response) {
     }
 }
 
-// 품질 결과 표시
+// 품질 결과 표시 (중첩 템플릿 리터럴 문제 해결)
 function displayQualityResult(qualityData, original, improved) {
     const resultDiv = document.getElementById('improvedResult');
+    if (!resultDiv) return;
     
     let scoreColor = '#28a745';
     if (qualityData.score < 85) scoreColor = '#ffc107';
     if (qualityData.score < 70) scoreColor = '#dc3545';
     
-    const qualityHTML = `
-        <div class="quality-section" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid ${scoreColor};">
-            <h4 style="color: #333; text-align: center; margin-bottom: 15px;">
-                🎯 AI 품질 평가: <span style="color: ${scoreColor}; font-size: 24px;">${qualityData.score}/100점</span>
-            </h4>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                <div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #28a745;">
-                    <h5 style="color: #28a745; margin-bottom: 8px;">✅ 강점</h5>
-                    ${qualityData.strengths.map(s => `<p style="margin: 4px 0; font-size: 14px;">• ${s}</p>`).join('')}
-                </div>
-                
-                <div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #ffc107;">
-                    <h5 style="color: #ffc107; margin-bottom: 8px;">🔧 개선점</h5>
-                    ${qualityData.improvements.map(i => `<p style="margin: 4px 0; font-size: 14px;">• ${i}</p>`).join('')}
-                </div>
-            </div>
-            
-            <div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                <h5 style="color: #667eea; margin-bottom: 8px;">💡 개선 권장사항</h5>
-                <p style="margin: 0; font-size: 14px;">${qualityData.recommendation}</p>
-            </div>
-        </div>
-    `;
+    // 강점 HTML 생성
+    let strengthsHTML = '';
+    if (qualityData.strengths && Array.isArray(qualityData.strengths)) {
+        qualityData.strengths.forEach(function(strength) {
+            strengthsHTML += '<p style="margin: 4px 0; font-size: 14px;">• ' + escapeHtml(strength) + '</p>';
+        });
+    }
+    
+    // 개선점 HTML 생성
+    let improvementsHTML = '';
+    if (qualityData.improvements && Array.isArray(qualityData.improvements)) {
+        qualityData.improvements.forEach(function(improvement) {
+            improvementsHTML += '<p style="margin: 4px 0; font-size: 14px;">• ' + escapeHtml(improvement) + '</p>';
+        });
+    }
+    
+    const qualityHTML = 
+        '<div class="quality-section" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid ' + scoreColor + ';">' +
+            '<h4 style="color: #333; text-align: center; margin-bottom: 15px;">' +
+                '🎯 AI 품질 평가: <span style="color: ' + scoreColor + '; font-size: 24px;">' + qualityData.score + '/100점</span>' +
+            '</h4>' +
+            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">' +
+                '<div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #28a745;">' +
+                    '<h5 style="color: #28a745; margin-bottom: 8px;">✅ 강점</h5>' +
+                    strengthsHTML +
+                '</div>' +
+                '<div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #ffc107;">' +
+                    '<h5 style="color: #ffc107; margin-bottom: 8px;">🔧 개선점</h5>' +
+                    improvementsHTML +
+                '</div>' +
+            '</div>' +
+            '<div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">' +
+                '<h5 style="color: #667eea; margin-bottom: 8px;">💡 개선 권장사항</h5>' +
+                '<p style="margin: 0; font-size: 14px;">' + escapeHtml(qualityData.recommendation || '') + '</p>' +
+            '</div>' +
+        '</div>';
     
     resultDiv.insertAdjacentHTML('beforeend', qualityHTML);
     
@@ -826,29 +649,28 @@ function displayQualityResult(qualityData, original, improved) {
 // 완전 자동화 시스템 표시
 function showAutoFullSystem(original, improved, qualityData) {
     const resultDiv = document.getElementById('improvedResult');
+    if (!resultDiv) return;
     
     window.tempOriginal = original;
     window.tempImproved = improved;
     window.tempQualityData = qualityData;
     
-    const autoSystemHTML = `
-        <div class="auto-system-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 15px; color: white;">
-            <h4 style="margin-bottom: 15px; color: white;">🤖 완전 자동화 시스템</h4>
-            <p style="margin-bottom: 15px; opacity: 0.9;">현재 ${qualityData.score}점입니다. AI가 95점 이상까지 자동으로 개선하겠습니다!</p>
-            
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                <button class="search-button" onclick="startFullAutoImprovement();" style="background: #28a745;">
-                    🚀 AI 완전 자동 개선 (재질문 + 다중 개선)
-                </button>
-                <button class="search-button" onclick="startQuickAutoImprovement();" style="background: #ffc107; color: #212529;">
-                    ⚡ 빠른 자동 개선 (1회 개선)
-                </button>
-                <button class="search-button" onclick="proceedWithCurrent();" style="background: #6c757d;">
-                    ✋ 현재 버전 사용
-                </button>
-            </div>
-        </div>
-    `;
+    const autoSystemHTML = 
+        '<div class="auto-system-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 15px; color: white;">' +
+            '<h4 style="margin-bottom: 15px; color: white;">🤖 완전 자동화 시스템</h4>' +
+            '<p style="margin-bottom: 15px; opacity: 0.9;">현재 ' + qualityData.score + '점입니다. AI가 95점 이상까지 자동으로 개선하겠습니다!</p>' +
+            '<div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">' +
+                '<button class="search-button" onclick="startFullAutoImprovement();" style="background: #28a745;">' +
+                    '🚀 AI 완전 자동 개선 (재질문 + 다중 개선)' +
+                '</button>' +
+                '<button class="search-button" onclick="startQuickAutoImprovement();" style="background: #ffc107; color: #212529;">' +
+                    '⚡ 빠른 자동 개선 (1회 개선)' +
+                '</button>' +
+                '<button class="search-button" onclick="proceedWithCurrent();" style="background: #6c757d;">' +
+                    '✋ 현재 버전 사용' +
+                '</button>' +
+            '</div>' +
+        '</div>';
     
     resultDiv.insertAdjacentHTML('beforeend', autoSystemHTML);
 }
@@ -914,14 +736,17 @@ async function startFullAutoImprovement() {
             if (newQuality.score >= 95) {
                 showStatus('🎉 ' + attempts + '회차만에 95점 달성! 완전 자동 개선 완료!', 'success');
                 
-                document.getElementById('improvedText').textContent = currentImproved;
+                const improvedText = document.getElementById('improvedText');
+                if (improvedText) improvedText.textContent = currentImproved;
+                
                 await showFinalQualityResult(original, currentImproved, newQuality, attempts);
                 break;
             }
             
             if (attempts >= maxAttempts) {
                 showStatus('⚡ ' + maxAttempts + '회 개선 완료: 최종 ' + newQuality.score + '/100점', 'success');
-                document.getElementById('improvedText').textContent = currentImproved;
+                const improvedText = document.getElementById('improvedText');
+                if (improvedText) improvedText.textContent = currentImproved;
                 await showFinalQualityResult(original, currentImproved, newQuality, attempts);
             }
         }
@@ -980,7 +805,8 @@ async function startQuickAutoImprovement() {
 
         const quickImproved = data.result;
         
-        document.getElementById('improvedText').textContent = quickImproved;
+        const improvedText = document.getElementById('improvedText');
+        if (improvedText) improvedText.textContent = quickImproved;
         
         const finalQuality = await quickQualityCheck(original, quickImproved);
         
@@ -1006,3 +832,291 @@ async function quickQualityCheck(original, improved) {
             },
             body: JSON.stringify({
                 step: 'evaluate',
+                userInput: improved,
+                originalInput: original,
+                quickMode: true
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '품질 확인 실패');
+        }
+
+        const parsed = parseQualityResponse(data.result);
+        return {
+            score: parsed.score || 70,
+            feedback: parsed.feedback || parsed.recommendation || '개선되었습니다'
+        };
+    } catch (e) {
+        return { score: 70, feedback: '품질 확인 완료' };
+    }
+}
+
+// 최종 품질 결과 표시
+async function showFinalQualityResult(original, finalImproved, qualityData, attempts) {
+    const resultDiv = document.getElementById('improvedResult');
+    if (!resultDiv) return;
+    
+    const finalHTML = 
+        '<div class="final-quality-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #28a745, #20c997); border-radius: 15px; color: white;">' +
+            '<h4 style="color: white; margin-bottom: 15px;">' +
+                '🏆 자동 개선 완료: ' + qualityData.score + '/100점 (' + attempts + '회차)' +
+            '</h4>' +
+            '<p style="margin: 0; opacity: 0.9;">' + escapeHtml(qualityData.feedback || '') + '</p>' +
+            '<p style="margin-top: 10px; font-size: 14px; opacity: 0.8;">AI가 스스로 재질문하고 개선한 결과입니다!</p>' +
+        '</div>';
+    
+    resultDiv.insertAdjacentHTML('beforeend', finalHTML);
+    
+    setTimeout(function() {
+        askSatisfaction();
+    }, 1000);
+}
+
+// 자동화 섹션들 제거
+function removeAutoSections() {
+    const resultDiv = document.getElementById('improvedResult');
+    if (!resultDiv) return;
+    
+    const sectionsToRemove = resultDiv.querySelectorAll('.auto-system-section, .final-quality-section');
+    sectionsToRemove.forEach(function(section) {
+        section.remove();
+    });
+}
+
+// 현재 버전으로 진행
+function proceedWithCurrent() {
+    const autoSection = document.querySelector('#improvedResult .auto-system-section');
+    if (autoSection) {
+        autoSection.remove();
+    }
+    
+    showStatus('현재 프롬프트를 사용합니다!', 'success');
+    askSatisfaction();
+}
+
+// 만족도 질문 표시
+function askSatisfaction() {
+    const resultDiv = document.getElementById('improvedResult');
+    if (!resultDiv) return;
+    
+    const existingSatisfaction = resultDiv.querySelector('.satisfaction-section');
+    if (existingSatisfaction) {
+        existingSatisfaction.remove();
+    }
+    
+    const satisfactionHTML = 
+        '<div class="satisfaction-section" style="text-align: center; margin-top: 20px; padding: 20px; background: #f0f8ff; border-radius: 10px;">' +
+            '<h4 style="color: #333; margin-bottom: 15px;">🤔 개선된 프롬프트가 만족스러우신가요?</h4>' +
+            '<button class="search-button" onclick="satisfied()" style="background: #28a745; margin: 0 10px;">😊 만족해요!</button>' +
+            '<button class="search-button" onclick="requestReimprovement()" style="background: #ffc107; color: #212529; margin: 0 10px;">🔄 다시 개선해주세요</button>' +
+        '</div>';
+    
+    resultDiv.insertAdjacentHTML('beforeend', satisfactionHTML);
+}
+
+// 만족 처리
+function satisfied() {
+    showStatus('감사합니다! 개선된 프롬프트를 잘 활용해보세요! 🎉', 'success');
+    
+    const satisfactionDiv = document.querySelector('#improvedResult .satisfaction-section');
+    if (satisfactionDiv) {
+        satisfactionDiv.remove();
+    }
+}
+
+// 재개선 요청
+async function requestReimprovement() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('더 나은 프롬프트로 다시 개선하고 있습니다...', 'processing');
+        
+        const improvedText = document.getElementById('improvedText');
+        const currentImproved = improvedText ? improvedText.textContent : '';
+        
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'auto-improve',
+                userInput: currentImproved,
+                originalInput: originalUserInput,
+                reImprove: true
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '재개선 실패');
+        }
+
+        const reImprovedPrompt = data.result;
+        
+        if (improvedText) improvedText.textContent = reImprovedPrompt;
+        
+        const satisfactionDiv = document.querySelector('#improvedResult .satisfaction-section');
+        if (satisfactionDiv) {
+            satisfactionDiv.remove();
+        }
+        
+        showStatus('새로운 버전으로 재개선이 완료되었습니다!', 'success');
+        
+        setTimeout(function() {
+            askSatisfaction();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('재개선 오류:', error);
+        showStatus('재개선 중 오류가 발생했습니다: ' + error.message, 'error');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+// 클립보드에 복사
+async function copyToClipboard() {
+    const improvedText = document.getElementById('improvedText');
+    if (!improvedText) return;
+    
+    const textToCopy = improvedText.textContent;
+    
+    try {
+        await navigator.clipboard.writeText(textToCopy);
+        showStatus('개선된 프롬프트가 클립보드에 복사되었습니다!', 'success');
+    } catch (err) {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showStatus('개선된 프롬프트가 복사되었습니다!', 'success');
+    }
+}
+
+// 즐겨찾기에 저장
+function saveToFavorites() {
+    const originalText = document.getElementById('originalText');
+    const improvedText = document.getElementById('improvedText');
+    
+    if (!originalText || !improvedText) return;
+    
+    const original = originalText.textContent;
+    const improved = improvedText.textContent;
+    
+    let favorites = [];
+    try {
+        favorites = JSON.parse(localStorage.getItem('prompt_favorites') || '[]');
+    } catch (e) {
+        favorites = [];
+    }
+    
+    const newFavorite = {
+        id: Date.now(),
+        original: original,
+        improved: improved,
+        date: new Date().toLocaleDateString('ko-KR')
+    };
+    
+    favorites.unshift(newFavorite);
+    
+    if (favorites.length > 50) {
+        favorites.pop();
+    }
+    
+    try {
+        localStorage.setItem('prompt_favorites', JSON.stringify(favorites));
+        showStatus('즐겨찾기에 저장되었습니다!', 'success');
+    } catch (e) {
+        showStatus('즐겨찾기 저장에 실패했습니다.', 'error');
+    }
+}
+
+// 초기화
+function clearResults() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = '';
+    
+    clearPreviousResults();
+    originalUserInput = '';
+    isProcessing = false;
+    showStatus('초기화가 완료되었습니다.', 'success');
+}
+
+// 사용법 가이드 모달 함수들
+function showDetailedGuide() {
+    const modal = document.getElementById('guideModal');
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+function closeDetailedGuide() {
+    const modal = document.getElementById('guideModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// 모달 외부 클릭시 닫기
+window.onclick = function(event) {
+    const modal = document.getElementById('guideModal');
+    if (modal && event.target === modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// 상태 메시지 표시
+function showStatus(message, type) {
+    const statusDiv = document.getElementById('statusMessage');
+    if (!statusDiv) return;
+    
+    if (!message) {
+        statusDiv.style.display = 'none';
+        return;
+    }
+    
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = message;
+    
+    statusDiv.className = '';
+    
+    switch(type) {
+        case 'success':
+            statusDiv.className = 'status-message status-success';
+            break;
+        case 'error':
+            statusDiv.className = 'status-message status-error';
+            break;
+        case 'processing':
+            statusDiv.className = 'status-message';
+            statusDiv.style.background = '#e3f2fd';
+            statusDiv.style.color = '#1976d2';
+            statusDiv.style.border = '1px solid #bbdefb';
+            break;
+        default:
+            statusDiv.className = 'status-message';
+    }
+    
+    if (type === 'success' || type === 'error') {
+        setTimeout(function() {
+            if (statusDiv) statusDiv.style.display = 'none';
+        }, 3000);
+    }
+}
