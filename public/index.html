@@ -18,9 +18,25 @@
             <div class="category-container">
                 <h3>📁 관련 분야 선택 (선택사항)</h3>
                 <div class="category-buttons">
+                    <button class="category-btn" data-category="image" onclick="toggleCategory('image', this)">
+                        <span class="category-icon">🎨</span>
+                        <span>이미지 생성</span>
+                    </button>
+                    <button class="category-btn" data-category="video" onclick="toggleCategory('video', this)">
+                        <span class="category-icon">🎬</span>
+                        <span>영상 생성</span>
+                    </button>
+                    <button class="category-btn" data-category="writing" onclick="toggleCategory('writing', this)">
+                        <span class="category-icon">✍️</span>
+                        <span>글쓰기/창작</span>
+                    </button>
+                    <button class="category-btn" data-category="coding" onclick="toggleCategory('coding', this)">
+                        <span class="category-icon">💻</span>
+                        <span>코딩/개발</span>
+                    </button>
                     <button class="category-btn" data-category="mcp" onclick="toggleCategory('mcp', this)">
                         <span class="category-icon">🔧</span>
-                        <span>프로그래밍</span>
+                        <span>MCP 서버</span>
                     </button>
                     <button class="category-btn" data-category="website" onclick="toggleCategory('website', this)">
                         <span class="category-icon">🌐</span>
