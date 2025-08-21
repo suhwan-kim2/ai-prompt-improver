@@ -1107,3 +1107,21 @@ function showAutoFullSystem(original, improved, qualityData) {
     `;
     
     resultDiv
+
+
+// 🆕 사용법 가이드 모달 함수들
+function showDetailedGuide() {
+    document.getElementById('guideModal').style.display = 'block';
+}
+
+function closeDetailedGuide() {
+    document.getElementById('guideModal').style.display = 'none';
+}
+
+// 모달 외부 클릭시 닫기
+window.onclick = function(event) {
+    const modal = document.getElementById('guideModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
