@@ -56,7 +56,7 @@ function updateSelectedCategories() {
     container.innerHTML = '<p style="margin-top: 15px; color: #667eea; font-weight: bold;">선택된 분야: ' + selectedText + '</p>';
 }
 
-// 메인 프롬프트 개선 함수
+// 메인 프롬프트 개선 함수 (수정된 버전)
 async function improvePrompt() {
     const userInput = document.getElementById('searchInput').value.trim();
     
@@ -69,6 +69,9 @@ async function improvePrompt() {
         showStatus('이미 처리 중입니다. 잠시만 기다려주세요.', 'error');
         return;
     }
+    
+    // 🔧 새 요청 시 이전 결과 완전 초기화
+    clearPreviousResults();
     
     isProcessing = true;
     originalUserInput = userInput;
@@ -104,6 +107,35 @@ async function improvePrompt() {
     } finally {
         isProcessing = false;
     }
+}
+
+// 🆕 이전 결과 완전 초기화 함수
+function clearPreviousResults() {
+    // AI 질문 섹션 숨기기
+    document.getElementById('aiQuestions').style.display = 'none';
+    
+    // 결과 섹션 숨기기
+    document.getElementById('improvedResult').style.display = 'none';
+    
+    // 결과 내용 초기화
+    const resultDiv = document.getElementById('improvedResult');
+    
+    // 동적으로 생성된 모든 섹션 제거
+    const dynamicSections = resultDiv.querySelectorAll(
+        '.quality-section, .auto-system-section, .final-quality-section, .satisfaction-section, [class*="quality"], [style*="품질"], [style*="자동"], [style*="만족"]'
+    );
+    dynamicSections.forEach(section => section.remove());
+    
+    // 전역 변수 초기화
+    currentQuestions = [];
+    currentAnswers = {};
+    
+    // 전역 임시 변수 초기화
+    window.tempOriginal = null;
+    window.tempImproved = null;
+    window.tempQualityData = null;
+    
+    console.log('이전 결과 완전 초기화 완료');
 }
 
 // AI 질문 생성 (서버 API 호출)
@@ -934,26 +966,21 @@ function saveToFavorites() {
     showStatus('즐겨찾기에 저장되었습니다!', 'success');
 }
 
-// 결과 초기화
+// 🔧 기존 clearResults 함수도 개선
 function clearResults() {
     document.getElementById('searchInput').value = '';
-    document.getElementById('aiQuestions').style.display = 'none';
-    document.getElementById('improvedResult').style.display = 'none';
-    document.getElementById('statusMessage').style.display = 'none';
     
-    // 결과 영역 완전 초기화
-    const resultDiv = document.getElementById('improvedResult');
-    const dynamicSections = resultDiv.querySelectorAll('.satisfaction-section, [style*="품질 평가"], [style*="자동으로 9점급"], [style*="만족스러우신가요"]');
-    dynamicSections.forEach(section => section.remove());
+    // 새로운 초기화 함수 사용
+    clearPreviousResults();
     
+    // 카테고리 선택 초기화
     selectedCategories = [];
     document.querySelectorAll('.category-btn').forEach(function(btn) {
         btn.classList.remove('active');
     });
     updateSelectedCategories();
     
-    currentQuestions = [];
-    currentAnswers = {};
+    // 기타 전역 변수 초기화
     originalUserInput = '';
     isProcessing = false;
     
