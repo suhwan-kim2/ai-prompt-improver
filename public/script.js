@@ -673,7 +673,7 @@ function displayAdditionalQuestions(questions) {
         const globalIndex = 'additional_' + index;
         
         questionsHTML += '<div class="question-item">';
-        questionsHTML += '<div class="question-text">' + escapeHtml(q.question) + '</div>';
+        questionsHTML += '<div class="question-text">🔍 ' + escapeHtml(q.question) + '</div>';
         questionsHTML += '<div class="question-options">';
         
         if (q.type === 'choice' && q.options) {
@@ -684,7 +684,7 @@ function displayAdditionalQuestions(questions) {
                 questionsHTML += '</button>';
             });
         } else {
-            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectAdditionalOption(\'' + globalIndex + '\', this.value)">';
+            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectAdditionalOption(\'' + globalIndex + '\', this.value)" style="width: 100%; padding: 12px; border: 2px solid #ffc107; border-radius: 8px;">';
         }
         
         questionsHTML += '</div>';
