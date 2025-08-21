@@ -1,8 +1,12 @@
 // 전역 변수들
+let isExpertMode = false;
 let currentQuestions = [];
 let currentAnswers = {};
+let currentRound = 0;
+let maxRounds = 1; // 일반모드: 1, 전문가모드: 2-3
 let originalUserInput = '';
 let isProcessing = false;
+let currentScore = 0;
 
 // 페이지 로드시 초기화
 window.onload = function() {
@@ -15,7 +19,64 @@ window.onload = function() {
             }
         });
     }
+    
+    // 모달 외부 클릭시 닫기
+    window.onclick = function(event) {
+        const modal = document.getElementById('guideModal');
+        if (modal && event.target === modal) {
+            modal.style.display = 'none';
+        }
+    }
 };
+
+// 모드 토글 함수
+function toggleMode() {
+    isExpertMode = !isExpertMode;
+    const toggle = document.getElementById('modeToggle');
+    const description = document.getElementById('modeDescription');
+    const guideTitle = document.getElementById('guideTitle');
+    const guideSteps = document.getElementById('guideSteps');
+    
+    if (isExpertMode) {
+        toggle.classList.add('active');
+        description.textContent = '전문가급 심층 의도 파악 (2-3회차 질문)';
+        guideTitle.textContent = '🎯 전문가모드 사용법';
+        guideSteps.innerHTML = `
+            <div class="step">
+                <span class="step-number">1️⃣</span>
+                <span class="step-text">원하는 작업을 상세히 입력</span>
+            </div>
+            <div class="step">
+                <span class="step-number">2️⃣</span>
+                <span class="step-text">AI가 2-3회차 심층 질문</span>
+            </div>
+            <div class="step">
+                <span class="step-number">3️⃣</span>
+                <span class="step-text">의도 파악 후 전문가급 개선</span>
+            </div>
+        `;
+        maxRounds = 3;
+    } else {
+        toggle.classList.remove('active');
+        description.textContent = '빠르고 간편한 프롬프트 개선 (1-6개 질문)';
+        guideTitle.textContent = '🚀 일반모드 사용법';
+        guideSteps.innerHTML = `
+            <div class="step">
+                <span class="step-number">1️⃣</span>
+                <span class="step-text">원하는 작업을 한글로 입력</span>
+            </div>
+            <div class="step">
+                <span class="step-number">2️⃣</span>
+                <span class="step-text">AI 질문에 답변 (스킵 가능)</span>
+            </div>
+            <div class="step">
+                <span class="step-number">3️⃣</span>
+                <span class="step-text">개선된 프롬프트 완성</span>
+            </div>
+        `;
+        maxRounds = 1;
+    }
+}
 
 // 메인 프롬프트 개선 함수
 async function improvePrompt() {
@@ -34,15 +95,16 @@ async function improvePrompt() {
     clearPreviousResults();
     isProcessing = true;
     originalUserInput = userInput;
+    currentRound = 0;
     
     try {
-        showStatus('AI가 더 나은 프롬프트를 위한 질문을 생성하고 있습니다...', 'processing');
+        showStatus('AI가 질문을 생성하고 있습니다...', 'processing');
         
-        const questions = await generateAIQuestions(userInput);
+        const questions = await generateAIQuestions(userInput, currentRound);
         
         if (questions && questions.length > 0) {
-            displayAIQuestions(questions);
-            showStatus('질문이 생성되었습니다. 답변해주시면 더 정확한 개선이 가능해요!', 'success');
+            displayAIQuestions(questions, currentRound);
+            showStatus(`${isExpertMode ? '전문가모드' : '일반모드'} 질문이 생성되었습니다!`, 'success');
         } else {
             showStatus('바로 프롬프트를 개선하겠습니다...', 'processing');
             await directImprovePrompt(userInput);
@@ -63,37 +125,8 @@ async function improvePrompt() {
     }
 }
 
-// 이전 결과 완전 초기화
-function clearPreviousResults() {
-    const aiQuestionsDiv = document.getElementById('aiQuestions');
-    const improvedResultDiv = document.getElementById('improvedResult');
-    
-    if (aiQuestionsDiv) {
-        aiQuestionsDiv.style.display = 'none';
-    }
-    if (improvedResultDiv) {
-        improvedResultDiv.style.display = 'none';
-    }
-    
-    if (improvedResultDiv) {
-        const dynamicSections = improvedResultDiv.querySelectorAll(
-            '.quality-section, .auto-system-section, .final-quality-section, .satisfaction-section'
-        );
-        dynamicSections.forEach(function(section) {
-            section.remove();
-        });
-    }
-    
-    currentQuestions = [];
-    currentAnswers = {};
-    
-    window.tempOriginal = null;
-    window.tempImproved = null;
-    window.tempQualityData = null;
-}
-
 // AI 질문 생성
-async function generateAIQuestions(userInput) {
+async function generateAIQuestions(userInput, round) {
     try {
         const response = await fetch('/api/improve-prompt', {
             method: 'POST',
@@ -102,7 +135,10 @@ async function generateAIQuestions(userInput) {
             },
             body: JSON.stringify({
                 step: 'questions',
-                userInput: userInput
+                userInput: userInput,
+                isExpertMode: isExpertMode,
+                round: round,
+                previousAnswers: Object.values(currentAnswers).flat().join(', ')
             })
         });
 
@@ -113,456 +149,71 @@ async function generateAIQuestions(userInput) {
         const data = await response.json();
         
         if (!data.success) {
-            throw new Error(data.error || '질문 생성 실패');
+            throw new Error(data.error || '추가 답변 기반 재개선 실패');
         }
 
-        let jsonStr = data.result.trim();
+        const reImprovedPrompt = data.result;
         
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
-        }
+        // 결과 업데이트
+        const improvedText = document.getElementById('improvedText');
+        if (improvedText) improvedText.textContent = reImprovedPrompt;
         
-        const parsed = JSON.parse(jsonStr);
+        // 추가 질문 섹션 숨기기
+        const additionalSection = document.getElementById('additionalQuestions');
+        if (additionalSection) additionalSection.style.display = 'none';
         
-        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-            return parsed.questions;
-        } else {
-            return [];
-        }
+        // 재평가
+        const newQuality = await quickQualityCheck(reImprovedPrompt);
+        currentScore = newQuality.score;
         
-    } catch (e) {
-        console.error('질문 생성 실패:', e);
-        return [];
-    }
-}
-
-// AI 질문 표시
-function displayAIQuestions(questions) {
-    currentQuestions = questions;
-    currentAnswers = {};
-    
-    const questionsContainer = document.getElementById('questionsList');
-    const aiMessage = document.getElementById('aiMessage');
-    
-    if (!questionsContainer || !aiMessage) {
-        console.error('질문 컨테이너를 찾을 수 없습니다');
-        return;
-    }
-    
-    aiMessage.innerHTML = '더 좋은 프롬프트를 만들기 위해 몇 가지 질문에 답해주세요! (선택사항)';
-    
-    let questionsHTML = '';
-    
-    questions.forEach(function(q, index) {
-        questionsHTML += '<div class="question-item">';
-        questionsHTML += '<div class="question-text">' + escapeHtml(q.question) + '</div>';
-        questionsHTML += '<div class="question-options">';
-        
-        if (q.type === 'choice' && q.options) {
-            q.options.forEach(function(option) {
-                const safeOption = escapeHtml(option);
-                const safeIndex = index.toString();
-                questionsHTML += '<button class="option-button" onclick="selectOption(' + safeIndex + ', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
-                questionsHTML += safeOption;
-                questionsHTML += '</button>';
-            });
-        } else {
-            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + index + ', this.value)">';
-        }
-        
-        questionsHTML += '</div></div>';
-    });
-    
-    questionsContainer.innerHTML = questionsHTML;
-    
-    const initialActions = document.getElementById('initialActions');
-    const answerChoice = document.getElementById('answerChoice');
-    const aiQuestions = document.getElementById('aiQuestions');
-    
-    if (initialActions) initialActions.style.display = 'flex';
-    if (answerChoice) answerChoice.style.display = 'none';
-    if (aiQuestions) aiQuestions.style.display = 'block';
-}
-
-// HTML 이스케이프 함수
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// 옵션 선택
-function selectOption(questionIndex, answer) {
-    const questionItems = document.querySelectorAll('.question-item');
-    if (!questionItems[questionIndex]) return;
-    
-    const questionItem = questionItems[questionIndex];
-    const question = currentQuestions[questionIndex];
-    
-    if (!question) return;
-    
-    if (question.type === 'text') {
-        currentAnswers[questionIndex] = answer;
-        return;
-    }
-    
-    if (!currentAnswers[questionIndex]) {
-        currentAnswers[questionIndex] = [];
-    }
-    
-    const buttons = questionItem.querySelectorAll('.option-button');
-    const answerIndex = currentAnswers[questionIndex].indexOf(answer);
-    
-    if (answerIndex === -1) {
-        currentAnswers[questionIndex].push(answer);
-    } else {
-        currentAnswers[questionIndex].splice(answerIndex, 1);
-    }
-    
-    buttons.forEach(function(btn) {
-        const btnText = btn.textContent.trim();
-        if (currentAnswers[questionIndex].includes(btnText)) {
-            btn.classList.add('selected');
-        } else {
-            btn.classList.remove('selected');
-        }
-    });
-    
-    const customInputDiv = questionItem.querySelector('.custom-input');
-    
-    if (currentAnswers[questionIndex].includes('기타')) {
-        if (!customInputDiv) {
-            const customInputHTML = '<div class="custom-input" style="margin-top: 10px;">' +
-                '<input type="text" class="text-input" placeholder="직접 입력해주세요..." ' +
-                'onchange="addCustomAnswer(' + questionIndex + ', this.value)" ' +
-                'style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;">' +
-                '</div>';
-            questionItem.querySelector('.question-options').insertAdjacentHTML('beforeend', customInputHTML);
-        }
-    } else {
-        if (customInputDiv) {
-            customInputDiv.remove();
-            currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-                return item === '기타' || (question.options && question.options.includes(item));
-            });
-        }
-    }
-}
-
-// 기타 입력 처리
-function addCustomAnswer(questionIndex, customValue) {
-    if (customValue && customValue.trim()) {
-        if (!currentAnswers[questionIndex]) {
-            currentAnswers[questionIndex] = [];
-        }
-        
-        const question = currentQuestions[questionIndex];
-        if (question) {
-            currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-                return item === '기타' || (question.options && question.options.includes(item));
-            });
-            
-            currentAnswers[questionIndex].push(customValue.trim());
-        }
-    }
-}
-
-// 답변 완료 선택지 표시
-function showAnswerChoice() {
-    const initialActions = document.getElementById('initialActions');
-    const answerChoice = document.getElementById('answerChoice');
-    
-    if (initialActions) initialActions.style.display = 'none';
-    if (answerChoice) answerChoice.style.display = 'block';
-}
-
-// 현재 답변으로 진행
-async function proceedWithCurrentAnswers() {
-    if (isProcessing) return;
-    
-    isProcessing = true;
-    
-    try {
-        showStatus('AI가 답변을 바탕으로 프롬프트를 개선하고 있습니다...', 'processing');
-        
-        const answersText = Object.entries(currentAnswers)
-            .map(function(entry) {
-                const index = entry[0];
-                const answers = entry[1];
-                const question = currentQuestions[index] ? currentQuestions[index].question : '';
-                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
-                return 'Q' + (parseInt(index) + 1) + ': ' + question + '\nA: ' + answerText;
-            })
-            .join('\n\n');
-        
-        await improvePromptWithAnswers(originalUserInput, answersText);
+        showScoreImprovement(currentScore);
+        showStatus(`추가 답변 기반 재개선 완료! ${currentScore}점 달성!`, 'success');
         
     } catch (error) {
-        console.error('Error:', error);
-        showStatus('오류가 발생했습니다: ' + error.message, 'error');
+        console.error('추가 답변 재개선 오류:', error);
+        showStatus('추가 답변 재개선 중 오류가 발생했습니다.', 'error');
     } finally {
         isProcessing = false;
     }
 }
 
-// 더 자세한 질문 요청
-async function requestMoreQuestions() {
-    if (isProcessing) return;
+// 추가 답변 포맷팅
+function formatAdditionalAnswersForAPI() {
+    if (!currentAnswers.additional) return '';
     
-    isProcessing = true;
-    
-    try {
-        showStatus('AI가 더 자세한 질문을 생성하고 있습니다...', 'processing');
-        
-        const currentAnswersText = Object.entries(currentAnswers)
-            .map(function(entry) {
-                const index = entry[0];
-                const answers = entry[1];
-                const question = currentQuestions[index] ? currentQuestions[index].question : '';
-                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
-                return 'Q: ' + question + '\nA: ' + answerText;
-            })
-            .join('\n\n');
-        
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'additional-questions',
-                userInput: originalUserInput,
-                previousQuestions: currentQuestions,
-                previousAnswers: currentAnswersText
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '추가 질문 생성 실패');
-        }
-
-        let jsonStr = data.result.trim();
-        
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
-        }
-        
-        const parsed = JSON.parse(jsonStr);
-        
-        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-            const startIndex = currentQuestions.length;
-            currentQuestions = currentQuestions.concat(parsed.questions);
-            
-            const questionsContainer = document.getElementById('questionsList');
-            if (questionsContainer) {
-                let newQuestionsHTML = '';
-                
-                parsed.questions.forEach(function(q, index) {
-                    const realIndex = startIndex + index;
-                    const safeQuestion = escapeHtml(q.question);
-                    
-                    newQuestionsHTML += '<div class="question-item new-question">';
-                    newQuestionsHTML += '<div class="question-text">' + safeQuestion + '</div>';
-                    newQuestionsHTML += '<div class="question-options">';
-                    
-                    if (q.type === 'choice' && q.options) {
-                        q.options.forEach(function(option) {
-                            const safeOption = escapeHtml(option);
-                            newQuestionsHTML += '<button class="option-button" onclick="selectOption(' + realIndex + ', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
-                            newQuestionsHTML += safeOption;
-                            newQuestionsHTML += '</button>';
-                        });
-                    } else {
-                        newQuestionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + realIndex + ', this.value)">';
-                    }
-                    
-                    newQuestionsHTML += '</div></div>';
-                });
-                
-                questionsContainer.insertAdjacentHTML('beforeend', newQuestionsHTML);
-            }
-            
-            const answerChoice = document.getElementById('answerChoice');
-            const initialActions = document.getElementById('initialActions');
-            
-            if (answerChoice) answerChoice.style.display = 'none';
-            if (initialActions) initialActions.style.display = 'flex';
-            
-            showStatus('추가 질문이 생성되었습니다! 더 자세히 답변해주세요.', 'success');
-        } else {
-            showStatus('추가 질문 생성에 실패했습니다. 현재 답변으로 개선을 진행하겠습니다.', 'processing');
-            await proceedWithCurrentAnswers();
-        }
-        
-    } catch (error) {
-        console.error('추가 질문 생성 오류:', error);
-        showStatus('추가 질문 생성 중 오류가 발생했습니다. 현재 답변으로 진행하겠습니다.', 'processing');
-        await proceedWithCurrentAnswers();
-    } finally {
-        isProcessing = false;
-    }
+    return Object.entries(currentAnswers.additional)
+        .map(function(entry) {
+            const questionId = entry[0];
+            const answerData = entry[1];
+            const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
+            const requestText = answerData.request ? `\n요청사항: ${answerData.request}` : '';
+            return `추가질문 ${questionId}: ${answerText}${requestText}`;
+        })
+        .join('\n\n');
 }
 
-// 질문 건너뛰기
-async function skipAllQuestions() {
-    if (isProcessing) return;
+// 추가 질문 취소
+function cancelAdditionalQuestions() {
+    const additionalSection = document.getElementById('additionalQuestions');
+    const scoreSection = document.getElementById('scoreImprovement');
     
-    isProcessing = true;
+    if (additionalSection) additionalSection.style.display = 'none';
+    if (scoreSection) scoreSection.style.display = 'block';
     
-    try {
-        showStatus('프롬프트를 개선하고 있습니다...', 'processing');
-        await directImprovePrompt(originalUserInput);
-    } catch (error) {
-        console.error('Error:', error);
-        showStatus('오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
-    }
-}
-
-// 기존 함수 호환성
-async function skipAIQuestions() {
-    await skipAllQuestions();
-}
-
-// 답변 기반 프롬프트 개선
-async function improvePromptWithAnswers(originalPrompt, answersText) {
-    try {
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'improve',
-                userInput: originalPrompt,
-                questions: currentQuestions,
-                answers: answersText
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '프롬프트 개선 실패');
-        }
-
-        displayResult(originalPrompt, data.result);
-        
-    } catch (error) {
-        console.error('답변 기반 개선 오류:', error);
-        throw error;
-    }
-}
-
-// 직접 프롬프트 개선
-async function directImprovePrompt(originalPrompt) {
-    try {
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'improve',
-                userInput: originalPrompt
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '프롬프트 개선 실패');
-        }
-
-        displayResult(originalPrompt, data.result);
-        
-    } catch (error) {
-        console.error('직접 개선 오류:', error);
-        throw error;
-    }
-}
-
-// 결과 표시
-function displayResult(original, improved) {
-    const aiQuestions = document.getElementById('aiQuestions');
-    const originalText = document.getElementById('originalText');
-    const improvedText = document.getElementById('improvedText');
-    const improvedResult = document.getElementById('improvedResult');
-    
-    if (aiQuestions) aiQuestions.style.display = 'none';
-    
-    if (originalText) originalText.textContent = original;
-    if (improvedText) improvedText.textContent = improved;
-    if (improvedResult) improvedResult.style.display = 'block';
-    
-    if (improvedResult) {
-        const dynamicSections = improvedResult.querySelectorAll('.satisfaction-section');
-        dynamicSections.forEach(function(section) {
-            section.remove();
-        });
+    // 추가 답변 초기화
+    if (currentAnswers.additional) {
+        delete currentAnswers.additional;
     }
     
-    showStatus('프롬프트 개선이 완료되었습니다! 품질을 검증하고 있습니다...', 'processing');
-    
-    setTimeout(function() {
-        autoQualityCheck(original, improved);
-    }, 1500);
+    showStatus('추가 질문이 취소되었습니다.', 'success');
 }
 
-// 자동 품질 검증
-async function autoQualityCheck(original, improved) {
-    try {
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'evaluate',
-                userInput: improved,
-                originalInput: original
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '품질 검증 실패');
-        }
-
-        const qualityData = parseQualityResponse(data.result);
-        displayQualityResult(qualityData, original, improved);
-        
-    } catch (error) {
-        console.error('품질 검증 오류:', error);
-        showStatus('프롬프트 개선이 완료되었습니다! (품질 검증 오류)', 'success');
-        setTimeout(function() {
-            askSatisfaction();
-        }, 1000);
-    }
+// 현재 결과 수락
+function acceptCurrentResult() {
+    const scoreSection = document.getElementById('scoreImprovement');
+    if (scoreSection) scoreSection.style.display = 'none';
+    
+    showStatus(`현재 결과를 수락했습니다! (${currentScore}점)`, 'success');
 }
 
 // 품질 응답 파싱
@@ -579,413 +230,11 @@ function parseQualityResponse(response) {
     } catch (e) {
         console.error('품질 응답 파싱 실패:', e);
         return {
-            score: 70,
+            score: 85,
             strengths: ["기본적인 개선 완료"],
             improvements: ["더 구체적인 요구사항 필요"],
-            needsReimprovement: false,
             recommendation: "현재 수준에서 사용 가능"
         };
-    }
-}
-
-// 품질 결과 표시 (중첩 템플릿 리터럴 문제 해결)
-function displayQualityResult(qualityData, original, improved) {
-    const resultDiv = document.getElementById('improvedResult');
-    if (!resultDiv) return;
-    
-    let scoreColor = '#28a745';
-    if (qualityData.score < 85) scoreColor = '#ffc107';
-    if (qualityData.score < 70) scoreColor = '#dc3545';
-    
-    // 강점 HTML 생성
-    let strengthsHTML = '';
-    if (qualityData.strengths && Array.isArray(qualityData.strengths)) {
-        qualityData.strengths.forEach(function(strength) {
-            strengthsHTML += '<p style="margin: 4px 0; font-size: 14px;">• ' + escapeHtml(strength) + '</p>';
-        });
-    }
-    
-    // 개선점 HTML 생성
-    let improvementsHTML = '';
-    if (qualityData.improvements && Array.isArray(qualityData.improvements)) {
-        qualityData.improvements.forEach(function(improvement) {
-            improvementsHTML += '<p style="margin: 4px 0; font-size: 14px;">• ' + escapeHtml(improvement) + '</p>';
-        });
-    }
-    
-    const qualityHTML = 
-        '<div class="quality-section" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 15px; border: 2px solid ' + scoreColor + ';">' +
-            '<h4 style="color: #333; text-align: center; margin-bottom: 15px;">' +
-                '🎯 AI 품질 평가: <span style="color: ' + scoreColor + '; font-size: 24px;">' + qualityData.score + '/100점</span>' +
-            '</h4>' +
-            '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">' +
-                '<div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #28a745;">' +
-                    '<h5 style="color: #28a745; margin-bottom: 8px;">✅ 강점</h5>' +
-                    strengthsHTML +
-                '</div>' +
-                '<div style="background: white; padding: 15px; border-radius: 10px; border-left: 4px solid #ffc107;">' +
-                    '<h5 style="color: #ffc107; margin-bottom: 8px;">🔧 개선점</h5>' +
-                    improvementsHTML +
-                '</div>' +
-            '</div>' +
-            '<div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">' +
-                '<h5 style="color: #667eea; margin-bottom: 8px;">💡 개선 권장사항</h5>' +
-                '<p style="margin: 0; font-size: 14px;">' + escapeHtml(qualityData.recommendation || '') + '</p>' +
-            '</div>' +
-        '</div>';
-    
-    resultDiv.insertAdjacentHTML('beforeend', qualityHTML);
-    
-    if (qualityData.score < 95) {
-        showAutoFullSystem(original, improved, qualityData);
-    } else {
-        showStatus('완벽한 품질입니다! (' + qualityData.score + '/100점)', 'success');
-        setTimeout(function() {
-            askSatisfaction();
-        }, 500);
-    }
-}
-
-// 완전 자동화 시스템 표시
-function showAutoFullSystem(original, improved, qualityData) {
-    const resultDiv = document.getElementById('improvedResult');
-    if (!resultDiv) return;
-    
-    window.tempOriginal = original;
-    window.tempImproved = improved;
-    window.tempQualityData = qualityData;
-    
-    const autoSystemHTML = 
-        '<div class="auto-system-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 15px; color: white;">' +
-            '<h4 style="margin-bottom: 15px; color: white;">🤖 완전 자동화 시스템</h4>' +
-            '<p style="margin-bottom: 15px; opacity: 0.9;">현재 ' + qualityData.score + '점입니다. AI가 95점 이상까지 자동으로 개선하겠습니다!</p>' +
-            '<div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">' +
-                '<button class="search-button" onclick="startFullAutoImprovement();" style="background: #28a745;">' +
-                    '🚀 AI 완전 자동 개선 (재질문 + 다중 개선)' +
-                '</button>' +
-                '<button class="search-button" onclick="startQuickAutoImprovement();" style="background: #ffc107; color: #212529;">' +
-                    '⚡ 빠른 자동 개선 (1회 개선)' +
-                '</button>' +
-                '<button class="search-button" onclick="proceedWithCurrent();" style="background: #6c757d;">' +
-                    '✋ 현재 버전 사용' +
-                '</button>' +
-            '</div>' +
-        '</div>';
-    
-    resultDiv.insertAdjacentHTML('beforeend', autoSystemHTML);
-}
-
-// 완전 자동 개선
-async function startFullAutoImprovement() {
-    if (isProcessing) return;
-    
-    const original = window.tempOriginal;
-    const improved = window.tempImproved; 
-    const qualityData = window.tempQualityData;
-    
-    if (!original || !improved || !qualityData) {
-        showStatus('데이터를 불러오는 중 오류가 발생했습니다.', 'error');
-        return;
-    }
-    
-    isProcessing = true;
-    let currentImproved = improved;
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    try {
-        removeAutoSections();
-        
-        showStatus('🤖 AI가 완전 자동 모드로 95점급 프롬프트를 만들고 있습니다...', 'processing');
-        
-        while (attempts < maxAttempts) {
-            attempts++;
-            
-            showStatus('🔄 자동 개선 ' + attempts + '회차: AI가 스스로 재질문하고 개선 중...', 'processing');
-            
-            const response = await fetch('/api/improve-prompt', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    step: 'auto-improve',
-                    userInput: currentImproved,
-                    originalInput: original,
-                    currentScore: qualityData.score,
-                    attempt: attempts
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('서버 오류: ' + response.status);
-            }
-
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(data.error || '자동 개선 실패');
-            }
-
-            currentImproved = data.result;
-            
-            const newQuality = await quickQualityCheck(original, currentImproved);
-            
-            showStatus('🎯 ' + attempts + '회차 완료: ' + newQuality.score + '/100점 달성', 'processing');
-            
-            if (newQuality.score >= 95) {
-                showStatus('🎉 ' + attempts + '회차만에 95점 달성! 완전 자동 개선 완료!', 'success');
-                
-                const improvedText = document.getElementById('improvedText');
-                if (improvedText) improvedText.textContent = currentImproved;
-                
-                await showFinalQualityResult(original, currentImproved, newQuality, attempts);
-                break;
-            }
-            
-            if (attempts >= maxAttempts) {
-                showStatus('⚡ ' + maxAttempts + '회 개선 완료: 최종 ' + newQuality.score + '/100점', 'success');
-                const improvedText = document.getElementById('improvedText');
-                if (improvedText) improvedText.textContent = currentImproved;
-                await showFinalQualityResult(original, currentImproved, newQuality, attempts);
-            }
-        }
-        
-    } catch (error) {
-        console.error('완전 자동 개선 오류:', error);
-        showStatus('완전 자동 개선 중 오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
-    }
-}
-
-// 빠른 자동 개선
-async function startQuickAutoImprovement() {
-    if (isProcessing) return;
-    
-    const original = window.tempOriginal;
-    const improved = window.tempImproved;
-    const qualityData = window.tempQualityData;
-    
-    if (!original || !improved || !qualityData) {
-        showStatus('데이터를 불러오는 중 오류가 발생했습니다.', 'error');
-        return;
-    }
-    
-    isProcessing = true;
-    
-    try {
-        removeAutoSections();
-        
-        showStatus('⚡ AI가 빠른 자동 개선을 실행 중입니다...', 'processing');
-        
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'auto-improve',
-                userInput: improved,
-                originalInput: original,
-                currentScore: qualityData.score,
-                quickMode: true
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '빠른 개선 실패');
-        }
-
-        const quickImproved = data.result;
-        
-        const improvedText = document.getElementById('improvedText');
-        if (improvedText) improvedText.textContent = quickImproved;
-        
-        const finalQuality = await quickQualityCheck(original, quickImproved);
-        
-        showStatus('🎉 빠른 자동 개선 완료: ' + finalQuality.score + '/100점 달성!', 'success');
-        
-        await showFinalQualityResult(original, quickImproved, finalQuality, 1);
-        
-    } catch (error) {
-        console.error('빠른 자동 개선 오류:', error);
-        showStatus('빠른 자동 개선 중 오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
-    }
-}
-
-// 빠른 품질 확인
-async function quickQualityCheck(original, improved) {
-    try {
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'evaluate',
-                userInput: improved,
-                originalInput: original,
-                quickMode: true
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '품질 확인 실패');
-        }
-
-        const parsed = parseQualityResponse(data.result);
-        return {
-            score: parsed.score || 70,
-            feedback: parsed.feedback || parsed.recommendation || '개선되었습니다'
-        };
-    } catch (e) {
-        return { score: 70, feedback: '품질 확인 완료' };
-    }
-}
-
-// 최종 품질 결과 표시
-async function showFinalQualityResult(original, finalImproved, qualityData, attempts) {
-    const resultDiv = document.getElementById('improvedResult');
-    if (!resultDiv) return;
-    
-    const finalHTML = 
-        '<div class="final-quality-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #28a745, #20c997); border-radius: 15px; color: white;">' +
-            '<h4 style="color: white; margin-bottom: 15px;">' +
-                '🏆 자동 개선 완료: ' + qualityData.score + '/100점 (' + attempts + '회차)' +
-            '</h4>' +
-            '<p style="margin: 0; opacity: 0.9;">' + escapeHtml(qualityData.feedback || '') + '</p>' +
-            '<p style="margin-top: 10px; font-size: 14px; opacity: 0.8;">AI가 스스로 재질문하고 개선한 결과입니다!</p>' +
-        '</div>';
-    
-    resultDiv.insertAdjacentHTML('beforeend', finalHTML);
-    
-    setTimeout(function() {
-        askSatisfaction();
-    }, 1000);
-}
-
-// 자동화 섹션들 제거
-function removeAutoSections() {
-    const resultDiv = document.getElementById('improvedResult');
-    if (!resultDiv) return;
-    
-    const sectionsToRemove = resultDiv.querySelectorAll('.auto-system-section, .final-quality-section');
-    sectionsToRemove.forEach(function(section) {
-        section.remove();
-    });
-}
-
-// 현재 버전으로 진행
-function proceedWithCurrent() {
-    const autoSection = document.querySelector('#improvedResult .auto-system-section');
-    if (autoSection) {
-        autoSection.remove();
-    }
-    
-    showStatus('현재 프롬프트를 사용합니다!', 'success');
-    askSatisfaction();
-}
-
-// 만족도 질문 표시
-function askSatisfaction() {
-    const resultDiv = document.getElementById('improvedResult');
-    if (!resultDiv) return;
-    
-    const existingSatisfaction = resultDiv.querySelector('.satisfaction-section');
-    if (existingSatisfaction) {
-        existingSatisfaction.remove();
-    }
-    
-    const satisfactionHTML = 
-        '<div class="satisfaction-section" style="text-align: center; margin-top: 20px; padding: 20px; background: #f0f8ff; border-radius: 10px;">' +
-            '<h4 style="color: #333; margin-bottom: 15px;">🤔 개선된 프롬프트가 만족스러우신가요?</h4>' +
-            '<button class="search-button" onclick="satisfied()" style="background: #28a745; margin: 0 10px;">😊 만족해요!</button>' +
-            '<button class="search-button" onclick="requestReimprovement()" style="background: #ffc107; color: #212529; margin: 0 10px;">🔄 다시 개선해주세요</button>' +
-        '</div>';
-    
-    resultDiv.insertAdjacentHTML('beforeend', satisfactionHTML);
-}
-
-// 만족 처리
-function satisfied() {
-    showStatus('감사합니다! 개선된 프롬프트를 잘 활용해보세요! 🎉', 'success');
-    
-    const satisfactionDiv = document.querySelector('#improvedResult .satisfaction-section');
-    if (satisfactionDiv) {
-        satisfactionDiv.remove();
-    }
-}
-
-// 재개선 요청
-async function requestReimprovement() {
-    if (isProcessing) return;
-    
-    isProcessing = true;
-    
-    try {
-        showStatus('더 나은 프롬프트로 다시 개선하고 있습니다...', 'processing');
-        
-        const improvedText = document.getElementById('improvedText');
-        const currentImproved = improvedText ? improvedText.textContent : '';
-        
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'auto-improve',
-                userInput: currentImproved,
-                originalInput: originalUserInput,
-                reImprove: true
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || '재개선 실패');
-        }
-
-        const reImprovedPrompt = data.result;
-        
-        if (improvedText) improvedText.textContent = reImprovedPrompt;
-        
-        const satisfactionDiv = document.querySelector('#improvedResult .satisfaction-section');
-        if (satisfactionDiv) {
-            satisfactionDiv.remove();
-        }
-        
-        showStatus('새로운 버전으로 재개선이 완료되었습니다!', 'success');
-        
-        setTimeout(function() {
-            askSatisfaction();
-        }, 1000);
-        
-    } catch (error) {
-        console.error('재개선 오류:', error);
-        showStatus('재개선 중 오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
     }
 }
 
@@ -1031,6 +280,8 @@ function saveToFavorites() {
         id: Date.now(),
         original: original,
         improved: improved,
+        mode: isExpertMode ? '전문가' : '일반',
+        score: currentScore,
         date: new Date().toLocaleDateString('ko-KR')
     };
     
@@ -1056,17 +307,131 @@ function clearResults() {
     clearPreviousResults();
     originalUserInput = '';
     isProcessing = false;
+    currentRound = 0;
+    currentScore = 0;
     showStatus('초기화가 완료되었습니다.', 'success');
 }
 
-// 사용법 가이드 모달 함수들
-function showDetailedGuide() {
-    const modal = document.getElementById('guideModal');
-    if (modal) {
-        modal.style.display = 'block';
-    }
+// 이전 결과 완전 초기화
+function clearPreviousResults() {
+    const aiQuestionsDiv = document.getElementById('aiQuestions');
+    const improvedResultDiv = document.getElementById('improvedResult');
+    const scoreSection = document.getElementById('scoreImprovement');
+    const additionalSection = document.getElementById('additionalQuestions');
+    const questionsContainer = document.getElementById('questionsContainer');
+    
+    if (aiQuestionsDiv) aiQuestionsDiv.style.display = 'none';
+    if (improvedResultDiv) improvedResultDiv.style.display = 'none';
+    if (scoreSection) scoreSection.style.display = 'none';
+    if (additionalSection) additionalSection.style.display = 'none';
+    if (questionsContainer) questionsContainer.innerHTML = '';
+    
+    currentQuestions = [];
+    currentAnswers = {};
+    currentRound = 0;
 }
 
+// 자세한 사용법 모달
+function showDetailedGuide() {
+    const modal = document.getElementById('guideModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    
+    if (!modal || !modalBody) return;
+    
+    modalTitle.textContent = `📖 AI 프롬프트 개선기 v5.0 사용법 - ${isExpertMode ? '전문가모드' : '일반모드'}`;
+    
+    const guideContent = isExpertMode ? getExpertModeGuide() : getNormalModeGuide();
+    modalBody.innerHTML = guideContent;
+    
+    modal.style.display = 'block';
+}
+
+// 일반모드 가이드
+function getNormalModeGuide() {
+    return `
+        <div class="guide-section">
+            <h3>🚀 일반모드 특징</h3>
+            <ul>
+                <li>빠르고 간편한 프롬프트 개선</li>
+                <li>1-6개의 동적 질문 생성</li>
+                <li>질문 스킵 기능 제공</li>
+                <li>90점 미만시 자동 재개선</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>🎯 사용 흐름</h3>
+            <ol>
+                <li><strong>입력:</strong> 원하는 작업을 한글로 입력</li>
+                <li><strong>질문:</strong> AI가 1-6개 질문 생성 (복잡도에 따라)</li>
+                <li><strong>선택:</strong> 답변하거나 스킵 가능</li>
+                <li><strong>개선:</strong> AI가 프롬프트 개선</li>
+                <li><strong>평가:</strong> 90점 미만시 자동 재개선</li>
+                <li><strong>추가:</strong> 90점 이상시 추가 질문 옵션</li>
+            </ol>
+        </div>
+        
+        <div class="guide-section">
+            <h3>💡 활용 팁</h3>
+            <ul>
+                <li>구체적일수록 더 정확한 질문 생성</li>
+                <li>급할 때는 질문 스킵 활용</li>
+                <li>만족하지 않으면 추가 질문 활용</li>
+                <li>"기타" 선택 후 직접 입력 가능</li>
+            </ul>
+        </div>
+    `;
+}
+
+// 전문가모드 가이드
+function getExpertModeGuide() {
+    return `
+        <div class="guide-section">
+            <h3>🎯 전문가모드 특징</h3>
+            <ul>
+                <li>2-3회차 심층 의도 파악</li>
+                <li>회차당 1-3개 정밀 질문</li>
+                <li>모든 질문에 요청사항 입력란</li>
+                <li>전문가급 프롬프트 완성도</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>🔍 사용 흐름</h3>
+            <ol>
+                <li><strong>입력:</strong> 상세한 작업 내용 입력</li>
+                <li><strong>1차 질문:</strong> 기본 정보 파악</li>
+                <li><strong>2차 질문:</strong> 심층 의도 분석</li>
+                <li><strong>3차 질문:</strong> 세부 요구사항 발굴</li>
+                <li><strong>개선:</strong> 모든 답변 종합하여 개선</li>
+                <li><strong>완성:</strong> 전문가급 프롬프트 완성</li>
+            </ol>
+        </div>
+        
+        <div class="guide-section">
+            <h3>✨ 전문가모드 장점</h3>
+            <ul>
+                <li>창작자의 숨겨진 의도 발굴</li>
+                <li>업무 맥락과 목적 정확히 파악</li>
+                <li>전문 분야별 최적화된 질문</li>
+                <li>요청사항으로 세밀한 조정</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>📝 요청사항 활용법</h3>
+            <ul>
+                <li>숨겨진 의도나 배경 설명</li>
+                <li>특별히 강조하고 싶은 부분</li>
+                <li>피해야 할 요소나 제약사항</li>
+                <li>이상적인 결과물에 대한 구체적 설명</li>
+            </ul>
+        </div>
+    `;
+}
+
+// 모달 닫기
 function closeDetailedGuide() {
     const modal = document.getElementById('guideModal');
     if (modal) {
@@ -1074,12 +439,11 @@ function closeDetailedGuide() {
     }
 }
 
-// 모달 외부 클릭시 닫기
-window.onclick = function(event) {
-    const modal = document.getElementById('guideModal');
-    if (modal && event.target === modal) {
-        modal.style.display = 'none';
-    }
+// HTML 이스케이프 함수
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // 상태 메시지 표시
@@ -1095,28 +459,688 @@ function showStatus(message, type) {
     statusDiv.style.display = 'block';
     statusDiv.textContent = message;
     
-    statusDiv.className = '';
+    statusDiv.className = 'status-message';
     
     switch(type) {
         case 'success':
-            statusDiv.className = 'status-message status-success';
+            statusDiv.classList.add('status-success');
             break;
         case 'error':
-            statusDiv.className = 'status-message status-error';
+            statusDiv.classList.add('status-error');
             break;
         case 'processing':
-            statusDiv.className = 'status-message';
-            statusDiv.style.background = '#e3f2fd';
-            statusDiv.style.color = '#1976d2';
-            statusDiv.style.border = '1px solid #bbdefb';
+            statusDiv.classList.add('status-processing');
             break;
         default:
-            statusDiv.className = 'status-message';
+            break;
     }
     
     if (type === 'success' || type === 'error') {
         setTimeout(function() {
             if (statusDiv) statusDiv.style.display = 'none';
-        }, 3000);
+        }, 4000);
+    }
+} '질문 생성 실패');
+        }
+
+        let jsonStr = data.result.trim();
+        
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        } else if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
+        }
+        
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            return parsed.questions;
+        } else {
+            return [];
+        }
+        
+    } catch (e) {
+        console.error('질문 생성 실패:', e);
+        return [];
     }
 }
+
+// AI 질문 표시
+function displayAIQuestions(questions, round) {
+    currentQuestions = questions;
+    
+    const aiQuestionsDiv = document.getElementById('aiQuestions');
+    const questionsContainer = document.getElementById('questionsContainer');
+    
+    if (!questionsContainer || !aiQuestionsDiv) {
+        console.error('질문 컨테이너를 찾을 수 없습니다');
+        return;
+    }
+    
+    // 새로운 라운드 추가
+    const roundDiv = document.createElement('div');
+    roundDiv.className = 'questions-round';
+    roundDiv.innerHTML = `
+        <div class="round-title">
+            ${round === 0 ? '🎯 기본 질문' : `🔍 ${round}차 심층 질문`}
+            ${isExpertMode ? '(전문가모드)' : ''}
+        </div>
+    `;
+    
+    let questionsHTML = '';
+    
+    questions.forEach(function(q, index) {
+        const globalIndex = Object.keys(currentAnswers).length + index;
+        
+        questionsHTML += '<div class="question-item">';
+        questionsHTML += '<div class="question-text">' + escapeHtml(q.question) + '</div>';
+        questionsHTML += '<div class="question-options">';
+        
+        if (q.type === 'choice' && q.options) {
+            q.options.forEach(function(option) {
+                const safeOption = escapeHtml(option);
+                questionsHTML += '<button class="option-button" onclick="selectOption(' + globalIndex + ', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
+                questionsHTML += safeOption;
+                questionsHTML += '</button>';
+            });
+        } else {
+            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + globalIndex + ', this.value)">';
+        }
+        
+        questionsHTML += '</div>';
+        
+        // 요청사항 입력란 (전문가모드 또는 특정 조건에서)
+        if (isExpertMode || round > 0) {
+            questionsHTML += `
+                <div class="request-input">
+                    <label class="request-label">💡 추가 요청사항이나 의도를 자세히 설명해주세요:</label>
+                    <textarea class="request-textarea" placeholder="예: 이 질문과 관련해서 특별히 고려해야 할 사항이나 숨겨진 의도가 있다면 적어주세요..." 
+                        onchange="addRequestForQuestion(${globalIndex}, this.value)"></textarea>
+                </div>
+            `;
+        }
+        
+        questionsHTML += '</div>';
+    });
+    
+    roundDiv.innerHTML += questionsHTML;
+    questionsContainer.appendChild(roundDiv);
+    
+    aiQuestionsDiv.style.display = 'block';
+}
+
+// 옵션 선택
+function selectOption(questionIndex, answer) {
+    if (!currentAnswers[questionIndex]) {
+        currentAnswers[questionIndex] = {
+            answers: [],
+            request: ''
+        };
+    }
+    
+    const questionItems = document.querySelectorAll('.question-item');
+    const questionItem = questionItems[questionIndex];
+    
+    if (!questionItem) return;
+    
+    const buttons = questionItem.querySelectorAll('.option-button');
+    
+    if (buttons.length > 0) {
+        // 다중 선택 지원
+        const answerIndex = currentAnswers[questionIndex].answers.indexOf(answer);
+        
+        if (answerIndex === -1) {
+            currentAnswers[questionIndex].answers.push(answer);
+        } else {
+            currentAnswers[questionIndex].answers.splice(answerIndex, 1);
+        }
+        
+        buttons.forEach(function(btn) {
+            const btnText = btn.textContent.trim();
+            if (currentAnswers[questionIndex].answers.includes(btnText)) {
+                btn.classList.add('selected');
+            } else {
+                btn.classList.remove('selected');
+            }
+        });
+        
+        // 기타 선택시 커스텀 입력 처리
+        handleCustomInput(questionItem, questionIndex, answer);
+    } else {
+        // 텍스트 입력
+        currentAnswers[questionIndex].answers = [answer];
+    }
+}
+
+// 요청사항 추가
+function addRequestForQuestion(questionIndex, request) {
+    if (!currentAnswers[questionIndex]) {
+        currentAnswers[questionIndex] = {
+            answers: [],
+            request: ''
+        };
+    }
+    currentAnswers[questionIndex].request = request.trim();
+}
+
+// 커스텀 입력 처리
+function handleCustomInput(questionItem, questionIndex, answer) {
+    const customInputDiv = questionItem.querySelector('.custom-input');
+    
+    if (currentAnswers[questionIndex].answers.includes('기타')) {
+        if (!customInputDiv) {
+            const customInputHTML = `
+                <div class="custom-input" style="margin-top: 10px;">
+                    <input type="text" class="text-input" placeholder="직접 입력해주세요..." 
+                        onchange="addCustomAnswer(${questionIndex}, this.value)" 
+                        style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;">
+                </div>
+            `;
+            questionItem.querySelector('.question-options').insertAdjacentHTML('beforeend', customInputHTML);
+        }
+    } else {
+        if (customInputDiv) {
+            customInputDiv.remove();
+            // 커스텀 답변 제거
+            const originalOptions = currentQuestions[questionIndex % currentQuestions.length]?.options || [];
+            currentAnswers[questionIndex].answers = currentAnswers[questionIndex].answers.filter(function(item) {
+                return originalOptions.includes(item);
+            });
+        }
+    }
+}
+
+// 커스텀 답변 추가
+function addCustomAnswer(questionIndex, customValue) {
+    if (customValue && customValue.trim()) {
+        if (!currentAnswers[questionIndex]) {
+            currentAnswers[questionIndex] = {
+                answers: [],
+                request: ''
+            };
+        }
+        
+        // 기존 커스텀 답변 제거 후 새로운 것 추가
+        const originalOptions = currentQuestions[questionIndex % currentQuestions.length]?.options || [];
+        currentAnswers[questionIndex].answers = currentAnswers[questionIndex].answers.filter(function(item) {
+            return originalOptions.includes(item);
+        });
+        
+        currentAnswers[questionIndex].answers.push(customValue.trim());
+    }
+}
+
+// 질문 건너뛰기
+async function skipQuestions() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('질문을 건너뛰고 프롬프트를 개선하고 있습니다...', 'processing');
+        await directImprovePrompt(originalUserInput);
+    } catch (error) {
+        console.error('Error:', error);
+        showStatus('오류가 발생했습니다: ' + error.message, 'error');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+// 답변 완료 후 진행
+async function proceedWithAnswers() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        currentRound++;
+        
+        // 전문가모드이고 더 질문할 라운드가 남았으면
+        if (isExpertMode && currentRound < maxRounds) {
+            showStatus(`AI가 ${currentRound + 1}차 심층 질문을 생성하고 있습니다...`, 'processing');
+            
+            const nextQuestions = await generateAIQuestions(originalUserInput, currentRound);
+            
+            if (nextQuestions && nextQuestions.length > 0) {
+                displayAIQuestions(nextQuestions, currentRound);
+                showStatus(`${currentRound + 1}차 심층 질문이 생성되었습니다!`, 'success');
+                isProcessing = false;
+                return;
+            }
+        }
+        
+        // 모든 질문 완료, 개선 진행
+        showStatus('AI가 답변을 바탕으로 프롬프트를 개선하고 있습니다...', 'processing');
+        
+        const answersText = formatAnswersForAPI();
+        await improvePromptWithAnswers(originalUserInput, answersText);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        showStatus('오류가 발생했습니다: ' + error.message, 'error');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+// 답변 포맷팅
+function formatAnswersForAPI() {
+    return Object.entries(currentAnswers)
+        .map(function(entry) {
+            const index = entry[0];
+            const answerData = entry[1];
+            const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
+            const requestText = answerData.request ? `\n요청사항: ${answerData.request}` : '';
+            return `Q${parseInt(index) + 1}: ${answerText}${requestText}`;
+        })
+        .join('\n\n');
+}
+
+// 답변 기반 프롬프트 개선
+async function improvePromptWithAnswers(originalPrompt, answersText) {
+    try {
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'improve',
+                userInput: originalPrompt,
+                questions: currentQuestions,
+                answers: answersText,
+                isExpertMode: isExpertMode,
+                rounds: currentRound + 1
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '프롬프트 개선 실패');
+        }
+
+        displayResult(originalPrompt, data.result);
+        
+    } catch (error) {
+        console.error('답변 기반 개선 오류:', error);
+        throw error;
+    }
+}
+
+// 직접 프롬프트 개선
+async function directImprovePrompt(originalPrompt) {
+    try {
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'improve',
+                userInput: originalPrompt,
+                isExpertMode: isExpertMode
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '프롬프트 개선 실패');
+        }
+
+        displayResult(originalPrompt, data.result);
+        
+    } catch (error) {
+        console.error('직접 개선 오류:', error);
+        throw error;
+    }
+}
+
+// 결과 표시
+function displayResult(original, improved) {
+    const aiQuestions = document.getElementById('aiQuestions');
+    const originalText = document.getElementById('originalText');
+    const improvedText = document.getElementById('improvedText');
+    const improvedResult = document.getElementById('improvedResult');
+    
+    if (aiQuestions) aiQuestions.style.display = 'none';
+    
+    if (originalText) originalText.textContent = original;
+    if (improvedText) improvedText.textContent = improved;
+    if (improvedResult) improvedResult.style.display = 'block';
+    
+    showStatus('프롬프트 개선이 완료되었습니다! 품질을 검증하고 있습니다...', 'processing');
+    
+    // 품질 평가 후 90점 기준 처리
+    setTimeout(function() {
+        evaluateAndShowScore(improved);
+    }, 1500);
+}
+
+// 품질 평가 및 점수 표시
+async function evaluateAndShowScore(improvedPrompt) {
+    try {
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'evaluate',
+                userInput: improvedPrompt,
+                originalInput: originalUserInput
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '품질 평가 실패');
+        }
+
+        const qualityData = parseQualityResponse(data.result);
+        currentScore = qualityData.score;
+        
+        if (currentScore < 90) {
+            // 90점 미만이면 AI가 자동 재개선
+            showStatus(`현재 ${currentScore}점입니다. AI가 자동으로 재개선하고 있습니다...`, 'processing');
+            await autoImprovePrompt(improvedPrompt);
+        } else {
+            // 90점 이상이면 추가 질문 옵션 제공
+            showScoreImprovement(currentScore);
+            showStatus(`완성! ${currentScore}점의 고품질 프롬프트입니다!`, 'success');
+        }
+        
+    } catch (error) {
+        console.error('품질 평가 오류:', error);
+        showStatus('프롬프트 개선이 완료되었습니다!', 'success');
+        showScoreImprovement(85); // 기본값
+    }
+}
+
+// 자동 재개선 (90점 미만일 때)
+async function autoImprovePrompt(currentPrompt) {
+    try {
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'auto-improve',
+                userInput: currentPrompt,
+                originalInput: originalUserInput,
+                currentScore: currentScore,
+                isExpertMode: isExpertMode
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '자동 재개선 실패');
+        }
+
+        const reImprovedPrompt = data.result;
+        
+        // 결과 업데이트
+        const improvedText = document.getElementById('improvedText');
+        if (improvedText) improvedText.textContent = reImprovedPrompt;
+        
+        // 재평가
+        const newQuality = await quickQualityCheck(reImprovedPrompt);
+        currentScore = newQuality.score;
+        
+        showScoreImprovement(currentScore);
+        showStatus(`자동 재개선 완료! ${currentScore}점 달성!`, 'success');
+        
+    } catch (error) {
+        console.error('자동 재개선 오류:', error);
+        showStatus('자동 재개선 중 오류가 발생했습니다.', 'error');
+    }
+}
+
+// 빠른 품질 확인
+async function quickQualityCheck(improvedPrompt) {
+    try {
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'evaluate',
+                userInput: improvedPrompt,
+                quickMode: true
+            })
+        });
+
+        const data = await response.json();
+        const parsed = parseQualityResponse(data.result);
+        return {
+            score: parsed.score || 85,
+            feedback: parsed.recommendation || '개선되었습니다'
+        };
+    } catch (e) {
+        return { score: 85, feedback: '품질 확인 완료' };
+    }
+}
+
+// 점수 개선 섹션 표시
+function showScoreImprovement(score) {
+    const scoreSection = document.getElementById('scoreImprovement');
+    const scoreDisplay = document.getElementById('currentScore');
+    
+    if (scoreDisplay) scoreDisplay.textContent = score;
+    if (scoreSection) scoreSection.style.display = 'block';
+}
+
+// 추가 질문 요청
+async function requestAdditionalQuestions() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('더 정밀한 개선을 위한 추가 질문을 생성하고 있습니다...', 'processing');
+        
+        const currentImproved = document.getElementById('improvedText').textContent;
+        
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'additional-questions',
+                userInput: originalUserInput,
+                currentImproved: currentImproved,
+                previousAnswers: formatAnswersForAPI(),
+                isExpertMode: isExpertMode
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || '추가 질문 생성 실패');
+        }
+
+        let jsonStr = data.result.trim();
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        }
+        
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            displayAdditionalQuestions(parsed.questions);
+            showStatus('추가 질문이 생성되었습니다!', 'success');
+        } else {
+            showStatus('추가 질문 생성에 실패했습니다.', 'error');
+        }
+        
+    } catch (error) {
+        console.error('추가 질문 생성 오류:', error);
+        showStatus('추가 질문 생성 중 오류가 발생했습니다.', 'error');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+// 추가 질문 표시
+function displayAdditionalQuestions(questions) {
+    const additionalSection = document.getElementById('additionalQuestions');
+    const container = document.getElementById('additionalQuestionsContainer');
+    const scoreSection = document.getElementById('scoreImprovement');
+    
+    if (scoreSection) scoreSection.style.display = 'none';
+    
+    let questionsHTML = '';
+    
+    questions.forEach(function(q, index) {
+        const globalIndex = 'additional_' + index;
+        
+        questionsHTML += '<div class="question-item">';
+        questionsHTML += '<div class="question-text">' + escapeHtml(q.question) + '</div>';
+        questionsHTML += '<div class="question-options">';
+        
+        if (q.type === 'choice' && q.options) {
+            q.options.forEach(function(option) {
+                const safeOption = escapeHtml(option);
+                questionsHTML += '<button class="option-button" onclick="selectAdditionalOption(\'' + globalIndex + '\', \'' + safeOption.replace(/'/g, '&apos;') + '\')">';
+                questionsHTML += safeOption;
+                questionsHTML += '</button>';
+            });
+        } else {
+            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectAdditionalOption(\'' + globalIndex + '\', this.value)">';
+        }
+        
+        questionsHTML += '</div>';
+        
+        // 요청사항 입력란
+        questionsHTML += `
+            <div class="request-input">
+                <label class="request-label">💡 이 질문과 관련된 추가 요청사항이나 의도:</label>
+                <textarea class="request-textarea" placeholder="더 구체적인 요구사항이나 숨겨진 의도가 있다면 자세히 설명해주세요..." 
+                    onchange="addAdditionalRequest('${globalIndex}', this.value)"></textarea>
+            </div>
+        `;
+        
+        questionsHTML += '</div>';
+    });
+    
+    if (container) container.innerHTML = questionsHTML;
+    if (additionalSection) additionalSection.style.display = 'block';
+}
+
+// 추가 질문 옵션 선택
+function selectAdditionalOption(questionId, answer) {
+    if (!currentAnswers.additional) {
+        currentAnswers.additional = {};
+    }
+    
+    if (!currentAnswers.additional[questionId]) {
+        currentAnswers.additional[questionId] = {
+            answers: [],
+            request: ''
+        };
+    }
+    
+    const answerIndex = currentAnswers.additional[questionId].answers.indexOf(answer);
+    
+    if (answerIndex === -1) {
+        currentAnswers.additional[questionId].answers.push(answer);
+    } else {
+        currentAnswers.additional[questionId].answers.splice(answerIndex, 1);
+    }
+    
+    // 버튼 스타일 업데이트
+    const questionItems = document.querySelectorAll('#additionalQuestionsContainer .question-item');
+    questionItems.forEach(function(item, index) {
+        if (questionId === 'additional_' + index) {
+            const buttons = item.querySelectorAll('.option-button');
+            buttons.forEach(function(btn) {
+                const btnText = btn.textContent.trim();
+                if (currentAnswers.additional[questionId].answers.includes(btnText)) {
+                    btn.classList.add('selected');
+                } else {
+                    btn.classList.remove('selected');
+                }
+            });
+        }
+    });
+}
+
+// 추가 요청사항 추가
+function addAdditionalRequest(questionId, request) {
+    if (!currentAnswers.additional) {
+        currentAnswers.additional = {};
+    }
+    
+    if (!currentAnswers.additional[questionId]) {
+        currentAnswers.additional[questionId] = {
+            answers: [],
+            request: ''
+        };
+    }
+    
+    currentAnswers.additional[questionId].request = request.trim();
+}
+
+// 추가 답변으로 재개선
+async function processAdditionalAnswers() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('추가 답변을 바탕으로 재개선하고 있습니다...', 'processing');
+        
+        const currentImproved = document.getElementById('improvedText').textContent;
+        const additionalAnswersText = formatAdditionalAnswersForAPI();
+        
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'improve-with-additional',
+                userInput: originalUserInput,
+                currentImproved: currentImproved,
+                additionalAnswers: additionalAnswersText,
+                isExpertMode: isExpertMode
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('서버 오류: ' + response.status);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error ||
