@@ -42,6 +42,10 @@ function updateSelectedCategories() {
     }
     
     const categoryNames = {
+        'image': '이미지 생성',
+        'video': '영상 생성', 
+        'writing': '글쓰기/창작',
+        'coding': '코딩/개발',
         'mcp': 'MCP 서버',
         'website': '웹사이트', 
         'data': '데이터 분석',
