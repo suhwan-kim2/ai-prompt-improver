@@ -731,10 +731,7 @@ function showStatus(message, type) {
         }, 3000);
     }
 }
-                userInput: improved,
-                originalInput: original
-            })
-        });
+              
 
         if (!response.ok) {
             throw new Error('서버 오류: ' + response.status);
