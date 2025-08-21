@@ -121,6 +121,227 @@ async function generateAIQuestions(userInput) {
         const data = await response.json();
         
         if (!data.success) {
+            throw new Error(data.error || '질문 생성 실패');
+        }
+
+        console.log('AI 응답:', data.result);
+        
+        let jsonStr = data.result.trim();
+        
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
+        } else if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
+        }
+        
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            console.log('질문 생성 성공:', parsed.questions.length + '개');
+            return parsed.questions;
+        } else {
+            console.log('질문 배열이 비어있음');
+            return [];
+        }
+        
+    } catch (e) {
+        console.error('질문 생성 실패:', e);
+        return [];
+    }
+}
+
+// AI 질문 표시
+function displayAIQuestions(questions) {
+    currentQuestions = questions;
+    currentAnswers = {};
+    
+    const questionsContainer = document.getElementById('questionsList');
+    const aiMessage = document.getElementById('aiMessage');
+    
+    aiMessage.innerHTML = '더 좋은 프롬프트를 만들기 위해 몇 가지 질문에 답해주세요! (선택사항)';
+    
+    let questionsHTML = '';
+    
+    questions.forEach(function(q, index) {
+        questionsHTML += '<div class="question-item"><div class="question-text">' + q.question + '</div><div class="question-options">';
+        
+        if (q.type === 'choice' && q.options) {
+            q.options.forEach(function(option) {
+                const escapedOption = option.replace(/'/g, "\\'");
+                questionsHTML += '<button class="option-button" onclick="selectOption(' + index + ', \'' + escapedOption + '\')">' + option + '</button>';
+            });
+        } else {
+            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + index + ', this.value)">';
+        }
+        
+        questionsHTML += '</div></div>';
+    });
+    
+    questionsContainer.innerHTML = questionsHTML;
+    
+    // 초기 버튼들 표시, 선택지는 숨김
+    document.getElementById('initialActions').style.display = 'flex';
+    document.getElementById('answerChoice').style.display = 'none';
+    document.getElementById('aiQuestions').style.display = 'block';
+}
+
+// 옵션 선택 (중복 선택 지원)
+function selectOption(questionIndex, answer) {
+    const questionItem = document.querySelectorAll('.question-item')[questionIndex];
+    const question = currentQuestions[questionIndex];
+    
+    // 텍스트 입력 타입인 경우
+    if (question.type === 'text') {
+        currentAnswers[questionIndex] = answer;
+        return;
+    }
+    
+    // 선택지 타입인 경우 - 중복 선택 지원
+    if (!currentAnswers[questionIndex]) {
+        currentAnswers[questionIndex] = [];
+    }
+    
+    const buttons = questionItem.querySelectorAll('.option-button');
+    
+    // 이미 선택된 항목인지 확인
+    const answerIndex = currentAnswers[questionIndex].indexOf(answer);
+    
+    if (answerIndex === -1) {
+        // 새로운 선택: 추가
+        currentAnswers[questionIndex].push(answer);
+    } else {
+        // 이미 선택된 항목: 제거 (토글)
+        currentAnswers[questionIndex].splice(answerIndex, 1);
+    }
+    
+    // 버튼 상태 업데이트
+    buttons.forEach(function(btn) {
+        const btnText = btn.textContent.trim();
+        if (currentAnswers[questionIndex].includes(btnText)) {
+            btn.classList.add('selected');
+        } else {
+            btn.classList.remove('selected');
+        }
+    });
+    
+    // "기타" 선택시 입력창 표시/숨김
+    const customInputDiv = questionItem.querySelector('.custom-input');
+    
+    if (currentAnswers[questionIndex].includes('기타')) {
+        if (!customInputDiv) {
+            const customInputHTML = '<div class="custom-input" style="margin-top: 10px;"><input type="text" class="text-input" placeholder="직접 입력해주세요..." onchange="addCustomAnswer(' + questionIndex + ', this.value)" style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;"></div>';
+            questionItem.querySelector('.question-options').insertAdjacentHTML('beforeend', customInputHTML);
+        }
+    } else {
+        if (customInputDiv) {
+            customInputDiv.remove();
+            // 기타 선택 해제시 커스텀 답변도 제거
+            currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
+                return item === '기타' || question.options.includes(item);
+            });
+        }
+    }
+}
+
+// 기타 입력시 처리
+function addCustomAnswer(questionIndex, customValue) {
+    if (customValue.trim()) {
+        if (!currentAnswers[questionIndex]) {
+            currentAnswers[questionIndex] = [];
+        }
+        
+        // 기존 커스텀 답변들 제거 (기타가 아닌 커스텀 값들)
+        const question = currentQuestions[questionIndex];
+        currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
+            return item === '기타' || (question.options && question.options.includes(item));
+        });
+        
+        // 새로운 커스텀 답변 추가
+        currentAnswers[questionIndex].push(customValue.trim());
+        
+        console.log('커스텀 답변 추가:', questionIndex, customValue.trim());
+        console.log('현재 답변들:', currentAnswers[questionIndex]);
+    }
+}
+
+// 🆕 답변 완료 선택지 표시
+function showAnswerChoice() {
+    document.getElementById('initialActions').style.display = 'none';
+    document.getElementById('answerChoice').style.display = 'block';
+}
+
+// 🆕 현재 답변으로 진행
+async function proceedWithCurrentAnswers() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('AI가 답변을 바탕으로 프롬프트를 개선하고 있습니다...', 'processing');
+        
+        const answersText = Object.entries(currentAnswers)
+            .map(function(entry) {
+                const index = entry[0];
+                const answers = entry[1];
+                const question = currentQuestions[index].question;
+                
+                // 배열인 경우 (중복 선택) 쉼표로 연결
+                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
+                
+                return 'Q' + (parseInt(index)+1) + ': ' + question + '\nA: ' + answerText;
+            })
+            .join('\n\n');
+        
+        await improvePromptWithAnswers(originalUserInput, answersText);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        showStatus('오류가 발생했습니다: ' + error.message, 'error');
+    } finally {
+        isProcessing = false;
+    }
+}
+
+// 🆕 더 자세한 질문 요청
+async function requestMoreQuestions() {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    
+    try {
+        showStatus('AI가 더 자세한 질문을 생성하고 있습니다...', 'processing');
+        
+        // 현재 답변들을 텍스트로 변환
+        const currentAnswersText = Object.entries(currentAnswers)
+            .map(function(entry) {
+                const index = entry[0];
+                const answers = entry[1];
+                const question = currentQuestions[index].question;
+                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
+                return 'Q: ' + question + '\nA: ' + answerText;
+            })
+            .join('\n\n');
+        
+        const response = await fetch('/api/improve-prompt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                step: 'additional-questions',
+                userInput: originalUserInput,
+                previousQuestions: currentQuestions,
+                previousAnswers: currentAnswersText
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`서버 오류: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.success) {
             throw new Error(data.error || '추가 질문 생성 실패');
         }
 
@@ -399,48 +620,6 @@ function displayQualityResult(qualityData, original, improved) {
             <div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
                 <h5 style="color: #667eea; margin-bottom: 8px;">💡 개선 권장사항</h5>
                 <p style="margin: 0; font-size: 14px;">${qualityData.recommendation}</p>
-            </div>
-        </div>
-    `;
-    
-    resultDiv.insertAdjacentHTML('beforeend', qualityHTML);
-    
-    // 완전 자동화 결정 (95점 기준)
-    if (qualityData.score < 95) {
-        // 95점 미만이면 자동으로 완전 자동화 시스템 시작
-        showAutoFullSystem(original, improved, qualityData);
-    } else {
-        showStatus(`완벽한 품질입니다! (${qualityData.score}/100점)`, 'success');
-        setTimeout(function() {
-            askSatisfaction();
-        }, 500);
-    }
-}
-
-// 완전 자동화 시스템 표시 (95점 기준)
-function showAutoFullSystem(original, improved, qualityData) {
-    const resultDiv = document.getElementById('improvedResult');
-    
-    // 텍스트를 안전하게 저장하기 위해 전역 변수 사용
-    window.tempOriginal = original;
-    window.tempImproved = improved;
-    window.tempQualityData = qualityData;
-    
-    const autoSystemHTML = `
-        <div class="auto-system-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 15px; color: white;">
-            <h4 style="margin-bottom: 15px; color: white;">🤖 완전 자동화 시스템</h4>
-            <p style="margin-bottom: 15px; opacity: 0.9;">현재 ${qualityData.score}점입니다. AI가 95점 이상까지 자동으로 개선하겠습니다!</p>
-            
-            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                <button class="search-button" onclick="startFullAutoImprovement();" style="background: #28a745;">
-                    🚀 AI 완전 자동 개선 (재질문 + 다중 개선)
-                </button>
-                <button class="search-button" onclick="startQuickAutoImprovement();" style="background: #ffc107; color: #212529;">
-                    ⚡ 빠른 자동 개선 (1회 개선)
-                </button>
-                <button class="search-button" onclick="proceedWithCurrent();" style="background: #6c757d;">
-                    ✋ 현재 버전 사용
-                </button>
             </div>
         </div>
     `;
@@ -885,225 +1064,46 @@ function showStatus(message, type) {
             statusDiv.style.display = 'none';
         }, 3000);
     }
-}
-            throw new Error(data.error || '질문 생성 실패');
-        }
-
-        console.log('AI 응답:', data.result);
-        
-        let jsonStr = data.result.trim();
-        
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
-        }
-        
-        const parsed = JSON.parse(jsonStr);
-        
-        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-            console.log('질문 생성 성공:', parsed.questions.length + '개');
-            return parsed.questions;
-        } else {
-            console.log('질문 배열이 비어있음');
-            return [];
-        }
-        
-    } catch (e) {
-        console.error('질문 생성 실패:', e);
-        return [];
-    }
-}
-
-// AI 질문 표시
-function displayAIQuestions(questions) {
-    currentQuestions = questions;
-    currentAnswers = {};
+}.insertAdjacentHTML('beforeend', qualityHTML);
     
-    const questionsContainer = document.getElementById('questionsList');
-    const aiMessage = document.getElementById('aiMessage');
-    
-    aiMessage.innerHTML = '더 좋은 프롬프트를 만들기 위해 몇 가지 질문에 답해주세요! (선택사항)';
-    
-    let questionsHTML = '';
-    
-    questions.forEach(function(q, index) {
-        questionsHTML += '<div class="question-item"><div class="question-text">' + q.question + '</div><div class="question-options">';
-        
-        if (q.type === 'choice' && q.options) {
-            q.options.forEach(function(option) {
-                const escapedOption = option.replace(/'/g, "\\'");
-                questionsHTML += '<button class="option-button" onclick="selectOption(' + index + ', \'' + escapedOption + '\')">' + option + '</button>';
-            });
-        } else {
-            questionsHTML += '<input type="text" class="text-input" placeholder="답변을 입력하세요..." onchange="selectOption(' + index + ', this.value)">';
-        }
-        
-        questionsHTML += '</div></div>';
-    });
-    
-    questionsContainer.innerHTML = questionsHTML;
-    
-    // 초기 버튼들 표시, 선택지는 숨김
-    document.getElementById('initialActions').style.display = 'flex';
-    document.getElementById('answerChoice').style.display = 'none';
-    document.getElementById('aiQuestions').style.display = 'block';
-}
-
-// 옵션 선택 (중복 선택 지원)
-function selectOption(questionIndex, answer) {
-    const questionItem = document.querySelectorAll('.question-item')[questionIndex];
-    const question = currentQuestions[questionIndex];
-    
-    // 텍스트 입력 타입인 경우
-    if (question.type === 'text') {
-        currentAnswers[questionIndex] = answer;
-        return;
-    }
-    
-    // 선택지 타입인 경우 - 중복 선택 지원
-    if (!currentAnswers[questionIndex]) {
-        currentAnswers[questionIndex] = [];
-    }
-    
-    const buttons = questionItem.querySelectorAll('.option-button');
-    
-    // 이미 선택된 항목인지 확인
-    const answerIndex = currentAnswers[questionIndex].indexOf(answer);
-    
-    if (answerIndex === -1) {
-        // 새로운 선택: 추가
-        currentAnswers[questionIndex].push(answer);
+    // 완전 자동화 결정 (95점 기준)
+    if (qualityData.score < 95) {
+        // 95점 미만이면 자동으로 완전 자동화 시스템 시작
+        showAutoFullSystem(original, improved, qualityData);
     } else {
-        // 이미 선택된 항목: 제거 (토글)
-        currentAnswers[questionIndex].splice(answerIndex, 1);
-    }
-    
-    // 버튼 상태 업데이트
-    buttons.forEach(function(btn) {
-        const btnText = btn.textContent.trim();
-        if (currentAnswers[questionIndex].includes(btnText)) {
-            btn.classList.add('selected');
-        } else {
-            btn.classList.remove('selected');
-        }
-    });
-    
-    // "기타" 선택시 입력창 표시/숨김
-    const customInputDiv = questionItem.querySelector('.custom-input');
-    
-    if (currentAnswers[questionIndex].includes('기타')) {
-        if (!customInputDiv) {
-            const customInputHTML = '<div class="custom-input" style="margin-top: 10px;"><input type="text" class="text-input" placeholder="직접 입력해주세요..." onchange="addCustomAnswer(' + questionIndex + ', this.value)" style="width: 100%; padding: 8px; border: 2px solid #e9ecef; border-radius: 8px;"></div>';
-            questionItem.querySelector('.question-options').insertAdjacentHTML('beforeend', customInputHTML);
-        }
-    } else {
-        if (customInputDiv) {
-            customInputDiv.remove();
-            // 기타 선택 해제시 커스텀 답변도 제거
-            currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-                return item === '기타' || question.options.includes(item);
-            });
-        }
+        showStatus(`완벽한 품질입니다! (${qualityData.score}/100점)`, 'success');
+        setTimeout(function() {
+            askSatisfaction();
+        }, 500);
     }
 }
 
-// 기타 입력시 처리
-function addCustomAnswer(questionIndex, customValue) {
-    if (customValue.trim()) {
-        if (!currentAnswers[questionIndex]) {
-            currentAnswers[questionIndex] = [];
-        }
-        
-        // 기존 커스텀 답변들 제거 (기타가 아닌 커스텀 값들)
-        const question = currentQuestions[questionIndex];
-        currentAnswers[questionIndex] = currentAnswers[questionIndex].filter(function(item) {
-            return item === '기타' || (question.options && question.options.includes(item));
-        });
-        
-        // 새로운 커스텀 답변 추가
-        currentAnswers[questionIndex].push(customValue.trim());
-        
-        console.log('커스텀 답변 추가:', questionIndex, customValue.trim());
-        console.log('현재 답변들:', currentAnswers[questionIndex]);
-    }
-}
-
-// 🆕 답변 완료 선택지 표시
-function showAnswerChoice() {
-    document.getElementById('initialActions').style.display = 'none';
-    document.getElementById('answerChoice').style.display = 'block';
-}
-
-// 🆕 현재 답변으로 진행
-async function proceedWithCurrentAnswers() {
-    if (isProcessing) return;
+// 완전 자동화 시스템 표시 (95점 기준)
+function showAutoFullSystem(original, improved, qualityData) {
+    const resultDiv = document.getElementById('improvedResult');
     
-    isProcessing = true;
+    // 텍스트를 안전하게 저장하기 위해 전역 변수 사용
+    window.tempOriginal = original;
+    window.tempImproved = improved;
+    window.tempQualityData = qualityData;
     
-    try {
-        showStatus('AI가 답변을 바탕으로 프롬프트를 개선하고 있습니다...', 'processing');
-        
-        const answersText = Object.entries(currentAnswers)
-            .map(function(entry) {
-                const index = entry[0];
-                const answers = entry[1];
-                const question = currentQuestions[index].question;
-                
-                // 배열인 경우 (중복 선택) 쉼표로 연결
-                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
-                
-                return 'Q' + (parseInt(index)+1) + ': ' + question + '\nA: ' + answerText;
-            })
-            .join('\n\n');
-        
-        await improvePromptWithAnswers(originalUserInput, answersText);
-        
-    } catch (error) {
-        console.error('Error:', error);
-        showStatus('오류가 발생했습니다: ' + error.message, 'error');
-    } finally {
-        isProcessing = false;
-    }
-}
-
-// 🆕 더 자세한 질문 요청
-async function requestMoreQuestions() {
-    if (isProcessing) return;
+    const autoSystemHTML = `
+        <div class="auto-system-section" style="text-align: center; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 15px; color: white;">
+            <h4 style="margin-bottom: 15px; color: white;">🤖 완전 자동화 시스템</h4>
+            <p style="margin-bottom: 15px; opacity: 0.9;">현재 ${qualityData.score}점입니다. AI가 95점 이상까지 자동으로 개선하겠습니다!</p>
+            
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <button class="search-button" onclick="startFullAutoImprovement();" style="background: #28a745;">
+                    🚀 AI 완전 자동 개선 (재질문 + 다중 개선)
+                </button>
+                <button class="search-button" onclick="startQuickAutoImprovement();" style="background: #ffc107; color: #212529;">
+                    ⚡ 빠른 자동 개선 (1회 개선)
+                </button>
+                <button class="search-button" onclick="proceedWithCurrent();" style="background: #6c757d;">
+                    ✋ 현재 버전 사용
+                </button>
+            </div>
+        </div>
+    `;
     
-    isProcessing = true;
-    
-    try {
-        showStatus('AI가 더 자세한 질문을 생성하고 있습니다...', 'processing');
-        
-        // 현재 답변들을 텍스트로 변환
-        const currentAnswersText = Object.entries(currentAnswers)
-            .map(function(entry) {
-                const index = entry[0];
-                const answers = entry[1];
-                const question = currentQuestions[index].question;
-                const answerText = Array.isArray(answers) ? answers.join(', ') : answers;
-                return 'Q: ' + question + '\nA: ' + answerText;
-            })
-            .join('\n\n');
-        
-        const response = await fetch('/api/improve-prompt', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                step: 'additional-questions',
-                userInput: originalUserInput,
-                previousQuestions: currentQuestions,
-                previousAnswers: currentAnswersText
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`서버 오류: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data.success) {
+    resultDiv
