@@ -35,6 +35,7 @@ app.post('/api/improve-prompt', async (req, res) => {
             isExpertMode, 
             round, 
             previousAnswers,
+            previousQuestions,
             currentImproved,
             additionalAnswers,
             currentScore,
@@ -61,7 +62,7 @@ app.post('/api/improve-prompt', async (req, res) => {
             }
             
             // 중복 방지를 위한 이전 질문 컨텍스트 추가
-            if (previousQuestions) {
+            if (previousQuestions && previousQuestions.trim()) {
                 userPrompt += `\n\n이전에 이미 물어본 질문들 (절대 중복 금지):\n${previousQuestions}`;
                 userPrompt += `\n\n** 엄격한 중복 금지 규칙 **`;
                 userPrompt += `\n- 위 질문들과 키워드나 주제가 겹치면 절대 안됨`;
@@ -95,7 +96,7 @@ app.post('/api/improve-prompt', async (req, res) => {
         } else if (step === 'improve') {
             // 프롬프트 개선 (일반/전문가 모드 지원)
             systemPrompt = getAdaptiveImprovementPrompt(isExpertMode, rounds);
-            userPrompt = buildImprovementPrompt(userInput, questions, answers, isExpertMode);
+            userPrompt = buildImprovementPrompt(userInput, questions, answers, isExpertMode, rounds);
         } else if (step === 'improve-with-additional') {
             // 추가 답변 기반 재개선
             systemPrompt = getAdditionalImprovementPrompt();
@@ -456,18 +457,18 @@ function getAutoImprovementPrompt90() {
 }
 
 // 개선 프롬프트 구성
-function buildImprovementPrompt(userInput, questions, answers, isExpertMode) {
+function buildImprovementPrompt(userInput, questions, answers, isExpertMode, rounds) {
     let prompt = `원본 프롬프트: "${userInput}"\n\n`;
     
     if (questions && answers) {
-        prompt += `사용자 ${isExpertMode ? '전문가모드' : '일반모드'} 답변 정보:\n`;
+        prompt += `사용자 ${isExpertMode ? '전문가모드' : '일반모드'} 답변 정보 (${rounds || 1}회차):\n`;
         
         // answers가 문자열인 경우와 객체인 경우 모두 처리
         if (typeof answers === 'string') {
             prompt += answers;
         } else {
             Object.entries(answers).forEach(([index, answerData]) => {
-                const question = questions[parseInt(index)]?.question || `질문 ${parseInt(index) + 1}`;
+                const question = questions[parseInt(index)] ? questions[parseInt(index)].question : `질문 ${parseInt(index) + 1}`;
                 
                 if (typeof answerData === 'object' && answerData.answers) {
                     const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
@@ -501,7 +502,12 @@ ${isExpertMode ? '전문가모드' : '일반모드'} 개선 지침:
     return prompt;
 }
 
-// 🆕 헬스체크 엔드포인트
+// favicon 404 오류 해결
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
+});
+
+// 헬스체크 엔드포인트
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
