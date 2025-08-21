@@ -41,39 +41,37 @@ function toggleMode() {
         toggle.classList.add('active');
         description.textContent = '전문가급 심층 의도 파악 (2-3회차 질문)';
         guideTitle.textContent = '🎯 전문가모드 사용법';
-        guideSteps.innerHTML = `
-            <div class="step">
-                <span class="step-number">1️⃣</span>
-                <span class="step-text">원하는 작업을 상세히 입력</span>
-            </div>
-            <div class="step">
-                <span class="step-number">2️⃣</span>
-                <span class="step-text">AI가 2-3회차 심층 질문</span>
-            </div>
-            <div class="step">
-                <span class="step-number">3️⃣</span>
-                <span class="step-text">의도 파악 후 전문가급 개선</span>
-            </div>
-        `;
+        guideSteps.innerHTML = 
+            '<div class="step">' +
+                '<span class="step-number">1️⃣</span>' +
+                '<span class="step-text">원하는 작업을 상세히 입력</span>' +
+            '</div>' +
+            '<div class="step">' +
+                '<span class="step-number">2️⃣</span>' +
+                '<span class="step-text">AI가 2-3회차 심층 질문</span>' +
+            '</div>' +
+            '<div class="step">' +
+                '<span class="step-number">3️⃣</span>' +
+                '<span class="step-text">의도 파악 후 전문가급 개선</span>' +
+            '</div>';
         maxRounds = 3;
     } else {
         toggle.classList.remove('active');
         description.textContent = '빠르고 간편한 프롬프트 개선 (1-6개 질문)';
         guideTitle.textContent = '🚀 일반모드 사용법';
-        guideSteps.innerHTML = `
-            <div class="step">
-                <span class="step-number">1️⃣</span>
-                <span class="step-text">원하는 작업을 한글로 입력</span>
-            </div>
-            <div class="step">
-                <span class="step-number">2️⃣</span>
-                <span class="step-text">AI 질문에 답변 (스킵 가능)</span>
-            </div>
-            <div class="step">
-                <span class="step-number">3️⃣</span>
-                <span class="step-text">개선된 프롬프트 완성</span>
-            </div>
-        `;
+        guideSteps.innerHTML = 
+            '<div class="step">' +
+                '<span class="step-number">1️⃣</span>' +
+                '<span class="step-text">원하는 작업을 한글로 입력</span>' +
+            '</div>' +
+            '<div class="step">' +
+                '<span class="step-number">2️⃣</span>' +
+                '<span class="step-text">AI 질문에 답변 (스킵 가능)</span>' +
+            '</div>' +
+            '<div class="step">' +
+                '<span class="step-number">3️⃣</span>' +
+                '<span class="step-text">개선된 프롬프트 완성</span>' +
+            '</div>';
         maxRounds = 1;
     }
 }
@@ -349,86 +347,84 @@ function showDetailedGuide() {
 
 // 일반모드 가이드
 function getNormalModeGuide() {
-    return `
-        <div class="guide-section">
-            <h3>🚀 일반모드 특징</h3>
-            <ul>
-                <li>빠르고 간편한 프롬프트 개선</li>
-                <li>1-6개의 동적 질문 생성</li>
-                <li>질문 스킵 기능 제공</li>
-                <li>90점 미만시 자동 재개선</li>
-            </ul>
-        </div>
+    return 
+        '<div class="guide-section">' +
+            '<h3>🚀 일반모드 특징</h3>' +
+            '<ul>' +
+                '<li>빠르고 간편한 프롬프트 개선</li>' +
+                '<li>1-6개의 동적 질문 생성</li>' +
+                '<li>질문 스킵 기능 제공</li>' +
+                '<li>90점 미만시 자동 재개선</li>' +
+            '</ul>' +
+        '</div>' +
         
-        <div class="guide-section">
-            <h3>🎯 사용 흐름</h3>
-            <ol>
-                <li><strong>입력:</strong> 원하는 작업을 한글로 입력</li>
-                <li><strong>질문:</strong> AI가 1-6개 질문 생성 (복잡도에 따라)</li>
-                <li><strong>선택:</strong> 답변하거나 스킵 가능</li>
-                <li><strong>개선:</strong> AI가 프롬프트 개선</li>
-                <li><strong>평가:</strong> 90점 미만시 자동 재개선</li>
-                <li><strong>추가:</strong> 90점 이상시 추가 질문 옵션</li>
-            </ol>
-        </div>
+        '<div class="guide-section">' +
+            '<h3>🎯 사용 흐름</h3>' +
+            '<ol>' +
+                '<li><strong>입력:</strong> 원하는 작업을 한글로 입력</li>' +
+                '<li><strong>질문:</strong> AI가 1-6개 질문 생성 (복잡도에 따라)</li>' +
+                '<li><strong>선택:</strong> 답변하거나 스킵 가능</li>' +
+                '<li><strong>개선:</strong> AI가 프롬프트 개선</li>' +
+                '<li><strong>평가:</strong> 90점 미만시 자동 재개선</li>' +
+                '<li><strong>추가:</strong> 90점 이상시 추가 질문 옵션</li>' +
+            '</ol>' +
+        '</div>' +
         
-        <div class="guide-section">
-            <h3>💡 활용 팁</h3>
-            <ul>
-                <li>구체적일수록 더 정확한 질문 생성</li>
-                <li>급할 때는 질문 스킵 활용</li>
-                <li>만족하지 않으면 추가 질문 활용</li>
-                <li>"기타" 선택 후 직접 입력 가능</li>
-            </ul>
-        </div>
-    `;
+        '<div class="guide-section">' +
+            '<h3>💡 활용 팁</h3>' +
+            '<ul>' +
+                '<li>구체적일수록 더 정확한 질문 생성</li>' +
+                '<li>급할 때는 질문 스킵 활용</li>' +
+                '<li>만족하지 않으면 추가 질문 활용</li>' +
+                '<li>"기타" 선택 후 직접 입력 가능</li>' +
+            '</ul>' +
+        '</div>';
 }
 
 // 전문가모드 가이드
 function getExpertModeGuide() {
-    return `
-        <div class="guide-section">
-            <h3>🎯 전문가모드 특징</h3>
-            <ul>
-                <li>2-3회차 심층 의도 파악</li>
-                <li>회차당 1-3개 정밀 질문</li>
-                <li>모든 질문에 요청사항 입력란</li>
-                <li>전문가급 프롬프트 완성도</li>
-            </ul>
-        </div>
+    return 
+        '<div class="guide-section">' +
+            '<h3>🎯 전문가모드 특징</h3>' +
+            '<ul>' +
+                '<li>2-3회차 심층 의도 파악</li>' +
+                '<li>회차당 1-3개 정밀 질문</li>' +
+                '<li>모든 질문에 요청사항 입력란</li>' +
+                '<li>전문가급 프롬프트 완성도</li>' +
+            '</ul>' +
+        '</div>' +
         
-        <div class="guide-section">
-            <h3>🔍 사용 흐름</h3>
-            <ol>
-                <li><strong>입력:</strong> 상세한 작업 내용 입력</li>
-                <li><strong>1차 질문:</strong> 기본 정보 파악</li>
-                <li><strong>2차 질문:</strong> 심층 의도 분석</li>
-                <li><strong>3차 질문:</strong> 세부 요구사항 발굴</li>
-                <li><strong>개선:</strong> 모든 답변 종합하여 개선</li>
-                <li><strong>완성:</strong> 전문가급 프롬프트 완성</li>
-            </ol>
-        </div>
+        '<div class="guide-section">' +
+            '<h3>🔍 사용 흐름</h3>' +
+            '<ol>' +
+                '<li><strong>입력:</strong> 상세한 작업 내용 입력</li>' +
+                '<li><strong>1차 질문:</strong> 기본 정보 파악</li>' +
+                '<li><strong>2차 질문:</strong> 심층 의도 분석</li>' +
+                '<li><strong>3차 질문:</strong> 세부 요구사항 발굴</li>' +
+                '<li><strong>개선:</strong> 모든 답변 종합하여 개선</li>' +
+                '<li><strong>완성:</strong> 전문가급 프롬프트 완성</li>' +
+            '</ol>' +
+        '</div>' +
         
-        <div class="guide-section">
-            <h3>✨ 전문가모드 장점</h3>
-            <ul>
-                <li>창작자의 숨겨진 의도 발굴</li>
-                <li>업무 맥락과 목적 정확히 파악</li>
-                <li>전문 분야별 최적화된 질문</li>
-                <li>요청사항으로 세밀한 조정</li>
-            </ul>
-        </div>
+        '<div class="guide-section">' +
+            '<h3>✨ 전문가모드 장점</h3>' +
+            '<ul>' +
+                '<li>창작자의 숨겨진 의도 발굴</li>' +
+                '<li>업무 맥락과 목적 정확히 파악</li>' +
+                '<li>전문 분야별 최적화된 질문</li>' +
+                '<li>요청사항으로 세밀한 조정</li>' +
+            '</ul>' +
+        '</div>' +
         
-        <div class="guide-section">
-            <h3>📝 요청사항 활용법</h3>
-            <ul>
-                <li>숨겨진 의도나 배경 설명</li>
-                <li>특별히 강조하고 싶은 부분</li>
-                <li>피해야 할 요소나 제약사항</li>
-                <li>이상적인 결과물에 대한 구체적 설명</li>
-            </ul>
-        </div>
-    `;
+        '<div class="guide-section">' +
+            '<h3>📝 요청사항 활용법</h3>' +
+            '<ul>' +
+                '<li>숨겨진 의도나 배경 설명</li>' +
+                '<li>특별히 강조하고 싶은 부분</li>' +
+                '<li>피해야 할 요소나 제약사항</li>' +
+                '<li>이상적인 결과물에 대한 구체적 설명</li>' +
+            '</ul>' +
+        '</div>';
 }
 
 // 모달 닫기
@@ -1041,13 +1037,12 @@ function displayAdditionalQuestions(questions) {
         questionsHTML += '</div>';
         
         // 요청사항 입력란
-        questionsHTML += `
-            <div class="request-input">
-                <label class="request-label">💡 이 질문과 관련된 추가 요청사항이나 의도:</label>
-                <textarea class="request-textarea" placeholder="더 구체적인 요구사항이나 숨겨진 의도가 있다면 자세히 설명해주세요..." 
-                    onchange="addAdditionalRequest('${globalIndex}', this.value)"></textarea>
-            </div>
-        `;
+        questionsHTML += 
+            '<div class="request-input">' +
+                '<label class="request-label">💡 이 질문과 관련된 추가 요청사항이나 의도:</label>' +
+                '<textarea class="request-textarea" placeholder="더 구체적인 요구사항이나 숨겨진 의도가 있다면 자세히 설명해주세요..." ' +
+                    'onchange="addAdditionalRequest(\'' + globalIndex + '\', this.value)"></textarea>' +
+            '</div>';
         
         questionsHTML += '</div>';
     });
