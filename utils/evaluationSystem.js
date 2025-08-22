@@ -1,185 +1,247 @@
-// utils/slotSystem.js - 슬롯 기반 질문 시스템
+// utils/evaluationSystem.js - 95점+ 달성 가능한 평가 시스템
 
-export class SlotSystem {
-  constructor() {
-    this.domainSlots = {
-      visual_design: {
-        주제: { required: true, weight: 10, type: "text", question: "정확히 어떤 주제로 그림을 만들고 싶으신가요?" },
-        스타일: { required: true, weight: 9, type: "enum", options: ["사실적", "3D", "애니메이션", "일러스트", "수채화", "유화"], question: "어떤 스타일로 제작하고 싶으신가요?" },
-        색상: { required: false, weight: 7, type: "enum", options: ["따뜻한톤", "차가운톤", "모노톤", "비비드", "파스텔"], question: "선호하는 색상 톤이 있나요?" },
-        크기: { required: false, weight: 6, type: "enum", options: ["정사각형", "가로형", "세로형", "4K", "HD"], question: "어떤 크기나 비율로 만들까요?" },
-        해상도: { required: false, weight: 5, type: "enum", options: ["HD", "4K", "8K", "인쇄용"], question: "해상도나 품질 요구사항이 있나요?" },
-        배경: { required: false, weight: 6, type: "text", question: "배경은 어떻게 구성하고 싶으신가요?" },
-        조명: { required: false, weight: 4, type: "enum", options: ["자연광", "스튜디오", "어두운", "밝은"], question: "조명이나 분위기는 어떻게 설정할까요?" },
-        각도: { required: false, weight: 3, type: "enum", options: ["정면", "측면", "위에서", "아래서"], question: "어떤 각도에서 촬영한 느낌을 원하시나요?" }
-      },
+export function evaluatePrompt(prompt, originalInput, domainInfo = {}) {
+  let totalScore = 0;
+  const details = {};
+  
+  // 1. 정보 밀도 (30점) - 구체적 정보 vs 불필요한 수식어
+  const informationDensity = calculateInformationDensity(prompt);
+  const densityScore = Math.min(30, informationDensity * 30);
+  totalScore += densityScore;
+  details.informationDensity = {
+    score: densityScore,
+    ratio: informationDensity,
+    description: informationDensity > 0.8 ? '매우 구체적' : informationDensity > 0.6 ? '구체적' : informationDensity > 0.4 ? '보통' : '모호함'
+  };
+  
+  // 2. 완성도 (25점) - 필수 정보 포함 여부
+  const completeness = calculateCompleteness(prompt, domainInfo);
+  const completenessScore = Math.min(25, completeness * 25);
+  totalScore += completenessScore;
+  details.completeness = {
+    score: completenessScore,
+    ratio: completeness,
+    description: completeness > 0.9 ? '완전함' : completeness > 0.7 ? '충분함' : completeness > 0.5 ? '보통' : '부족함'
+  };
+  
+  // 3. 명확성 (20점) - 모호하지 않고 구체적
+  const clarity = calculateClarity(prompt);
+  const clarityScore = Math.min(20, clarity * 20);
+  totalScore += clarityScore;
+  details.clarity = {
+    score: clarityScore,
+    ratio: clarity,
+    description: clarity > 0.8 ? '매우 명확' : clarity > 0.6 ? '명확' : clarity > 0.4 ? '보통' : '모호함'
+  };
+  
+  // 4. 실행가능성 (15점) - AI가 이해하기 쉬움
+  const executability = calculateExecutability(prompt);
+  const executabilityScore = Math.min(15, executability * 15);
+  totalScore += executabilityScore;
+  details.executability = {
+    score: executabilityScore,
+    ratio: executability,
+    description: executability > 0.8 ? '완벽히 실행 가능' : executability > 0.6 ? '실행 가능' : '실행 어려움'
+  };
+  
+  // 5. 효율성 (10점) - 중복/불필요 내용 없음
+  const efficiency = calculateEfficiency(prompt, originalInput);
+  const efficiencyScore = Math.min(10, efficiency * 10);
+  totalScore += efficiencyScore;
+  details.efficiency = {
+    score: efficiencyScore,
+    ratio: efficiency,
+    description: efficiency > 0.8 ? '매우 효율적' : efficiency > 0.6 ? '효율적' : '비효율적'
+  };
+  
+  const finalScore = Math.round(totalScore);
+  
+  return {
+    total: finalScore,
+    grade: getGrade(finalScore),
+    details: details,
+    improvements: generateImprovements(details, finalScore)
+  };
+}
+
+// 1. 정보 밀도 계산
+function calculateInformationDensity(prompt) {
+  const words = prompt.split(/\s+/);
+  const totalWords = words.length;
+  
+  // 구체적 정보 점수
+  let concreteInfo = 0;
+  
+  // 수치 정보 (+0.2 per number)
+  const numbers = prompt.match(/\d+/g) || [];
+  concreteInfo += numbers.length * 0.2;
+  
+  // 단위 정보 (+0.15 per unit)
+  const units = prompt.match(/(px|cm|mm|초|분|시간|KB|MB|GB|TB|K|4K|8K|HD|FHD|UHD)/gi) || [];
+  concreteInfo += units.length * 0.15;
+  
+  // 색상 정보 (+0.1 per color)
+  const colors = prompt.match(/(빨간|파란|노란|검은|흰|회색|갈색|초록|보라|분홍|주황|금색|은색|투명|#[0-9A-F]{6})/gi) || [];
+  concreteInfo += colors.length * 0.1;
+  
+  // 재질/스타일 정보 (+0.1 per material)
+  const materials = prompt.match(/(나무|금속|플라스틱|유리|천|가죽|고무|사실적|3D|애니메이션|일러스트|수채화|유화)/gi) || [];
+  concreteInfo += materials.length * 0.1;
+  
+  // 불필요한 감정 표현 (-0.05 per emotion)
+  const emotions = prompt.match(/(아름다운|감동적인|놀라운|환상적인|마법같은|웅장한|경이로운|멋진|좋은|나쁜)/gi) || [];
+  concreteInfo -= emotions.length * 0.05;
+  
+  return Math.max(0, Math.min(1, concreteInfo / Math.max(totalWords / 10, 1)));
+}
+
+// 2. 완성도 계산
+function calculateCompleteness(prompt, domainInfo = {}) {
+  let completeness = 0.5; // 기본점수
+  
+  // 도메인별 필수 요소 체크
+  const domain = domainInfo.primary || detectPrimaryDomain(prompt);
+  
+  switch(domain) {
+    case 'visual_design':
+      if (prompt.match(/(스타일|색상|크기|해상도|구도)/i)) completeness += 0.1;
+      if (prompt.match(/\d+(px|cm|K|p)/)) completeness += 0.2; // 수치 포함
+      if (prompt.match(/(배경|조명|각도)/i)) completeness += 0.15;
+      break;
       
-      video: {
-        목적: { required: true, weight: 10, type: "enum", options: ["광고", "교육", "엔터테인먼트", "홍보", "튜토리얼"], question: "영상의 주요 목적이 무엇인가요?" },
-        길이: { required: true, weight: 9, type: "enum", options: ["짧게(15초)", "중간(1-3분)", "길게(3분+)", "장편(10분+)"], question: "영상 길이는 어느 정도로 생각하고 계신가요?" },
-        스타일: { required: true, weight: 8, type: "enum", options: ["실사", "애니메이션", "3D", "타임랩스", "슬로우모션"], question: "어떤 스타일의 영상을 원하시나요?" },
-        해상도: { required: false, weight: 7, type: "enum", options: ["HD", "4K", "8K"], question: "해상도 요구사항이 있나요?" },
-        프레임레이트: { required: false, weight: 5, type: "enum", options: ["24fps", "30fps", "60fps"], question: "특별한 프레임레이트 요구사항이 있나요?" },
-        음악: { required: false, weight: 6, type: "enum", options: ["배경음악", "내레이션", "효과음", "무음"], question: "음향이나 음악은 어떻게 구성할까요?" },
-        자막: { required: false, weight: 4, type: "enum", options: ["한글자막", "영문자막", "자막없음"], question: "자막이 필요한가요?" },
-        색보정: { required: false, weight: 3, type: "enum", options: ["자연스럽게", "비비드하게", "영화같이", "밝게"], question: "색감이나 보정 스타일이 있나요?" }
-      },
+    case 'video':
+      if (prompt.match(/(길이|시간|초|분)/i)) completeness += 0.2;
+      if (prompt.match(/(해상도|fps|화질)/i)) completeness += 0.15;
+      if (prompt.match(/(장면|구성|편집)/i)) completeness += 0.15;
+      break;
       
-      development: {
-        프로젝트유형: { required: true, weight: 10, type: "enum", options: ["웹사이트", "모바일앱", "API", "데스크톱", "게임"], question: "어떤 종류의 프로그램을 만들고 싶으신가요?" },
-        주요기능: { required: true, weight: 9, type: "text", question: "가장 중요한 기능이나 목적이 무엇인가요?" },
-        기술스택: { required: false, weight: 7, type: "enum", options: ["React", "Vue", "Angular", "Python", "Java", "Node.js"], question: "선호하는 기술이나 언어가 있나요?" },
-        대상사용자: { required: false, weight: 8, type: "enum", options: ["일반사용자", "관리자", "개발자", "전문가"], question: "누가 주로 사용할 프로그램인가요?" },
-        플랫폼: { required: false, weight: 6, type: "enum", options: ["웹", "모바일", "데스크톱", "크로스플랫폼"], question: "어떤 플랫폼에서 동작해야 하나요?" },
-        데이터베이스: { required: false, weight: 5, type: "enum", options: ["MySQL", "MongoDB", "PostgreSQL", "Firebase"], question: "데이터 저장이 필요한가요?" },
-        보안: { required: false, weight: 4, type: "enum", options: ["로그인", "권한관리", "암호화", "기본보안"], question: "보안 요구사항이 있나요?" },
-        성능: { required: false, weight: 3, type: "enum", options: ["빠른속도", "대용량처리", "실시간", "일반"], question: "성능상 특별한 요구사항이 있나요?" }
-      },
+    case 'development':
+      if (prompt.match(/(기능|API|데이터베이스)/i)) completeness += 0.2;
+      if (prompt.match(/(언어|프레임워크|라이브러리)/i)) completeness += 0.15;
+      if (prompt.match(/(반응형|모바일|웹)/i)) completeness += 0.15;
+      break;
       
-      text_language: {
-        목적: { required: true, weight: 10, type: "enum", options: ["정보전달", "설득", "감정표현", "교육", "홍보"], question: "글의 주요 목적이 무엇인가요?" },
-        대상독자: { required: true, weight: 9, type: "enum", options: ["전문가", "일반인", "학생", "고객", "동료"], question: "누가 읽을 글인가요?" },
-        분량: { required: false, weight: 7, type: "enum", options: ["짧게(500자)", "중간(1000자)", "길게(2000자+)"], question: "대략 어느 정도 분량으로 작성할까요?" },
-        톤: { required: false, weight: 8, type: "enum", options: ["공식적", "친근한", "전문적", "유머러스", "진지한"], question: "어떤 톤으로 작성하고 싶으신가요?" },
-        형식: { required: false, weight: 6, type: "enum", options: ["기사", "블로그", "보고서", "이메일", "SNS"], question: "어떤 형식의 글인가요?" },
-        구조: { required: false, weight: 5, type: "enum", options: ["서론-본론-결론", "리스트형", "스토리텔링", "Q&A"], question: "글의 구조나 형태가 정해져 있나요?" },
-        키워드: { required: false, weight: 4, type: "text", question: "꼭 포함해야 할 키워드나 내용이 있나요?" },
-        마감: { required: false, weight: 3, type: "enum", options: ["급함", "보통", "여유있음"], question: "언제까지 필요한 글인가요?" }
-      },
-      
-      business: {
-        사업분야: { required: true, weight: 10, type: "text", question: "어떤 분야의 사업인가요?" },
-        목표: { required: true, weight: 9, type: "enum", options: ["매출증대", "브랜딩", "고객확보", "효율성", "혁신"], question: "주요 목표가 무엇인가요?" },
-        대상고객: { required: false, weight: 8, type: "text", question: "주요 고객층이 누구인가요?" },
-        예산: { required: false, weight: 7, type: "enum", options: ["제한적", "적당함", "충분함", "무제한"], question: "예산 규모는 어느 정도인가요?" },
-        기간: { required: false, weight: 6, type: "enum", options: ["단기(1개월)", "중기(3개월)", "장기(6개월+)"], question: "목표 달성 기간은 어느 정도로 생각하시나요?" },
-        경쟁사: { required: false, weight: 5, type: "text", question: "주요 경쟁사나 벤치마킹 대상이 있나요?" },
-        차별화: { required: false, weight: 4, type: "text", question: "다른 곳과 차별화할 포인트가 있나요?" },
-        위험요소: { required: false, weight: 3, type: "text", question: "우려되는 위험 요소가 있나요?" }
-      },
-      
-      music_audio: {
-        장르: { required: true, weight: 10, type: "enum", options: ["팝", "록", "클래식", "재즈", "일렉트로닉", "힙합"], question: "어떤 장르의 음악인가요?" },
-        분위기: { required: true, weight: 9, type: "enum", options: ["밝은", "어두운", "차분한", "신나는", "슬픈", "웅장한"], question: "어떤 분위기를 원하시나요?" },
-        길이: { required: false, weight: 7, type: "enum", options: ["짧게(30초)", "중간(2-3분)", "길게(5분+)"], question: "음악 길이는 어느 정도인가요?" },
-        악기: { required: false, weight: 6, type: "text", question: "특별히 포함하고 싶은 악기가 있나요?" },
-        용도: { required: false, weight: 8, type: "enum", options: ["배경음악", "주제곡", "효과음", "광고음악"], question: "어디에 사용할 음악인가요?" },
-        템포: { required: false, weight: 5, type: "enum", options: ["느림", "보통", "빠름", "매우빠름"], question: "템포는 어떻게 설정할까요?" },
-        보컬: { required: false, weight: 4, type: "enum", options: ["남성보컬", "여성보컬", "인스트루멘탈", "코러스"], question: "보컬이 필요한가요?" },
-        음질: { required: false, weight: 3, type: "enum", options: ["스튜디오급", "일반", "로파이"], question: "음질 요구사항이 있나요?" }
-      },
-      
-      general: {
-        분야: { required: true, weight: 10, type: "text", question: "어떤 분야에 대한 요청인가요?" },
-        목적: { required: true, weight: 9, type: "text", question: "최종적으로 무엇을 얻고 싶으신가요?" },
-        우선순위: { required: false, weight: 7, type: "text", question: "가장 중요하게 생각하는 부분이 무엇인가요?" },
-        제약사항: { required: false, weight: 6, type: "text", question: "특별한 제약이나 조건이 있나요?" },
-        참고자료: { required: false, weight: 5, type: "text", question: "참고하고 싶은 예시나 자료가 있나요?" },
-        수준: { required: false, weight: 4, type: "enum", options: ["초급", "중급", "고급", "전문가"], question: "어느 수준으로 제작하면 될까요?" },
-        스타일: { required: false, weight: 3, type: "text", question: "선호하는 스타일이나 방향성이 있나요?" },
-        기타: { required: false, weight: 2, type: "text", question: "추가로 고려해야 할 사항이 있나요?" }
-      }
-    };
-    
-    this.domainKeywords = {
-      visual_design: ["그림", "이미지", "사진", "포스터", "로고", "디자인", "일러스트", "드로잉", "페인팅"],
-      video: ["영상", "비디오", "동영상", "애니메이션", "영화", "광고", "편집", "촬영"],
-      development: ["웹사이트", "앱", "프로그램", "시스템", "코딩", "개발", "소프트웨어", "플랫폼"],
-      text_language: ["글", "텍스트", "문서", "기사", "블로그", "내용", "작성", "번역"],
-      business: ["사업", "비즈니스", "전략", "마케팅", "브랜딩", "매출", "고객", "시장"],
-      music_audio: ["음악", "소리", "오디오", "노래", "멜로디", "사운드", "작곡"],
-      general: []
-    };
+    case 'text_language':
+      if (prompt.match(/(톤|어조|분량|글자수)/i)) completeness += 0.2;
+      if (prompt.match(/(대상|독자|목적)/i)) completeness += 0.15;
+      if (prompt.match(/(구조|형식|스타일)/i)) completeness += 0.15;
+      break;
   }
   
-  // 도메인 감지
-  detectDomains(userInput) {
-    const input = userInput.toLowerCase();
-    const domainScores = {};
-    
-    // 각 도메인별 키워드 매칭
-    Object.entries(this.domainKeywords).forEach(([domain, keywords]) => {
-      domainScores[domain] = 0;
-      keywords.forEach(keyword => {
-        if (input.includes(keyword)) {
-          domainScores[domain] += 1;
-        }
-      });
-    });
-    
-    // 점수 기반 정렬
-    const sortedDomains = Object.entries(domainScores)
-      .filter(([domain, score]) => score > 0)
-      .sort(([,a], [,b]) => b - a);
-    
-    if (sortedDomains.length === 0) {
-      return { primary: 'general', secondary: [], confidence: 0.5 };
-    }
-    
-    const primary = sortedDomains[0][0];
-    const secondary = sortedDomains.slice(1, 3).map(([domain]) => domain);
-    const confidence = Math.min(1, sortedDomains[0][1] / 3);
-    
-    return { primary, secondary, confidence };
+  return Math.min(1, completeness);
+}
+
+// 3. 명확성 계산
+function calculateClarity(prompt) {
+  let clarity = 0.6; // 기본점수
+  
+  // 명확한 지시사항 (+)
+  if (prompt.match(/정확히|구체적으로|반드시|~해야|~로/g)) clarity += 0.1;
+  
+  // 수치 정보 포함 (+)
+  const numbers = prompt.match(/\d+/g) || [];
+  clarity += Math.min(0.2, numbers.length * 0.05);
+  
+  // 모호한 표현 (-)
+  if (prompt.match(/적당히|알아서|대충|좀|어느정도/g)) clarity -= 0.2;
+  
+  // 너무 복잡한 문장 (-)
+  const sentences = prompt.split(/[.!?]/).filter(s => s.trim());
+  const avgLength = sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length;
+  if (avgLength > 100) clarity -= 0.1;
+  
+  return Math.max(0, Math.min(1, clarity));
+}
+
+// 4. 실행가능성 계산
+function calculateExecutability(prompt) {
+  let executability = 0.7; // 기본점수
+  
+  // 실행 가능한 도구/기술 언급 (+)
+  if (prompt.match(/(Photoshop|Blender|React|Python|HTML|CSS|JavaScript)/gi)) executability += 0.1;
+  
+  // 현실적인 요구사항 (+)
+  if (prompt.match(/(4K|HD|1080p|30fps|60fps)/gi)) executability += 0.1;
+  
+  // 비현실적 요구사항 (-)
+  if (prompt.match(/(완벽한|100%|절대|무조건|반드시)/gi)) executability -= 0.1;
+  
+  // 모순되는 요구사항 (-)
+  if (prompt.match(/(빠르게.*고품질|간단하게.*복잡한)/gi)) executability -= 0.2;
+  
+  return Math.max(0, Math.min(1, executability));
+}
+
+// 5. 효율성 계산
+function calculateEfficiency(prompt, originalInput) {
+  let efficiency = 0.8; // 기본점수
+  
+  // 길이 체크 - 원본 대비 적절한 길이
+  const lengthRatio = prompt.length / originalInput.length;
+  if (lengthRatio > 5) efficiency -= 0.3; // 너무 김
+  else if (lengthRatio > 3) efficiency -= 0.1; // 조금 김
+  else if (lengthRatio < 1.5) efficiency -= 0.2; // 너무 짧음
+  
+  // 중복 단어 체크
+  const words = prompt.toLowerCase().split(/\s+/);
+  const uniqueWords = new Set(words);
+  const duplicateRatio = 1 - (uniqueWords.size / words.length);
+  if (duplicateRatio > 0.3) efficiency -= 0.2;
+  
+  // 불필요한 접속사 체크
+  const conjunctions = prompt.match(/(그리고|또한|또|그런데|하지만|그러나)/g) || [];
+  if (conjunctions.length > 3) efficiency -= 0.1;
+  
+  return Math.max(0, Math.min(1, efficiency));
+}
+
+// 도메인 감지
+function detectPrimaryDomain(prompt) {
+  if (prompt.match(/(그림|이미지|사진|포스터|로고|디자인)/i)) return 'visual_design';
+  if (prompt.match(/(영상|비디오|동영상|애니메이션)/i)) return 'video';
+  if (prompt.match(/(웹사이트|앱|프로그램|코딩|개발)/i)) return 'development';
+  if (prompt.match(/(글|텍스트|문서|기사|블로그)/i)) return 'text_language';
+  return 'general';
+}
+
+// 점수 등급
+function getGrade(score) {
+  if (score >= 95) return 'S+';
+  if (score >= 90) return 'S';
+  if (score >= 85) return 'A+';
+  if (score >= 80) return 'A';
+  if (score >= 75) return 'B+';
+  if (score >= 70) return 'B';
+  if (score >= 65) return 'C+';
+  if (score >= 60) return 'C';
+  return 'D';
+}
+
+// 개선 제안
+function generateImprovements(details, score) {
+  const improvements = [];
+  
+  if (details.informationDensity.ratio < 0.6) {
+    improvements.push('구체적인 수치, 크기, 색상 정보를 추가해보세요');
   }
   
-  // 폴백 질문 생성 (AI 없이 동작)
-  generateFallbackQuestions(domainInfo, mentionedInfo = {}) {
-    const domain = domainInfo.primary || 'general';
-    const slots = this.domainSlots[domain] || this.domainSlots.general;
-    
-    const questions = [];
-    
-    // 필수 슬롯부터 처리
-    Object.entries(slots)
-      .filter(([key, slot]) => slot.required && !mentionedInfo[key])
-      .sort(([,a], [,b]) => b.weight - a.weight)
-      .forEach(([key, slot]) => {
-        questions.push(slot.question);
-      });
-    
-    // 선택 슬롯 추가 (필요한 만큼만)
-    Object.entries(slots)
-      .filter(([key, slot]) => !slot.required && !mentionedInfo[key])
-      .sort(([,a], [,b]) => b.weight - a.weight)
-      .slice(0, 8 - questions.length)
-      .forEach(([key, slot]) => {
-        questions.push(slot.question);
-      });
-    
-    // 부족하면 일반 질문 추가
-    while (questions.length < 8) {
-      const generalQuestions = [
-        "어떤 스타일을 원하시나요?",
-        "크기나 규모는 어느 정도로 생각하고 계신가요?",
-        "특별히 중요하게 생각하는 부분이 있나요?",
-        "참고하고 싶은 예시가 있나요?",
-        "완성도는 어느 수준으로 원하시나요?",
-        "용도나 목적이 정해져 있나요?",
-        "제약 사항이나 조건이 있나요?",
-        "기타 추가로 고려할 사항이 있나요?"
-      ];
-      
-      const remainingQuestions = generalQuestions.filter(q => !questions.includes(q));
-      if (remainingQuestions.length === 0) break;
-      
-      questions.push(remainingQuestions[0]);
-    }
-    
-    return questions.slice(0, 8);
+  if (details.completeness.ratio < 0.7) {
+    improvements.push('필수 요소(스타일, 크기, 품질 등)를 더 포함해보세요');
   }
   
-  // 슬롯 정보 가져오기
-  getSlots(domain) {
-    return this.domainSlots[domain] || this.domainSlots.general;
+  if (details.clarity.ratio < 0.6) {
+    improvements.push('모호한 표현을 피하고 더 명확한 지시사항을 사용해보세요');
   }
   
-  // 도메인 정보 가져오기
-  getDomainInfo(domain) {
-    return {
-      name: domain,
-      slots: this.getSlots(domain),
-      keywords: this.domainKeywords[domain] || []
-    };
+  if (details.efficiency.ratio < 0.6) {
+    improvements.push('불필요한 중복을 제거하고 더 간결하게 작성해보세요');
   }
+  
+  if (score >= 95) {
+    improvements.push('완벽합니다! 전문가급 프롬프트입니다.');
+  } else if (score >= 85) {
+    improvements.push('매우 좋습니다! 조금만 더 구체화하면 완벽해집니다.');
+  }
+  
+  return improvements;
 }
