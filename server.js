@@ -492,7 +492,7 @@ function buildImprovementPrompt(userInput, questions, answers, isExpertMode, rou
     
     prompt += `위 정보를 바탕으로 원본 프롬프트를 ${isExpertMode ? '전문가급으로' : '효율적으로'} 개선해주세요.
 
-**절대적 규칙 (위반시 실패):**
+절대적 규칙 (위반시 실패):
 1. 사용자가 답변한 내용만 정확히 반영하세요
 2. 사용자가 선택하지 않은 옵션은 절대 추가하지 마세요  
 3. 질문에 없던 내용은 절대 임의로 만들지 마세요
@@ -500,7 +500,7 @@ function buildImprovementPrompt(userInput, questions, answers, isExpertMode, rou
 5. 사용자 답변에 없는 도구/프로그램 이름 금지
 6. 사용자 답변에 없는 수치/기준 임의 설정 금지
 
-**만약 필요한 정보가 부족하다면:**
+만약 필요한 정보가 부족하다면:
 - 임의로 추가하지 말고 일반적인 가이드라인만 제시
 - "필요시 [분야] 전문가와 상의하세요" 형태로 안내
 
