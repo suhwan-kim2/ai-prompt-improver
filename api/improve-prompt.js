@@ -3,6 +3,7 @@ import { evaluatePrompt } from '../utils/evaluationSystem.js';
 import { SlotSystem } from '../utils/slotSystem.js';
 import { MentionExtractor } from '../utils/mentionExtractor.js';
 import { QuestionOptimizer } from '../utils/questionOptimizer.js';
+import { IntentAnalyzer } from '../utils/intentAnalyzer.js';
 
 export default async function handler(req, res) {
   // CORS 설정 (브라우저 접근 허용)
@@ -15,41 +16,43 @@ export default async function handler(req, res) {
   }
 }
 
-// 간단한 완성도 분석 함수 (AI 없이)
-function analyzeCompleteness(userInput) {
-  const input = userInput.toLowerCase();
-  let completeness = 0;
-  let missingInfo = [];
-  let providedInfo = [];
+// 의도 분석 기반 폴백 질문 생성
+function generateFallbackQuestions(analysis) {
+  const questions = [];
   
-  // 기본 요소들 체크
-  const elements = {
-    '주제': /(그림|이미지|영상|글|웹사이트|앱)/,
-    '스타일': /(실사|애니메이션|3d|일러스트|사실적)/,
-    '크기': /(\d+\s*(초|분|px|cm)|크기|해상도)/,
-    '색상': /(빨간|파란|노란|밝은|어두운|색상|컬러)/,
-    '목적': /(광고|교육|홍보|설명|용도)/,
-    '대상': /(아이|어른|학생|고객|사용자)/
-  };
-  
-  Object.entries(elements).forEach(([key, pattern]) => {
-    if (input.match(pattern)) {
-      completeness += 15;
-      providedInfo.push(key);
-    } else {
-      missingInfo.push(key);
+  // 우선순위 기반으로 질문 생성
+  analysis.priorities.forEach(({ slot, priority }) => {
+    switch(slot) {
+      case '목표':
+        questions.push("구체적으로 무엇을 만들고 싶으신가요?");
+        break;
+      case '대상':
+        questions.push("누가 사용하거나 볼 예정인가요?");
+        break;
+      case '제약':
+        questions.push("크기, 시간, 예산 등 제약사항이 있나요?");
+        break;
+      case '스타일':
+        questions.push("어떤 스타일이나 느낌을 원하시나요?");
+        break;
+      case '용도':
+        questions.push("주로 어디에 사용할 예정인가요?");
+        break;
+      case '도구':
+        questions.push("특별히 사용하고 싶은 도구나 기술이 있나요?");
+        break;
+      case '톤':
+        questions.push("전문적인지 친근한지, 어떤 톤을 원하시나요?");
+        break;
     }
   });
   
-  // 세부 정보 보너스
-  if (input.match(/\d+/)) completeness += 10; // 수치 포함
-  if (input.length > 50) completeness += 10; // 상세한 설명
-  
-  return {
-    completeness: Math.min(100, completeness),
-    missing_info: missingInfo,
-    already_provided: providedInfo
-  };
+  // 전략에 맞는 개수만 반환
+  const targetCount = typeof analysis.strategy.questionCount === 'string' 
+    ? parseInt(analysis.strategy.questionCount.split('-')[1]) || 6
+    : analysis.strategy.questionCount;
+    
+  return questions.slice(0, targetCount);
 }
 
   if (req.method !== 'POST') {
@@ -139,10 +142,26 @@ function analyzeCompleteness(userInput) {
       return koreanRatio > 0.2; // 20%로 완화 (JSON 등 고려)
     }
 
-    // 1단계: 스마트 질문 생성
+    // 1단계: 의도 분석 기반 스마트 질문 생성
     if (step === 'questions') {
       try {
-        // 사용자 입력 분석
+        // 의도 분석 먼저 실행
+        const intentAnalyzer = new IntentAnalyzer();
+        const analysis = intentAnalyzer.generateAnalysisReport(userInput, answers || []);
+        
+        console.log('의도 분석 결과:', analysis);
+        
+        // 충분한 의도 파악이면 질문 생략
+        if (!analysis.strategy.needMore) {
+          return res.json({
+            questions: [],
+            analysis: analysis,
+            message: analysis.strategy.message,
+            skipToImprovement: true
+          });
+        }
+
+        // 사용자 입력 분석 (기존 로직도 유지)
         const mentionExtractor = new MentionExtractor();
         const mentionedInfo = mentionExtractor.extract(userInput);
         
@@ -152,47 +171,51 @@ function analyzeCompleteness(userInput) {
         console.log('감지된 도메인:', detectedDomains);
         console.log('언급된 정보:', mentionedInfo);
 
-        // OpenAI를 통한 진짜 AI 질문 생성
+        // AI를 통한 의도 기반 질문 생성
         const questionPrompt = [
           {
             role: 'system',
             content: `${KOREAN_ENFORCER}
 
-당신은 프롬프트 분석 전문가입니다. 사용자의 요청을 분석해서 고품질 결과물을 위해 **정말 필요한 정보만** 질문하세요.
+당신은 사용자 의도 파악 전문가입니다.
 
-핵심 원칙:
-1. 이미 충분한 정보가 있으면 질문하지 마세요 (0개도 가능)
-2. 부족한 정보가 많으면 많이 질문하세요 (15개도 가능)  
-3. 절대 하드코딩된 질문 사용 금지
-4. 사용자가 이미 말한 내용은 다시 묻지 마세요
-5. 반드시 한국어로만 질문
+현재 의도 분석 결과:
+- 의도 점수: ${analysis.intentScore}/100
+- 부족한 슬롯: ${analysis.priorities.map(p => p.slot).join(', ')}
+- 전략: ${analysis.strategy.focus}
 
-정보 완성도 평가 기준:
-- 90% 이상 완성: 질문 0-2개
-- 70-90% 완성: 질문 3-5개  
-- 50-70% 완성: 질문 6-8개
-- 50% 미만 완성: 질문 9개 이상
+목표: ${analysis.strategy.message}
+
+부족한 정보를 채우기 위한 질문을 ${analysis.strategy.questionCount}개 생성해주세요.
+
+우선순위:
+${analysis.priorities.map((p, i) => `${i+1}. ${p.slot} (중요도: ${p.priority})`).join('\n')}
+
+질문 생성 규칙:
+1. 반드시 한국어로만 질문
+2. 우선순위가 높은 슬롯부터 질문  
+3. 이미 파악된 정보는 절대 다시 묻지 않기
+4. 구체적이고 답변하기 쉬운 질문
+5. 사용자 의도를 정확히 파악하는 데 집중
 
 응답 형식 (JSON):
 {
-  "analysis": {
-    "completeness": 85,
-    "missing_info": ["해상도", "카메라앵글"], 
-    "already_provided": ["길이", "스타일", "주제", "음악"]
-  },
   "questions": [
-    "정말 필요한 질문만"
-  ]
+    "우선순위 높은 질문부터 순서대로"
+  ],
+  "reasoning": "이 질문들이 필요한 이유"
 }`
           },
           {
             role: 'user',
-            content: `사용자 요청 분석해주세요:
+            content: `사용자 입력: "${userInput}"
 
-"${userInput}"
+의도 분석:
+- 점수: ${analysis.intentScore}점
+- 부족한 정보: ${analysis.missingSlots?.join(', ') || '없음'}
+- 추천사항: ${analysis.recommendations?.join(', ') || '없음'}
 
-위 요청의 완성도를 평가하고, 95점 결과물을 위해 정말 필요한 정보만 질문해주세요.
-이미 제공된 정보는 다시 묻지 마세요.`
+이 분석을 바탕으로 사용자 의도를 완벽히 파악하기 위한 질문을 생성해주세요.`
           }
         ];
 
@@ -201,41 +224,31 @@ function analyzeCompleteness(userInput) {
         try {
           const parsedResult = JSON.parse(result);
           
-          console.log('AI 분석 결과:', parsedResult.analysis);
-          console.log('생성된 질문들:', parsedResult.questions);
+          console.log('AI 질문 생성 결과:', parsedResult);
           
-          // AI가 분석한 완성도에 따라 질문 개수 결정
+          // AI가 생성한 질문들
           const questions = parsedResult.questions || [];
-          
-          if (questions.length === 0) {
-            console.log('AI 판단: 추가 질문 불필요');
-          }
           
           return res.json({
             questions: questions,
-            analysis: parsedResult.analysis,
+            analysis: analysis,
+            reasoning: parsedResult.reasoning,
             domains: detectedDomains,
             mentioned: mentionedInfo,
             ai_mode: true
           });
           
         } catch (parseError) {
-          console.log('JSON 파싱 실패, 간단한 분석으로 대체');
+          console.log('AI 질문 생성 실패, 의도 분석 기반 폴백 사용');
           
-          // AI가 실패하면 간단한 로직으로 판단
-          const simpleAnalysis = this.analyzeCompleteness(userInput);
+          // AI 실패시 의도 분석 결과로 폴백 질문 생성
+          const fallbackQuestions = this.generateFallbackQuestions(analysis);
           
-          if (simpleAnalysis.completeness > 80) {
-            // 80% 이상 완성도면 질문 최소화
-            return res.json({
-              questions: [],
-              analysis: simpleAnalysis,
-              message: "충분한 정보가 제공되어 바로 개선 가능합니다."
-            });
-          } else {
-            // 부족하면 폴백 질문 사용
-            throw parseError;
-          }
+          return res.json({
+            questions: fallbackQuestions,
+            analysis: analysis,
+            mode: 'fallback_intent'
+          });
         }
 
       } catch (error) {
