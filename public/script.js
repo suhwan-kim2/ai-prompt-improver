@@ -1,4 +1,4 @@
-// script.js - 새로운 전문가모드 프로세스 구현 (오류 수정 버전)
+// script.js - 수정된 버전 (JSON 파싱 오류 해결)
 
 // 전역 변수들
 let isExpertMode = false;
@@ -207,9 +207,13 @@ async function expertModeProcess() {
     }
 }
 
-// API 호출 함수
+// ✅ 수정된 API 호출 함수 - JSON 파싱 오류 해결
 async function callAPI(step, data) {
     try {
+        console.log('=== API 호출 ===');
+        console.log('Step:', step);
+        console.log('Data:', data);
+        
         const response = await fetch('/api/improve-prompt', {
             method: 'POST',
             headers: {
@@ -231,20 +235,57 @@ async function callAPI(step, data) {
             throw new Error(result.error || 'API 호출 실패');
         }
 
-        if (step.includes('questions')) {
+        console.log('=== API 응답 ===');
+        console.log('Result type:', typeof result.result);
+        console.log('Result preview:', result.result.substring(0, 100));
+
+        // ✅ 정확한 JSON 파싱 조건
+        if (step === 'questions' || step === 'questions-round-1' || step === 'questions-round-2') {
+            try {
+                let jsonStr = result.result.trim();
+                
+                // JSON 코드 블록 제거
+                if (jsonStr.startsWith('```json')) {
+                    jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
+                } else if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
+                }
+                
+                console.log('JSON 파싱 시도:', jsonStr.substring(0, 200));
+                
+                const parsed = JSON.parse(jsonStr);
+                return parsed.questions || [];
+                
+            } catch (e) {
+                console.error('JSON 파싱 실패:', e);
+                console.error('원본 응답:', result.result);
+                return []; // 빈 배열 반환으로 직접 개선 진행
+            }
+        }
+        
+        // 평가 단계 JSON 파싱
+        if (step === 'evaluate') {
             try {
                 let jsonStr = result.result.trim();
                 if (jsonStr.startsWith('```json')) {
                     jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
+                } else if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
                 }
-                const parsed = JSON.parse(jsonStr);
-                return parsed.questions || [];
+                
+                return JSON.parse(jsonStr);
             } catch (e) {
-                console.error('질문 파싱 실패:', e);
-                return [];
+                console.error('평가 JSON 파싱 실패:', e);
+                return {
+                    score: 85,
+                    strengths: ['기본적인 개선 완료'],
+                    improvements: ['더 구체적인 요구사항 필요'],
+                    recommendation: '현재 수준에서 사용 가능'
+                };
             }
         }
         
+        // 일반 텍스트 응답 (개선된 프롬프트 등)
         return result.result;
         
     } catch (error) {
@@ -255,6 +296,11 @@ async function callAPI(step, data) {
 
 // 질문 표시 함수
 function displayQuestions(questions, title, isExpertRound = false) {
+    console.log('=== 질문 표시 ===');
+    console.log('Questions:', questions);
+    console.log('Title:', title);
+    console.log('Expert round:', isExpertRound);
+    
     if (isExpertRound) {
         currentQuestions = currentQuestions.concat(questions);
     } else {
@@ -516,8 +562,7 @@ async function evaluateAndShowScore(improvedPrompt) {
             userInput: improvedPrompt
         });
         
-        const qualityData = parseQualityResponse(evaluation);
-        currentScore = qualityData.score;
+        currentScore = evaluation.score || 85;
         
         if (currentScore < 90) {
             showStatus('현재 ' + currentScore + '점입니다. AI가 자동으로 재개선하고 있습니다...', 'processing');
@@ -546,8 +591,12 @@ async function autoImprovePrompt(currentPrompt) {
         const improvedText = document.getElementById('improvedText');
         if (improvedText) improvedText.textContent = reImprovedPrompt;
         
-        const newQuality = await quickQualityCheck(reImprovedPrompt);
-        currentScore = newQuality.score;
+        // 재평가
+        const newEvaluation = await callAPI('evaluate', {
+            userInput: reImprovedPrompt
+        });
+        
+        currentScore = newEvaluation.score || 90;
         
         showScoreImprovement(currentScore);
         showStatus('자동 재개선 완료! ' + currentScore + '점 달성!', 'success');
@@ -558,22 +607,6 @@ async function autoImprovePrompt(currentPrompt) {
     }
 }
 
-// 빠른 품질 확인
-async function quickQualityCheck(improvedPrompt) {
-    try {
-        const evaluation = await callAPI('evaluate', {
-            userInput: improvedPrompt
-        });
-        const parsed = parseQualityResponse(evaluation);
-        return {
-            score: parsed.score || 85,
-            feedback: parsed.recommendation || '개선되었습니다'
-        };
-    } catch (e) {
-        return { score: 85, feedback: '품질 확인 완료' };
-    }
-}
-
 // 점수 개선 섹션 표시
 function showScoreImprovement(score) {
     const scoreSection = document.getElementById('scoreImprovement');
@@ -581,28 +614,6 @@ function showScoreImprovement(score) {
     
     if (scoreDisplay) scoreDisplay.textContent = score;
     if (scoreSection) scoreSection.style.display = 'block';
-}
-
-// 품질 응답 파싱
-function parseQualityResponse(response) {
-    try {
-        let jsonStr = response.trim();
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/```json\s*/, '').replace(/```\s*$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```\s*/, '').replace(/```\s*$/, '');
-        }
-        
-        return JSON.parse(jsonStr);
-    } catch (e) {
-        console.error('품질 응답 파싱 실패:', e);
-        return {
-            score: 85,
-            strengths: ['기본적인 개선 완료'],
-            improvements: ['더 구체적인 요구사항 필요'],
-            recommendation: '현재 수준에서 사용 가능'
-        };
-    }
 }
 
 // 클립보드에 복사
