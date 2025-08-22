@@ -1,4 +1,4 @@
-// api/improve-prompt.js - 이 파일만 GitHub에 추가하세요!
+// api/improve-prompt.js - 수정된 버전
 
 export default async function handler(req, res) {
     // CORS 설정
@@ -17,21 +17,19 @@ export default async function handler(req, res) {
     
     try {
         const { 
+            step,
             userInput, 
             questions, 
             answers, 
-            step, 
-            isExpertMode, 
-            round, 
-            previousAnswers,
-            previousQuestions,
-            currentImproved,
-            additionalAnswers,
-            currentScore,
-            rounds
+            isExpertMode,
+            internalImprovedPrompt,
+            currentScore
         } = req.body;
         
-        console.log('API 요청:', { step, isExpertMode, round });
+        console.log('=== API 요청 ===');
+        console.log('Step:', step);
+        console.log('원본 입력:', userInput);
+        console.log('전문가모드:', isExpertMode);
         
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         
@@ -42,42 +40,57 @@ export default async function handler(req, res) {
         let systemPrompt = '';
         let userPrompt = '';
         
-        if (step === 'questions') {
-            systemPrompt = getAdaptiveQuestionPrompt(isExpertMode, round);
-            userPrompt = `사용자 입력: "${userInput}"`;
-            
-            if (round > 0 && previousAnswers) {
-                userPrompt += `\n\n이전 답변들:\n${previousAnswers}`;
-            }
-            
-            if (previousQuestions && previousQuestions.trim()) {
-                userPrompt += `\n\n이전에 이미 물어본 질문들 (절대 중복 금지):\n${previousQuestions}`;
-                userPrompt += `\n\n** 엄격한 중복 금지 규칙 **`;
-                userPrompt += `\n- 위 질문들과 키워드나 주제가 겹치면 절대 안됨`;
-                userPrompt += `\n- 완전히 새로운 관점에서만 질문 생성`;
+        // 단계별 프롬프트 설정
+        switch (step) {
+            case 'questions':
+                systemPrompt = getBasicQuestionsPrompt(isExpertMode);
+                userPrompt = `원본 사용자 입력: "${userInput}"
+
+위 입력을 분석해서 해당 분야에 맞는 기본 질문을 생성해주세요.`;
+                break;
                 
-                if (isExpertMode && round === 1) {
-                    userPrompt += `\n\n1차 심층질문 가이드: 기본질문이 "무엇"을 물었다면 → "왜"를 물어보기`;
-                } else if (isExpertMode && round === 2) {
-                    userPrompt += `\n\n2차 심층질문 가이드: 실행/제작/성과 측정 관점에서 질문`;
-                }
-            }
-        } else if (step === 'additional-questions') {
-            systemPrompt = getAdditionalQuestionPrompt();
-            userPrompt = `원본 입력: "${userInput}"\n현재 개선된 프롬프트: "${currentImproved}"\n기존 답변들: "${additionalAnswers || answers}"\n\n현재 답변을 바탕으로 점수를 더 높일 수 있는 추가 질문 2-3개를 생성해주세요.`;
-        } else if (step === 'improve') {
-            systemPrompt = getAdaptiveImprovementPrompt(isExpertMode, rounds);
-            userPrompt = buildImprovementPrompt(userInput, questions, answers, isExpertMode, rounds);
-        } else if (step === 'improve-with-additional') {
-            systemPrompt = getAdditionalImprovementPrompt();
-            userPrompt = `원본 입력: "${userInput}"\n현재 개선된 프롬프트: "${currentImproved}"\n추가 답변들: "${additionalAnswers}"\n\n추가 답변을 바탕으로 현재 프롬프트를 더욱 정밀하게 개선해주세요.`;
-        } else if (step === 'evaluate') {
-            systemPrompt = getEvaluationPrompt90();
-            userPrompt = `평가할 프롬프트: "${userInput}"`;
-        } else if (step === 'auto-improve') {
-            systemPrompt = getAutoImprovementPrompt90();
-            userPrompt = `현재 프롬프트: "${userInput}"\n현재 점수: ${currentScore}점\n\n이 프롬프트를 90점 이상으로 자동 개선해주세요.`;
+            case 'internal-improve-1':
+                systemPrompt = getInternalImprovePrompt(1);
+                userPrompt = buildInternalImprovementPrompt(userInput, questions, answers, 1);
+                break;
+                
+            case 'questions-round-1':
+                systemPrompt = getExpertQuestionsPrompt(1);
+                userPrompt = buildExpertQuestionPrompt(userInput, internalImprovedPrompt, 1);
+                break;
+                
+            case 'internal-improve-2':
+                systemPrompt = getInternalImprovePrompt(2);
+                userPrompt = buildInternalImprovementPrompt(userInput, questions, answers, 2, internalImprovedPrompt);
+                break;
+                
+            case 'questions-round-2':
+                systemPrompt = getExpertQuestionsPrompt(2);
+                userPrompt = buildExpertQuestionPrompt(userInput, internalImprovedPrompt, 2);
+                break;
+                
+            case 'final-improve':
+                systemPrompt = getFinalImprovementPrompt(isExpertMode);
+                userPrompt = buildFinalImprovementPrompt(userInput, questions, answers, isExpertMode, internalImprovedPrompt);
+                break;
+                
+            case 'evaluate':
+                systemPrompt = getEvaluationPrompt();
+                userPrompt = `평가할 프롬프트: "${userInput}"`;
+                break;
+                
+            case 'auto-improve':
+                systemPrompt = getAutoImprovementPrompt();
+                userPrompt = `현재 프롬프트: "${userInput}"\n현재 점수: ${currentScore}점\n\n90점 이상으로 개선해주세요.`;
+                break;
+                
+            default:
+                throw new Error(`지원하지 않는 단계: ${step}`);
         }
+        
+        console.log('=== OpenAI 요청 ===');
+        console.log('System:', systemPrompt.substring(0, 100) + '...');
+        console.log('User:', userPrompt.substring(0, 100) + '...');
         
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -91,7 +104,7 @@ export default async function handler(req, res) {
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
                 ],
-                temperature: step === 'questions' || step === 'additional-questions' ? 0.3 : 0.7,
+                temperature: step.includes('questions') ? 0.3 : 0.7,
                 max_tokens: 2500
             })
         });
@@ -105,7 +118,9 @@ export default async function handler(req, res) {
         const data = await response.json();
         const result = data.choices[0].message.content;
 
-        console.log('API 응답 성공');
+        console.log('=== API 응답 성공 ===');
+        console.log('결과 길이:', result.length);
+        
         res.json({ 
             success: true, 
             result: result,
@@ -113,7 +128,7 @@ export default async function handler(req, res) {
         });
 
     } catch (error) {
-        console.error('서버 오류:', error);
+        console.error('=== 서버 오류 ===', error);
         res.status(500).json({ 
             success: false, 
             error: error.message || '서버 내부 오류가 발생했습니다.' 
@@ -121,23 +136,26 @@ export default async function handler(req, res) {
     }
 }
 
+// ======================
 // 프롬프트 생성 함수들
-function getAdaptiveQuestionPrompt(isExpertMode, round) {
-    const basePrompt = `당신은 프롬프트 개선 전문가입니다. 사용자의 입력을 분석해서 분야를 자동으로 판단하고, 해당 분야에 최적화된 질문을 만들어주세요.
+// ======================
+
+function getBasicQuestionsPrompt(isExpertMode) {
+    return `당신은 프롬프트 개선 전문가입니다. 사용자의 입력을 분석해서 해당 분야에 맞는 기본 질문을 생성해주세요.
 
 현재 모드: ${isExpertMode ? '전문가모드' : '일반모드'}
-현재 라운드: ${round + 1}차`;
 
-    if (isExpertMode) {
-        if (round === 0) {
-            return basePrompt + `
+** 중요: 원본 입력의 내용과 분야를 절대 바꾸지 마세요 **
 
-전문가모드 1차 질문 (기본 정보 파악):
-- 1-3개의 핵심 질문으로 기본 정보 파악
-- 프로젝트의 목적과 배경 이해
-- 타겟 대상과 사용 맥락 파악
+분야별 질문 예시:
+- 이미지 생성: 스타일, 색감, 구도, 분위기
+- 웹사이트 제작: 목적, 타겟, 기능, 디자인  
+- 글쓰기: 톤앤매너, 독자, 길이, 형식
+- 데이터 분석: 목적, 변수, 시각화, 인사이트
 
-JSON 형식으로 응답:
+${isExpertMode ? '전문가모드에서는 1-3개의 핵심 질문만 생성하세요.' : '일반모드에서는 1-6개의 질문을 동적으로 생성하세요.'}
+
+반드시 JSON 형식으로 응답하세요:
 {
   "detectedCategory": "판단된 분야",
   "questions": [
@@ -148,139 +166,151 @@ JSON 형식으로 응답:
     }
   ]
 }`;
-        } else if (round === 1) {
-            return basePrompt + `
-
-전문가모드 2차 질문 (심층 의도 파악):
-- 이전 답변을 바탕으로 더 깊은 의도 파악
-- 숨겨진 요구사항과 세부 조건 발굴
-- 창작자의 진짜 목적과 비전 이해
-
-** 중요: 이전 질문과 절대 중복되지 않는 새로운 관점의 질문을 만드세요 **
-
-JSON 형식으로 응답:
-{
-  "questions": [
-    {
-      "question": "이전과 다른 새로운 관점의 심층 질문",
-      "type": "choice", 
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
-    }
-  ]
-}`;
-        } else {
-            return basePrompt + `
-
-전문가모드 3차 질문 (최종 세부사항):
-- 이전 2차례 답변을 종합하여 마지막 핵심 질문
-- 완성도를 높이기 위한 세밀한 디테일 파악
-
-JSON 형식으로 응답:
-{
-  "questions": [
-    {
-      "question": "최종 완성도를 위한 핵심 질문",
-      "type": "choice",
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
-    }
-  ]
-}`;
-        }
-    } else {
-        return basePrompt + `
-
-일반모드 질문 생성:
-- 사용자 입력의 복잡도에 따라 1-6개 질문 동적 생성
-- 빠른 개선을 위한 효율적 질문
-
-JSON 형식으로 응답:
-{
-  "detectedCategory": "판단된 분야",
-  "questions": [
-    {
-      "question": "질문 내용",
-      "type": "choice",
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
-    }
-  ]
-}`;
-    }
 }
 
-function getAdditionalQuestionPrompt() {
-    return `당신은 프롬프트 개선 전문가입니다. 현재 개선된 프롬프트의 점수를 더 높이기 위한 추가 질문을 생성해주세요.
+function getInternalImprovePrompt(round) {
+    return `당신은 프롬프트 개선 전문가입니다. 
 
-JSON 형식으로 응답:
-{
-  "questions": [
-    {
-      "question": "추가 질문 내용",
-      "type": "choice",
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
-    }
-  ]
-}`;
-}
+${round}차 내부 개선을 진행합니다. 사용자의 원본 입력과 기본 답변을 바탕으로 프롬프트를 개선하되, 이는 내부 처리용이므로 사용자에게 보여지지 않습니다.
 
-function getAdaptiveImprovementPrompt(isExpertMode, rounds) {
-    return `당신은 모든 분야의 최고 전문가이자 프롬프트 엔지니어링 마스터입니다.
-
-현재 모드: ${isExpertMode ? '전문가모드' : '일반모드'}
-질문 라운드 수: ${rounds || 1}회차
-
-최종 프롬프트만 제공하고, 설명은 생략하세요.`;
-}
-
-function getAdditionalImprovementPrompt() {
-    return `당신은 프롬프트 개선 전문가입니다. 추가 질문에 대한 답변을 바탕으로 현재 프롬프트를 더욱 정밀하게 개선해주세요.
-
-개선된 프롬프트만 제공하고, 설명은 생략하세요.`;
-}
-
-function getEvaluationPrompt90() {
-    return `당신은 프롬프트 품질 평가 전문가입니다. 주어진 프롬프트를 100점 만점으로 평가해주세요.
-
-JSON 응답:
-{
-  "score": 점수(1-100),
-  "strengths": ["강점1", "강점2"],
-  "improvements": ["개선점1", "개선점2"]
-}`;
-}
-
-function getAutoImprovementPrompt90() {
-    return `당신은 프롬프트 개선 전문가입니다. 주어진 프롬프트를 90점 이상 수준으로 자동 개선해주세요.
+** 절대 중요: 원본 입력의 주제와 분야를 유지하세요 **
 
 개선된 프롬프트만 응답하세요.`;
 }
 
-function buildImprovementPrompt(userInput, questions, answers, isExpertMode, rounds) {
-    let prompt = `원본 프롬프트: "${userInput}"\n\n`;
+function getExpertQuestionsPrompt(round) {
+    return `당신은 프롬프트 개선 전문가입니다. ${round}차 심층 질문을 생성합니다.
+
+${round === 1 ? 
+`1차 심층 질문 목적:
+- 기본 질문에서 파악하지 못한 숨겨진 의도 발굴
+- 사용자의 진짜 목적과 배경 이해
+- 더 구체적인 요구사항 파악` :
+`2차 심층 질문 목적:
+- 실행과 구현 관점에서의 세부사항
+- 품질과 완성도를 높이는 마지막 요소들
+- 사용자의 최종 기대사항 확인`}
+
+** 중요: 이전 질문들과 절대 중복되지 않는 새로운 관점의 질문을 만드세요 **
+
+JSON 형식으로 응답:
+{
+  "questions": [
+    {
+      "question": "이전과 완전히 다른 새로운 관점의 질문",
+      "type": "choice",
+      "options": ["옵션1", "옵션2", "옵션3", "기타"]
+    }
+  ]
+}`;
+}
+
+function getFinalImprovementPrompt(isExpertMode) {
+    return `당신은 프롬프트 개선 전문가입니다. 
+
+모든 정보를 종합하여 최종 ${isExpertMode ? '전문가급' : '고품질'} 프롬프트를 생성해주세요.
+
+** 중요: 원본 입력의 주제와 분야를 절대 바꾸지 마세요 **
+
+최종 개선된 프롬프트만 응답하세요.`;
+}
+
+function getEvaluationPrompt() {
+    return `당신은 프롬프트 품질 평가 전문가입니다. 주어진 프롬프트를 100점 만점으로 평가해주세요.
+
+평가 기준:
+- 명확성 (25점): 요구사항이 구체적이고 명확한가
+- 완성도 (25점): 필요한 정보가 충분히 포함되어 있는가  
+- 실행가능성 (25점): AI가 실제로 수행할 수 있는 내용인가
+- 창의성 (25점): 독창적이고 흥미로운 요소가 있는가
+
+JSON 형식으로 응답:
+{
+  "score": 점수,
+  "strengths": ["강점1", "강점2"],
+  "improvements": ["개선점1", "개선점2"],
+  "recommendation": "종합 의견"
+}`;
+}
+
+function getAutoImprovementPrompt() {
+    return `당신은 프롬프트 개선 전문가입니다. 주어진 프롬프트를 90점 이상 수준으로 자동 개선해주세요.
+
+개선 방향:
+- 더 구체적인 요구사항 추가
+- 명확한 출력 형식 지정
+- 품질 향상을 위한 세부 조건 추가
+
+개선된 프롬프트만 응답하세요.`;
+}
+
+// ======================
+// 프롬프트 구성 함수들  
+// ======================
+
+function buildInternalImprovementPrompt(userInput, questions, answers, round, previousImproved = '') {
+    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
     
-    if (questions && answers) {
-        prompt += `사용자 ${isExpertMode ? '전문가모드' : '일반모드'} 답변 정보 (${rounds || 1}회차):\n`;
-        
-        if (typeof answers === 'string') {
-            prompt += answers;
-        } else {
-            Object.entries(answers).forEach(([index, answerData]) => {
-                const question = questions[parseInt(index)] ? questions[parseInt(index)].question : `질문 ${parseInt(index) + 1}`;
-                
+    if (previousImproved) {
+        prompt += `이전 개선된 프롬프트: "${previousImproved}"\n\n`;
+    }
+    
+    if (answers) {
+        prompt += `사용자 답변들:\n${formatAnswersForPrompt(answers)}\n\n`;
+    }
+    
+    prompt += `${round}차 내부 개선을 진행해주세요. 원본 입력의 주제와 분야를 유지하면서 답변 정보를 반영해주세요.`;
+    
+    return prompt;
+}
+
+function buildExpertQuestionPrompt(userInput, internalImprovedPrompt, round) {
+    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
+    
+    if (internalImprovedPrompt) {
+        prompt += `현재 개선된 상태: "${internalImprovedPrompt}"\n\n`;
+    }
+    
+    prompt += `${round}차 심층 질문을 생성해주세요. 이전 질문들과 중복되지 않는 새로운 관점에서 질문해주세요.`;
+    
+    return prompt;
+}
+
+function buildFinalImprovementPrompt(userInput, questions, answers, isExpertMode, internalImprovedPrompt = '') {
+    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
+    
+    if (internalImprovedPrompt) {
+        prompt += `내부 개선된 프롬프트: "${internalImprovedPrompt}"\n\n`;
+    }
+    
+    if (answers) {
+        prompt += `모든 사용자 답변들:\n${formatAnswersForPrompt(answers)}\n\n`;
+    }
+    
+    prompt += `위 모든 정보를 종합하여 ${isExpertMode ? '전문가급' : '고품질'}의 최종 프롬프트를 생성해주세요.`;
+    
+    return prompt;
+}
+
+function formatAnswersForPrompt(answers) {
+    if (typeof answers === 'string') {
+        return answers;
+    }
+    
+    if (typeof answers === 'object') {
+        return Object.entries(answers)
+            .map(([index, answerData]) => {
                 if (typeof answerData === 'object' && answerData.answers) {
                     const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
                     const requestText = answerData.request ? `\n요청사항: ${answerData.request}` : '';
-                    prompt += `Q: ${question}\nA: ${answerText}${requestText}\n\n`;
+                    return `답변 ${parseInt(index) + 1}: ${answerText}${requestText}`;
                 } else {
                     const answerText = Array.isArray(answerData) ? answerData.join(', ') : answerData;
-                    prompt += `Q: ${question}\nA: ${answerText}\n\n`;
+                    return `답변 ${parseInt(index) + 1}: ${answerText}`;
                 }
-            });
-        }
+            })
+            .join('\n\n');
     }
     
-    prompt += `위 정보를 바탕으로 원본 프롬프트를 ${isExpertMode ? '전문가급으로' : '효율적으로'} 개선해주세요.
-
-개선된 프롬프트만 응답해주세요:`;
-    
-    return prompt;
+    return String(answers);
 }
