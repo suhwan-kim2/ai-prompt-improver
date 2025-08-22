@@ -219,14 +219,18 @@ async function expertModeProcess() {
     }
 }
 
-// ✅ 수정된 API 호출 함수 - JSON 파싱 오류 해결
+
+// ✅ 수정된 API 호출 함수 - 오류 처리 강화
 async function callAPI(step, data) {
     try {
-        console.log('=== API 호출 ===');
+        console.log('=== API 호출 시작 ===');
         console.log('Step:', step);
         console.log('Data:', data);
         
-        const response = await fetch('/api/improve-prompt', {
+        // API 경로 확인 - Vercel 환경에 맞게 수정
+        const apiUrl = '/api/improve-prompt';
+        
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -237,21 +241,27 @@ async function callAPI(step, data) {
             })
         });
 
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+
         if (!response.ok) {
-            throw new Error('서버 오류: ' + response.status);
+            const errorText = await response.text();
+            console.error('서버 응답 오류:', response.status, errorText);
+            throw new Error(`서버 오류 (${response.status}): ${errorText}`);
         }
 
         const result = await response.json();
         
         if (!result.success) {
+            console.error('API 결과 오류:', result.error);
             throw new Error(result.error || 'API 호출 실패');
         }
 
-        console.log('=== API 응답 ===');
+        console.log('=== API 응답 성공 ===');
         console.log('Result type:', typeof result.result);
-        console.log('Result preview:', result.result.substring(0, 100));
+        console.log('Result preview:', result.result?.substring ? result.result.substring(0, 100) : result.result);
 
-        // ✅ 정확한 JSON 파싱 조건
+        // ✅ JSON 파싱 로직 개선
         if (step === 'questions' || step === 'questions-round-1' || step === 'questions-round-2') {
             try {
                 let jsonStr = result.result.trim();
@@ -271,7 +281,9 @@ async function callAPI(step, data) {
             } catch (e) {
                 console.error('JSON 파싱 실패:', e);
                 console.error('원본 응답:', result.result);
-                return []; // 빈 배열 반환으로 직접 개선 진행
+                
+                // 폴백: 기본 질문 생성
+                return generateFallbackQuestions(data.userInput);
             }
         }
         
@@ -289,7 +301,7 @@ async function callAPI(step, data) {
             } catch (e) {
                 console.error('평가 JSON 파싱 실패:', e);
                 return {
-                    score: 85,
+                    score: 75,
                     strengths: ['기본적인 개선 완료'],
                     improvements: ['더 구체적인 요구사항 필요'],
                     recommendation: '현재 수준에서 사용 가능'
@@ -297,13 +309,49 @@ async function callAPI(step, data) {
             }
         }
         
-        // 일반 텍스트 응답 (개선된 프롬프트 등)
+        // 일반 텍스트 응답
         return result.result;
         
     } catch (error) {
-        console.error('API 호출 오류:', error);
-        throw error;
+        console.error('=== API 호출 오류 ===', error);
+        
+        // 사용자 친화적 오류 메시지
+        let errorMessage = '서비스 연결에 문제가 있습니다.';
+        
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage = '네트워크 연결을 확인해주세요.';
+        } else if (error.message.includes('500')) {
+            errorMessage = '서버 내부 오류가 발생했습니다.';
+        } else if (error.message.includes('404')) {
+            errorMessage = 'API 경로를 찾을 수 없습니다.';
+        }
+        
+        throw new Error(errorMessage);
     }
+}
+
+// 폴백 질문 생성 함수
+function generateFallbackQuestions(userInput) {
+    const basicQuestions = [
+        {
+            question: "어떤 스타일을 원하시나요?",
+            type: "choice",
+            options: ["현실적", "만화적", "예술적", "기타"]
+        },
+        {
+            question: "주요 색상이나 톤을 알려주세요.",
+            type: "choice", 
+            options: ["밝은 톤", "어두운 톤", "무채색", "기타"]
+        },
+        {
+            question: "크기나 해상도 요구사항이 있나요?",
+            type: "choice",
+            options: ["고해상도", "일반", "모바일용", "기타"]
+        }
+    ];
+    
+    console.log('폴백 질문 사용:', basicQuestions);
+    return basicQuestions;
 }
 
 // 질문 표시 함수
