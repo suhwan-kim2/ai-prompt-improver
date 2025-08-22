@@ -125,7 +125,6 @@ async function improvePrompt() {
 // AI 질문 생성
 async function generateAIQuestions(userInput, round) {
     try {
-        // 이전 답변들을 문맥으로 제공 (중복 방지용)
         const previousQuestionsContext = currentQuestions.map(function(q, index) {
             return 'Q' + (index + 1) + ': ' + q.question;
         }).join('\n');
@@ -133,9 +132,13 @@ async function generateAIQuestions(userInput, round) {
         const previousAnswersContext = Object.entries(currentAnswers)
             .map(function(entry) {
                 const answerData = entry[1];
-                const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
-                const requestText = answerData.request ? ' (요청: ' + answerData.request + ')' : '';
-                return answerText + requestText;
+                if (typeof answerData === 'object' && answerData.answers) {
+                    const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
+                    const requestText = answerData.request ? ' (요청: ' + answerData.request + ')' : '';
+                    return answerText + requestText;
+                } else {
+                    return Array.isArray(answerData) ? answerData.join(', ') : answerData;
+                }
             })
             .join('\n');
 
