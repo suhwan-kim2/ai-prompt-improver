@@ -13,6 +13,44 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+}
+
+// 간단한 완성도 분석 함수 (AI 없이)
+function analyzeCompleteness(userInput) {
+  const input = userInput.toLowerCase();
+  let completeness = 0;
+  let missingInfo = [];
+  let providedInfo = [];
+  
+  // 기본 요소들 체크
+  const elements = {
+    '주제': /(그림|이미지|영상|글|웹사이트|앱)/,
+    '스타일': /(실사|애니메이션|3d|일러스트|사실적)/,
+    '크기': /(\d+\s*(초|분|px|cm)|크기|해상도)/,
+    '색상': /(빨간|파란|노란|밝은|어두운|색상|컬러)/,
+    '목적': /(광고|교육|홍보|설명|용도)/,
+    '대상': /(아이|어른|학생|고객|사용자)/
+  };
+  
+  Object.entries(elements).forEach(([key, pattern]) => {
+    if (input.match(pattern)) {
+      completeness += 15;
+      providedInfo.push(key);
+    } else {
+      missingInfo.push(key);
+    }
+  });
+  
+  // 세부 정보 보너스
+  if (input.match(/\d+/)) completeness += 10; // 수치 포함
+  if (input.length > 50) completeness += 10; // 상세한 설명
+  
+  return {
+    completeness: Math.min(100, completeness),
+    missing_info: missingInfo,
+    already_provided: providedInfo
+  };
+}
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'POST 방식만 허용됩니다' });
@@ -91,13 +129,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // 한국어 응답 검증 함수
+    // 한국어 응답 검증 함수 (완화된 버전)
     function isKoreanResponse(text) {
-      const englishPattern = /\b(what|how|when|where|why|which|hello|hi|thank|please|yes|no)\b/i;
-      if (englishPattern.test(text)) return false;
+      // 너무 엄격한 영어 체크를 완화
+      const problematicEnglish = /\b(hello|hi|thank you|please|sorry|goodbye)\b/i;
+      if (problematicEnglish.test(text)) return false;
       
       const koreanRatio = (text.match(/[가-힣]/g) || []).length / text.length;
-      return koreanRatio > 0.3; // 30% 이상이 한국어여야 함
+      return koreanRatio > 0.2; // 20%로 완화 (JSON 등 고려)
     }
 
     // 1단계: 스마트 질문 생성
@@ -113,38 +152,47 @@ export default async function handler(req, res) {
         console.log('감지된 도메인:', detectedDomains);
         console.log('언급된 정보:', mentionedInfo);
 
-        // OpenAI를 통한 질문 생성
+        // OpenAI를 통한 진짜 AI 질문 생성
         const questionPrompt = [
           {
             role: 'system',
             content: `${KOREAN_ENFORCER}
 
-당신은 한국어 프롬프트 개선 전문가입니다.
-사용자의 요청을 분석해서 더 구체적이고 고품질의 결과물을 만들기 위한 핵심 질문들을 생성해주세요.
+당신은 프롬프트 분석 전문가입니다. 사용자의 요청을 분석해서 고품질 결과물을 위해 **정말 필요한 정보만** 질문하세요.
 
-도메인 정보: ${JSON.stringify(detectedDomains)}
-이미 언급된 정보: ${JSON.stringify(mentionedInfo)}
+핵심 원칙:
+1. 이미 충분한 정보가 있으면 질문하지 마세요 (0개도 가능)
+2. 부족한 정보가 많으면 많이 질문하세요 (15개도 가능)  
+3. 절대 하드코딩된 질문 사용 금지
+4. 사용자가 이미 말한 내용은 다시 묻지 마세요
+5. 반드시 한국어로만 질문
 
-질문 생성 규칙:
-1. 반드시 한국어로만 질문 생성
-2. 이미 언급된 정보는 다시 묻지 않기
-3. 감지된 도메인에 적합한 전문적 질문
-4. 구체적이고 실용적인 질문
-5. 정확히 8개의 질문 생성
+정보 완성도 평가 기준:
+- 90% 이상 완성: 질문 0-2개
+- 70-90% 완성: 질문 3-5개  
+- 50-70% 완성: 질문 6-8개
+- 50% 미만 완성: 질문 9개 이상
 
 응답 형식 (JSON):
 {
+  "analysis": {
+    "completeness": 85,
+    "missing_info": ["해상도", "카메라앵글"], 
+    "already_provided": ["길이", "스타일", "주제", "음악"]
+  },
   "questions": [
-    "질문 1",
-    "질문 2",
-    ...
-    "질문 8"
+    "정말 필요한 질문만"
   ]
 }`
           },
           {
             role: 'user',
-            content: `사용자 요청: "${userInput}"\n\n이 요청을 개선하기 위한 핵심 질문 8개를 한국어로 생성해주세요.`
+            content: `사용자 요청 분석해주세요:
+
+"${userInput}"
+
+위 요청의 완성도를 평가하고, 95점 결과물을 위해 정말 필요한 정보만 질문해주세요.
+이미 제공된 정보는 다시 묻지 마세요.`
           }
         ];
 
@@ -153,24 +201,41 @@ export default async function handler(req, res) {
         try {
           const parsedResult = JSON.parse(result);
           
-          // 질문 최적화
-          const optimizer = new QuestionOptimizer();
-          const optimizedQuestions = optimizer.optimize(
-            parsedResult.questions, 
-            mentionedInfo, 
-            detectedDomains,
-            mode === 'expert' ? 12 : 8
-          );
+          console.log('AI 분석 결과:', parsedResult.analysis);
+          console.log('생성된 질문들:', parsedResult.questions);
+          
+          // AI가 분석한 완성도에 따라 질문 개수 결정
+          const questions = parsedResult.questions || [];
+          
+          if (questions.length === 0) {
+            console.log('AI 판단: 추가 질문 불필요');
+          }
           
           return res.json({
-            questions: optimizedQuestions,
+            questions: questions,
+            analysis: parsedResult.analysis,
             domains: detectedDomains,
-            mentioned: mentionedInfo
+            mentioned: mentionedInfo,
+            ai_mode: true
           });
           
         } catch (parseError) {
-          console.log('JSON 파싱 실패, 폴백 질문 사용');
-          throw parseError;
+          console.log('JSON 파싱 실패, 간단한 분석으로 대체');
+          
+          // AI가 실패하면 간단한 로직으로 판단
+          const simpleAnalysis = this.analyzeCompleteness(userInput);
+          
+          if (simpleAnalysis.completeness > 80) {
+            // 80% 이상 완성도면 질문 최소화
+            return res.json({
+              questions: [],
+              analysis: simpleAnalysis,
+              message: "충분한 정보가 제공되어 바로 개선 가능합니다."
+            });
+          } else {
+            // 부족하면 폴백 질문 사용
+            throw parseError;
+          }
         }
 
       } catch (error) {
@@ -189,32 +254,41 @@ export default async function handler(req, res) {
 
 당신은 세계 최고 수준의 프롬프트 엔지니어링 전문가입니다.
 
-목표: 95점 이상의 전문가급 프롬프트를 한국어로 생성
+목표: 95점 이상의 전문가급 영상 제작 프롬프트를 한국어로 생성
+
+95점 달성 기준:
+1. 구체적 기술 사양 (해상도, fps, 코덱 등)
+2. 정확한 수치 정보 (시간, 크기, 비율 등)  
+3. 카메라 워크 세부사항 (앵글, 무빙, 초점 등)
+4. 조명/색보정 구체적 지시
+5. 편집 스타일 명확한 정의
+6. 오디오 기술 사양 포함
+7. 불필요한 감정 표현 제거
+8. 실행 가능한 구체성
 
 개선 원칙:
-1. 반드시 한국어로만 답변
-2. 정보밀도 극대화 (구체적 수치, 재질, 위치 포함)
-3. 구체적이고 상세한 묘사
-4. 전문 용어 적절히 활용
-5. 품질/스타일/기술적 요구사항 명시
-6. 불필요한 감정 표현 제거
-7. 실행 가능한 수준의 구체성
+- "감동적이고 따뜻한" → 삭제 (감정 표현 불필요)
+- "30초 이하" → "정확히 25-30초"
+- "큰 리트리버" → "골든 리트리버 (체고 60cm)"
+- "밝고 화사한" → "색온도 5600K, 채도 +20%"
+- "감정적인 음악" → "오케스트라 배경음악, -23 LUFS"
 
 응답 형식 (JSON):
 {
-  "improved_prompt": "개선된 프롬프트",
+  "improved_prompt": "기술적으로 구체적인 95점 프롬프트",
   "score": 95,
-  "improvements": ["개선 포인트 1", "개선 포인트 2", "개선 포인트 3"]
+  "improvements": ["개선사항1", "개선사항2", "개선사항3"]
 }`
           },
           {
             role: 'user',
             content: `원본 요청: "${userInput}"
 
-추가 정보:
+사용자 추가 정보:
 ${answers.map((answer, index) => `${index + 1}. ${answer}`).join('\n')}
 
-이 정보를 바탕으로 95점 이상의 전문가급 프롬프트로 개선해주세요.`
+위 정보를 바탕으로 95점 이상의 전문가급 영상 제작 프롬프트로 개선해주세요. 
+구체적인 기술 사양과 수치를 포함하고, 불필요한 감정 표현은 제거해주세요.`
           }
         ];
 
@@ -270,25 +344,45 @@ function handleFallbackMode(step, userInput, answers, res) {
   }
 }
 
-// 폴백 질문 생성
+// 폴백 질문 생성 (AI 실패시에만 사용)
 function handleFallbackQuestions(userInput, res) {
-  const mentionExtractor = new MentionExtractor();
-  const mentionedInfo = mentionExtractor.extract(userInput);
+  console.log('AI 실패로 폴백 모드 실행');
   
-  const slotSystem = new SlotSystem();
-  const detectedDomains = slotSystem.detectDomains(userInput);
+  // 간단한 완성도 분석
+  const analysis = analyzeCompleteness(userInput);
   
-  // 도메인별 기본 질문들
-  const fallbackQuestions = slotSystem.generateFallbackQuestions(detectedDomains, mentionedInfo);
+  if (analysis.completeness > 75) {
+    // 충분한 정보가 있으면 질문 없이 바로 개선 단계로
+    return res.json({
+      questions: [],
+      analysis: analysis,
+      message: "충분한 정보가 제공되어 추가 질문 없이 개선이 가능합니다.",
+      mode: 'fallback_skip'
+    });
+  }
   
-  const optimizer = new QuestionOptimizer();
-  const optimizedQuestions = optimizer.optimize(fallbackQuestions, mentionedInfo, detectedDomains, 8);
+  // 정말 필요한 질문만 최소한으로
+  const criticalQuestions = [];
+  
+  if (!analysis.already_provided.includes('크기')) {
+    criticalQuestions.push("크기나 해상도 요구사항이 있나요?");
+  }
+  
+  if (!analysis.already_provided.includes('목적')) {
+    criticalQuestions.push("주요 용도나 목적이 무엇인가요?");
+  }
+  
+  if (!analysis.already_provided.includes('대상')) {
+    criticalQuestions.push("누가 사용하거나 볼 예정인가요?");
+  }
+  
+  // 최대 3개까지만
+  const finalQuestions = criticalQuestions.slice(0, 3);
   
   return res.json({
-    questions: optimizedQuestions,
-    domains: detectedDomains,
-    mentioned: mentionedInfo,
-    mode: 'fallback'
+    questions: finalQuestions,
+    analysis: analysis,
+    mode: 'fallback_minimal'
   });
 }
 
