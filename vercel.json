@@ -1,16 +1,4 @@
 {
   "version": 2,
-  "name": "ai-prompt-improver",
-  "builds": [
-    {
-      "src": "public/**/*",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/public/$1"
-    }
-  ]
+  "name": "ai-prompt-improver"
 }
