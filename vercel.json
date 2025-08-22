@@ -1,23 +1,8 @@
-
 {
   "version": 2,
-  "name": "ai-prompt-improver"
-}
-
-
-
-
-
-{
   "functions": {
     "api/*.js": {
       "runtime": "@vercel/node"
     }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    }
-  ]
+  }
 }
