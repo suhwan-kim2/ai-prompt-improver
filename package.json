@@ -1,11 +1,30 @@
 {
   "name": "ai-prompt-improver",
   "version": "1.0.0",
-  "description": "AI 프롬프트 개선기 - API 버전",
+  "description": "AI 프롬프트 개선기 - 한글 입력을 고품질 프롬프트로 변환",
+  "main": "index.js",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "build": "echo 'Static files ready'",
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "keywords": [
+    "ai",
+    "prompt",
+    "korean",
+    "improvement",
+    "vercel"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suhwan-kim2/ai-prompt-improver"
   }
 }
