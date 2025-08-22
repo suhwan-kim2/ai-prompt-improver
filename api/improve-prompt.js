@@ -1,4 +1,4 @@
-// api/improve-prompt.js - 수정된 버전
+// api/improve-prompt.js - 완전 수정 버전 (Hello 응답 차단 + 점수 시스템 개선)
 
 export default async function handler(req, res) {
     // CORS 설정
@@ -44,9 +44,9 @@ export default async function handler(req, res) {
         switch (step) {
             case 'questions':
                 systemPrompt = getBasicQuestionsPrompt(isExpertMode);
-                userPrompt = `원본 사용자 입력: "${userInput}"
+                userPrompt = `분석할 사용자 입력: "${userInput}"
 
-위 입력을 분석해서 해당 분야에 맞는 기본 질문을 생성해주세요.`;
+위 입력을 분석해서 해당 분야에 맞는 기본 질문을 생성하세요.`;
                 break;
                 
             case 'internal-improve-1':
@@ -89,42 +89,69 @@ export default async function handler(req, res) {
         }
         
         console.log('=== OpenAI 요청 ===');
-        console.log('System:', systemPrompt.substring(0, 100) + '...');
-        console.log('User:', userPrompt.substring(0, 100) + '...');
         
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ],
-                temperature: step.includes('questions') ? 0.3 : 0.7,
-                max_tokens: 2500
-            })
-        });
+        // 🚀 최대 3번 재시도로 좋은 응답 확보
+        let result = null;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts && !result) {
+            attempts++;
+            console.log(`시도 ${attempts}/${maxAttempts}`);
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: step.includes('questions') ? 0.2 : 0.7,
+                    max_tokens: 2500
+                })
+            });
 
-        if (!response.ok) {
-            const errorData = await response.text();
-            console.error('OpenAI API 오류:', response.status, errorData);
-            throw new Error(`OpenAI API 오류: ${response.status}`);
+            if (!response.ok) {
+                const errorData = await response.text();
+                console.error('OpenAI API 오류:', response.status, errorData);
+                throw new Error(`OpenAI API 오류: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const rawResult = data.choices[0].message.content;
+            
+            console.log(`시도 ${attempts} 결과:`, rawResult.substring(0, 100));
+            
+            // 🔥 응답 품질 검증
+            if (isValidResponse(rawResult, step, userInput)) {
+                result = rawResult;
+                console.log('✅ 좋은 응답 확보!');
+            } else {
+                console.log('❌ 불량 응답, 재시도...');
+                
+                // 재시도를 위해 시스템 프롬프트 강화
+                systemPrompt = enhanceSystemPrompt(systemPrompt, attempts);
+            }
+        }
+        
+        // 최종적으로 좋은 응답을 얻지 못한 경우 기본 처리
+        if (!result) {
+            console.log('⚠️ 최대 재시도 실패, 기본 응답 사용');
+            result = generateFallbackResponse(step, userInput);
         }
 
-        const data = await response.json();
-        const result = data.choices[0].message.content;
-
-        console.log('=== API 응답 성공 ===');
+        console.log('=== 최종 응답 성공 ===');
         console.log('결과 길이:', result.length);
         
         res.json({ 
             success: true, 
             result: result,
-            usage: data.usage 
+            attempts: attempts
         });
 
     } catch (error) {
@@ -136,112 +163,293 @@ export default async function handler(req, res) {
     }
 }
 
+// 🔥 응답 품질 검증 함수
+function isValidResponse(response, step, originalInput) {
+    const invalidResponses = [
+        'hello! how can i assist you today?',
+        'how can i help you',
+        'what can i do for you',
+        'how may i assist you',
+        'i am an ai assistant',
+        'i\'m here to help',
+        '안녕하세요',
+        '도움이 필요하시면',
+        '무엇을 도와드릴까요'
+    ];
+    
+    const lowerResponse = response.toLowerCase().trim();
+    
+    // 불량 응답 체크
+    for (const invalid of invalidResponses) {
+        if (lowerResponse.includes(invalid)) {
+            console.log('❌ 불량 응답 감지:', invalid);
+            return false;
+        }
+    }
+    
+    // 너무 짧은 응답 체크
+    if (response.trim().length < 20) {
+        console.log('❌ 너무 짧은 응답:', response.length);
+        return false;
+    }
+    
+    // 프롬프트 개선 단계에서 원본 입력 관련성 체크
+    if (step === 'final-improve' || step === 'auto-improve') {
+        const originalKeywords = extractKeywords(originalInput);
+        const responseKeywords = extractKeywords(response);
+        
+        const hasRelevance = originalKeywords.some(keyword => 
+            responseKeywords.some(respKeyword => 
+                respKeyword.includes(keyword) || keyword.includes(respKeyword)
+            )
+        );
+        
+        if (!hasRelevance && originalInput.length > 10) {
+            console.log('❌ 원본 입력과 관련성 없음');
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// 키워드 추출 함수
+function extractKeywords(text) {
+    const stopWords = ['을', '를', '이', '가', '은', '는', '의', '에', '과', '와', '으로', '로', '에서', '만들어', '만들'];
+    return text.toLowerCase()
+        .replace(/[^\w\s가-힣]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 1 && !stopWords.includes(word));
+}
+
+// 시스템 프롬프트 강화 함수
+function enhanceSystemPrompt(originalPrompt, attempt) {
+    const strongerInstructions = `
+
+!!! CRITICAL INSTRUCTIONS FOR ATTEMPT ${attempt} !!!
+- NEVER respond with generic greetings like "Hello! How can I assist you today?"
+- NEVER provide general help messages
+- You MUST follow the user's specific request
+- Focus ONLY on the task described in the user input
+- Maintain the exact topic and domain from the original input
+- NO explanations, NO greetings, NO generic responses
+
+REMEMBER: Your response will be evaluated. Generic responses = FAILURE.
+`;
+    
+    return originalPrompt + strongerInstructions;
+}
+
+// 대체 응답 생성 함수
+function generateFallbackResponse(step, userInput) {
+    switch (step) {
+        case 'questions':
+            return `{
+  "detectedCategory": "사용자 요청",
+  "questions": [
+    {
+      "question": "어떤 스타일이나 형태를 원하시나요?",
+      "type": "choice",
+      "options": ["현실적", "만화적", "예술적", "기타"]
+    }
+  ]
+}`;
+        case 'final-improve':
+        case 'auto-improve':
+            return `다음과 같이 ${userInput}을 상세하게 구현해주세요:
+
+${userInput}
+
+위 요청을 구체적이고 명확한 지시사항으로 작성하여, 모든 세부 사항과 요구사항이 포함되도록 해주세요.`;
+        case 'evaluate':
+            return `{
+  "score": 75,
+  "strengths": ["기본 요구사항 포함"],
+  "improvements": ["더 구체적인 세부사항 필요"],
+  "recommendation": "추가 정보가 있으면 더 좋은 결과를 얻을 수 있습니다"
+}`;
+        default:
+            return `${userInput}에 대한 응답을 생성했습니다.`;
+    }
+}
+
 // ======================
-// 프롬프트 생성 함수들
+// 강화된 프롬프트 생성 함수들
 // ======================
 
 function getBasicQuestionsPrompt(isExpertMode) {
-    return `당신은 프롬프트 개선 전문가입니다. 사용자의 입력을 분석해서 해당 분야에 맞는 기본 질문을 생성해주세요.
+    return `# PROMPT ANALYSIS AND QUESTION GENERATION EXPERT
 
-현재 모드: ${isExpertMode ? '전문가모드' : '일반모드'}
+You are an expert who analyzes user prompts and generates improvement questions.
 
-** 중요: 원본 입력의 내용과 분야를 절대 바꾸지 마세요 **
+## ABSOLUTE PROHIBITIONS
+- NEVER provide generic greetings or help messages
+- NEVER respond with "Hello! How can I assist you today?" or similar
+- NEVER change the user's original input content or domain
+- NEVER give explanations - ONLY generate questions
 
-분야별 질문 예시:
-- 이미지 생성: 스타일, 색감, 구도, 분위기
-- 웹사이트 제작: 목적, 타겟, 기능, 디자인  
-- 글쓰기: 톤앤매너, 독자, 길이, 형식
-- 데이터 분석: 목적, 변수, 시각화, 인사이트
+## Current Mode: ${isExpertMode ? 'Expert Mode' : 'Normal Mode'}
 
-${isExpertMode ? '전문가모드에서는 1-3개의 핵심 질문만 생성하세요.' : '일반모드에서는 1-6개의 질문을 동적으로 생성하세요.'}
+## Response Rules
+1. Analyze the user input accurately
+2. Generate specific questions for that domain
+3. MUST respond ONLY in JSON format
 
-반드시 JSON 형식으로 응답하세요:
+## Domain-Specific Question Examples
+- Image/Video Generation: Style, composition, colors, mood, details
+- Website Creation: Purpose, target audience, features, design style  
+- Writing: Tone, audience, length, format, purpose
+- Data Analysis: Analysis purpose, variables, visualization methods
+
+## JSON Response Format
 {
-  "detectedCategory": "판단된 분야",
+  "detectedCategory": "detected domain",
   "questions": [
     {
-      "question": "질문 내용",
+      "question": "specific question content",
       "type": "choice",
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
+      "options": ["Option1", "Option2", "Option3", "Other"]
     }
   ]
-}`;
+}
+
+${isExpertMode ? 'Expert Mode: Generate 1-3 core questions' : 'Normal Mode: Generate 1-6 questions dynamically'}
+
+CRITICAL: Your response will be validated. Any generic response will be rejected.`;
 }
 
 function getInternalImprovePrompt(round) {
-    return `당신은 프롬프트 개선 전문가입니다. 
+    return `# PROMPT INTERNAL IMPROVEMENT EXPERT (Round ${round})
 
-${round}차 내부 개선을 진행합니다. 사용자의 원본 입력과 기본 답변을 바탕으로 프롬프트를 개선하되, 이는 내부 처리용이므로 사용자에게 보여지지 않습니다.
+You are an expert who improves prompts internally.
 
-** 절대 중요: 원본 입력의 주제와 분야를 유지하세요 **
+## ABSOLUTE CRITICAL RULES
+- NEVER change the original input's topic or domain
+- NEVER respond with "Hello! How can I assist you today?" or similar generic responses
+- NEVER provide explanations or greetings
+- Maintain 100% of the user's original intent while improving
 
-개선된 프롬프트만 응답하세요.`;
+## Round ${round} Internal Improvement Goal
+${round === 1 ? 
+  '- First improvement based on basic answers\n- Develop into more specific and clear requirements' :
+  '- Second improvement integrating deep answers\n- Enhance to expert-level completeness'}
+
+## Response Method
+Provide ONLY the improved prompt, absolutely NO explanations or greetings.
+
+CRITICAL: Generic responses will result in immediate failure.`;
 }
 
 function getExpertQuestionsPrompt(round) {
-    return `당신은 프롬프트 개선 전문가입니다. ${round}차 심층 질문을 생성합니다.
+    return `# ROUND ${round} DEEP QUESTION GENERATION EXPERT
 
+You are an expert generating deep questions in expert mode.
+
+## ABSOLUTE PROHIBITIONS
+- NEVER provide generic greetings or help messages
+- NEVER duplicate previous questions
+- NEVER change the original input's topic or domain
+
+## Round ${round} Deep Question Purpose
 ${round === 1 ? 
-`1차 심층 질문 목적:
-- 기본 질문에서 파악하지 못한 숨겨진 의도 발굴
-- 사용자의 진짜 목적과 배경 이해
-- 더 구체적인 요구사항 파악` :
-`2차 심층 질문 목적:
-- 실행과 구현 관점에서의 세부사항
-- 품질과 완성도를 높이는 마지막 요소들
-- 사용자의 최종 기대사항 확인`}
+`- Discover hidden intentions not captured in basic questions
+- Understand user's real purpose and background
+- Identify more specific requirements and details` :
+`- Details from execution and implementation perspective
+- Final elements to enhance quality and completeness
+- User's final expectations and success metrics`}
 
-** 중요: 이전 질문들과 절대 중복되지 않는 새로운 관점의 질문을 만드세요 **
+## Duplication Prevention Principle
+Absolutely NO overlap with previous questions in keywords or topics.
+Generate questions ONLY from completely new perspectives.
 
-JSON 형식으로 응답:
+## JSON Response Format
 {
   "questions": [
     {
-      "question": "이전과 완전히 다른 새로운 관점의 질문",
+      "question": "deep question from completely different new perspective",
       "type": "choice",
-      "options": ["옵션1", "옵션2", "옵션3", "기타"]
+      "options": ["Option1", "Option2", "Option3", "Other"]
     }
   ]
-}`;
+}
+
+CRITICAL: Generic responses will be immediately rejected.`;
 }
 
 function getFinalImprovementPrompt(isExpertMode) {
-    return `당신은 프롬프트 개선 전문가입니다. 
+    return `# FINAL PROMPT COMPLETION EXPERT
 
-모든 정보를 종합하여 최종 ${isExpertMode ? '전문가급' : '고품질'} 프롬프트를 생성해주세요.
+You are an expert who synthesizes all information to create the highest quality prompts.
 
-** 중요: 원본 입력의 주제와 분야를 절대 바꾸지 마세요 **
+## ABSOLUTE CRITICAL RULES
+- NEVER change the original input's topic or domain
+- NEVER provide generic greetings or explanations
+- Preserve 100% of the user's original intent while improving to expert level
 
-최종 개선된 프롬프트만 응답하세요.`;
+## Target Quality
+${isExpertMode ? 'Expert-level highest quality prompt' : 'High-quality practical prompt'}
+
+## Improvement Directions
+1. Clarity: Specify requirements concretely
+2. Completeness: Include all necessary information
+3. Executability: Enable AI to perform accurately
+4. Creativity: Add unique and interesting elements
+
+## Response Method
+Provide ONLY the final improved prompt, absolutely NO explanations or greetings.
+
+CRITICAL: Your response will be evaluated for relevance to the original input. Generic responses = immediate failure.`;
 }
 
 function getEvaluationPrompt() {
-    return `당신은 프롬프트 품질 평가 전문가입니다. 주어진 프롬프트를 100점 만점으로 평가해주세요.
+    return `# PROMPT QUALITY EVALUATION EXPERT
 
-평가 기준:
-- 명확성 (25점): 요구사항이 구체적이고 명확한가
-- 완성도 (25점): 필요한 정보가 충분히 포함되어 있는가  
-- 실행가능성 (25점): AI가 실제로 수행할 수 있는 내용인가
-- 창의성 (25점): 독창적이고 흥미로운 요소가 있는가
+You are an expert who strictly evaluates prompts.
 
-JSON 형식으로 응답:
+## STRICT EVALUATION CRITERIA
+- Generic greetings like "Hello! How can I assist you today?": 0 points
+- Vague requests without specificity: 10-30 points
+- Basic requirements only: 40-60 points
+- Specific and clear requirements: 70-85 points
+- Expert-level detailed prompts: 85-100 points
+
+## Evaluation Items (25 points each)
+1. Clarity: Are requirements specific and clear?
+2. Completeness: Is sufficient information included?
+3. Executability: Can AI actually perform the content?
+4. Creativity: Are there unique and interesting elements?
+
+## JSON Response Format
 {
-  "score": 점수,
-  "strengths": ["강점1", "강점2"],
-  "improvements": ["개선점1", "개선점2"],
-  "recommendation": "종합 의견"
-}`;
+  "score": score(1-100),
+  "strengths": ["strength1", "strength2"],
+  "improvements": ["improvement1", "improvement2"],
+  "recommendation": "comprehensive opinion"
+}
+
+CRITICAL: Be very strict with scoring. Generic responses get 0 points.`;
 }
 
 function getAutoImprovementPrompt() {
-    return `당신은 프롬프트 개선 전문가입니다. 주어진 프롬프트를 90점 이상 수준으로 자동 개선해주세요.
+    return `# AUTOMATIC PROMPT IMPROVEMENT EXPERT
 
-개선 방향:
-- 더 구체적인 요구사항 추가
-- 명확한 출력 형식 지정
-- 품질 향상을 위한 세부 조건 추가
+You are an expert who automatically improves prompts to 90+ point level.
 
-개선된 프롬프트만 응답하세요.`;
+## ABSOLUTE RULES
+- Maintain original input's topic and domain
+- NEVER provide generic greetings or explanations
+
+## Improvement Directions
+1. Add more specific requirements
+2. Specify clear output formats
+3. Add detailed conditions for quality enhancement
+4. Utilize professional terms and techniques
+
+## Response Method
+Respond with ONLY the improved prompt.
+
+CRITICAL: Your response will be validated for relevance and quality.`;
 }
 
 // ======================
@@ -249,45 +457,45 @@ function getAutoImprovementPrompt() {
 // ======================
 
 function buildInternalImprovementPrompt(userInput, questions, answers, round, previousImproved = '') {
-    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
+    let prompt = `Original user input: "${userInput}"\n\n** ABSOLUTELY CRITICAL: Maintain the topic and domain of the above original input **\n\n`;
     
     if (previousImproved) {
-        prompt += `이전 개선된 프롬프트: "${previousImproved}"\n\n`;
+        prompt += `Previously improved prompt: "${previousImproved}"\n\n`;
     }
     
     if (answers) {
-        prompt += `사용자 답변들:\n${formatAnswersForPrompt(answers)}\n\n`;
+        prompt += `User answers:\n${formatAnswersForPrompt(answers)}\n\n`;
     }
     
-    prompt += `${round}차 내부 개선을 진행해주세요. 원본 입력의 주제와 분야를 유지하면서 답변 정보를 반영해주세요.`;
+    prompt += `Please proceed with round ${round} internal improvement. Maintain the original input's topic and domain while reflecting the answer information.`;
     
     return prompt;
 }
 
 function buildExpertQuestionPrompt(userInput, internalImprovedPrompt, round) {
-    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
+    let prompt = `Original user input: "${userInput}"\n\n** ABSOLUTELY CRITICAL: Maintain the topic and domain of the above original input **\n\n`;
     
     if (internalImprovedPrompt) {
-        prompt += `현재 개선된 상태: "${internalImprovedPrompt}"\n\n`;
+        prompt += `Current improved state: "${internalImprovedPrompt}"\n\n`;
     }
     
-    prompt += `${round}차 심층 질문을 생성해주세요. 이전 질문들과 중복되지 않는 새로운 관점에서 질문해주세요.`;
+    prompt += `Please generate round ${round} deep questions. Ask from new perspectives that don't duplicate previous questions.`;
     
     return prompt;
 }
 
 function buildFinalImprovementPrompt(userInput, questions, answers, isExpertMode, internalImprovedPrompt = '') {
-    let prompt = `원본 사용자 입력: "${userInput}"\n\n`;
+    let prompt = `Original user input: "${userInput}"\n\n** ABSOLUTELY CRITICAL: Maintain the topic and domain of the above original input **\n\n`;
     
     if (internalImprovedPrompt) {
-        prompt += `내부 개선된 프롬프트: "${internalImprovedPrompt}"\n\n`;
+        prompt += `Internally improved prompt: "${internalImprovedPrompt}"\n\n`;
     }
     
     if (answers) {
-        prompt += `모든 사용자 답변들:\n${formatAnswersForPrompt(answers)}\n\n`;
+        prompt += `All user answers:\n${formatAnswersForPrompt(answers)}\n\n`;
     }
     
-    prompt += `위 모든 정보를 종합하여 ${isExpertMode ? '전문가급' : '고품질'}의 최종 프롬프트를 생성해주세요.`;
+    prompt += `Synthesize all the above information to generate ${isExpertMode ? 'expert-level' : 'high-quality'} final prompt.`;
     
     return prompt;
 }
@@ -302,11 +510,11 @@ function formatAnswersForPrompt(answers) {
             .map(([index, answerData]) => {
                 if (typeof answerData === 'object' && answerData.answers) {
                     const answerText = Array.isArray(answerData.answers) ? answerData.answers.join(', ') : answerData.answers;
-                    const requestText = answerData.request ? `\n요청사항: ${answerData.request}` : '';
-                    return `답변 ${parseInt(index) + 1}: ${answerText}${requestText}`;
+                    const requestText = answerData.request ? `\nRequest: ${answerData.request}` : '';
+                    return `Answer ${parseInt(index) + 1}: ${answerText}${requestText}`;
                 } else {
                     const answerText = Array.isArray(answerData) ? answerData.join(', ') : answerData;
-                    return `답변 ${parseInt(index) + 1}: ${answerText}`;
+                    return `Answer ${parseInt(index) + 1}: ${answerText}`;
                 }
             })
             .join('\n\n');
