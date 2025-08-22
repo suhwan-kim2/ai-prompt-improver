@@ -33,54 +33,62 @@ window.onload = function() {
 };
 
 // 모드 토글 함수
-if (isExpertMode) {
-    toggle.classList.add('active');
-    if (description) {
-        description.textContent = '전문가급 심층 의도 파악 (다단계 내부 개선)';
+function toggleMode() {
+    isExpertMode = !isExpertMode;
+    const toggle = document.getElementById('modeToggle');
+    const description = document.getElementById('modeDescription');
+    const guideTitle = document.getElementById('guideTitle');
+    const guideSteps = document.getElementById('guideSteps');
+    
+    if (isExpertMode) {
+        toggle.classList.add('active');
+        if (description) {
+            description.textContent = '전문가급 심층 의도 파악 (다단계 내부 개선)';
+        }
+        if (guideTitle) {
+            guideTitle.textContent = '🎯 전문가모드 사용법';
+        }
+        if (guideSteps) {
+            guideSteps.innerHTML = 
+                '<div class="step">' +
+                    '<span class="step-number">1️⃣</span>' +
+                    '<span class="step-text">원하는 작업을 상세히 입력</span>' +
+                '</div>' +
+                '<div class="step">' +
+                    '<span class="step-number">2️⃣</span>' +
+                    '<span class="step-text">기본 질문 → 1차 내부개선 → 심층질문1</span>' +
+                '</div>' +
+                '<div class="step">' +
+                    '<span class="step-number">3️⃣</span>' +
+                    '<span class="step-text">2차 내부개선 → 심층질문2 → 최종 전문가급 완성</span>' +
+                '</div>';
+        }
+        maxRounds = 3;
+    } else {
+        toggle.classList.remove('active');
+        if (description) {
+            description.textContent = '빠르고 간편한 프롬프트 개선 (1회 질문)';
+        }
+        if (guideTitle) {
+            guideTitle.textContent = '🚀 일반모드 사용법';
+        }
+        if (guideSteps) {
+            guideSteps.innerHTML = 
+                '<div class="step">' +
+                    '<span class="step-number">1️⃣</span>' +
+                    '<span class="step-text">원하는 작업을 한글로 입력</span>' +
+                '</div>' +
+                '<div class="step">' +
+                    '<span class="step-number">2️⃣</span>' +
+                    '<span class="step-text">AI 질문에 답변 (스킵 가능)</span>' +
+                '</div>' +
+                '<div class="step">' +
+                    '<span class="step-number">3️⃣</span>' +
+                    '<span class="step-text">개선된 프롬프트 바로 완성</span>' +
+                '</div>';
+        }
+        maxRounds = 1;
     }
-    if (guideTitle) {
-        guideTitle.textContent = '🎯 전문가모드 사용법';
-    }
-    if (guideSteps) {
-        guideSteps.innerHTML = 
-            '<div class="step">' +
-                '<span class="step-number">1️⃣</span>' +
-                '<span class="step-text">원하는 작업을 상세히 입력</span>' +
-            '</div>' +
-            '<div class="step">' +
-                '<span class="step-number">2️⃣</span>' +
-                '<span class="step-text">기본 질문 → 1차 내부개선 → 심층질문1</span>' +
-            '</div>' +
-            '<div class="step">' +
-                '<span class="step-number">3️⃣</span>' +
-                '<span class="step-text">2차 내부개선 → 심층질문2 → 최종 전문가급 완성</span>' +
-            '</div>';
-    }
-    maxRounds = 3;
-} else {
-    toggle.classList.remove('active');
-    if (description) {
-        description.textContent = '빠르고 간편한 프롬프트 개선 (1회 질문)';
-    }
-    if (guideTitle) {
-        guideTitle.textContent = '🚀 일반모드 사용법';
-    }
-    if (guideSteps) {
-        guideSteps.innerHTML = 
-            '<div class="step">' +
-                '<span class="step-number">1️⃣</span>' +
-                '<span class="step-text">원하는 작업을 한글로 입력</span>' +
-            '</div>' +
-            '<div class="step">' +
-                '<span class="step-number">2️⃣</span>' +
-                '<span class="step-text">AI 질문에 답변 (스킵 가능)</span>' +
-            '</div>' +
-            '<div class="step">' +
-                '<span class="step-number">3️⃣</span>' +
-                '<span class="step-text">개선된 프롬프트 바로 완성</span>' +
-            '</div>';
-    }
-    maxRounds = 1;
 }
 
 // 메인 프롬프트 개선 함수
