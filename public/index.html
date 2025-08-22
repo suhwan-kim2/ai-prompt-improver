@@ -3,150 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 프롬프트 개선기 v5.0 - 일반/전문가 모드</title>
-    <meta name="description" content="한글 입력을 AI가 더 잘 이해하는 고품질 프롬프트로 무료 개선. 일반모드와 전문가모드 지원">
+    <title>AI 프롬프트 개선기 - 구글처럼 간단하고 강력하게</title>
+    <meta name="description" content="한글 입력을 AI가 더 잘 이해하는 고품질 프롬프트로 무료 개선. 구글처럼 심플한 UI">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🤖 AI 프롬프트 개선기 v5.0</h1>
-        <p class="subtitle">일반모드와 전문가모드로 더욱 정밀한 프롬프트 개선!</p>
-        
-        <!-- 모드 토글 -->
-        <div class="mode-toggle">
-            <div class="toggle-container">
-                <span class="toggle-label">💨 일반모드</span>
-                <div class="toggle-switch" id="modeToggle" onclick="toggleMode()">
-                    <div class="toggle-slider"></div>
-                </div>
-                <span class="toggle-label">🎯 전문가모드</span>
+    <div class="google-container">
+        <!-- 헤더 영역 -->
+        <header class="header">
+            <div class="logo">
+                <h1>🤖 AI 프롬프트 개선기</h1>
+                <p class="tagline">한글로 입력하면 AI가 완벽하게 이해하는 프롬프트로 변환</p>
             </div>
-            <div class="mode-description" id="modeDescription">
-                빠르고 간편한 프롬프트 개선 (1-6개 질문)
-            </div>
-        </div>
+        </header>
         
-        <!-- 사용법 가이드 섹션 -->
-        <div class="how-to-use">
-            <h3 id="guideTitle">🚀 일반모드 사용법</h3>
-            <div class="steps" id="guideSteps">
-                <div class="step">
-                    <span class="step-number">1️⃣</span>
-                    <span class="step-text">원하는 작업을 한글로 입력</span>
+        <!-- 메인 검색 영역 (구글 스타일) -->
+        <main class="main-search">
+            <!-- 모드 토글 -->
+            <div class="mode-selector">
+                <div class="toggle-container">
+                    <span class="mode-label" data-mode="normal">💨 일반모드</span>
+                    <div class="toggle-switch" id="modeToggle" onclick="toggleMode()">
+                        <div class="toggle-slider"></div>
+                    </div>
+                    <span class="mode-label" data-mode="expert">🎯 전문가모드</span>
                 </div>
-                <div class="step">
-                    <span class="step-number">2️⃣</span>
-                    <span class="step-text">AI 질문에 답변 (스킵 가능)</span>
+                <div class="mode-description" id="modeDescription">
+                    빠르고 간편한 프롬프트 개선 (1회 질문)
                 </div>
-                <div class="step">
-                    <span class="step-number">3️⃣</span>
-                    <span class="step-text">개선된 프롬프트 완성</span>
-                </div>
-            </div>
-            <button class="guide-button" onclick="showDetailedGuide()">📖 자세한 사용법 보기</button>
-        </div>
-        
-        <!-- 메인 콘텐츠 -->
-        <div class="main-content">
-            <div style="margin-bottom: 20px;">
-                <textarea 
-                    class="search-textarea" 
-                    id="searchInput"
-                    placeholder="개선하고 싶은 프롬프트를 한글로 입력하세요...
-예시: '웹사이트 만들어줘', '이미지 생성해줘', '회사 보고서 써줘'"
-                ></textarea>
             </div>
             
-            <div style="text-align: center; margin-bottom: 20px;">
-                <button class="search-button" onclick="improvePrompt()">✨ AI 프롬프트 개선 시작</button>
-                <button class="search-button" onclick="clearResults()" style="background: #6c757d;">🗑️ 초기화</button>
+            <!-- 구글 스타일 검색창 -->
+            <div class="search-box">
+                <div class="search-input-container">
+                    <textarea 
+                        id="searchInput"
+                        class="search-input" 
+                        placeholder="개선하고 싶은 프롬프트를 한글로 입력하세요...
+예: '웹사이트 만들어줘', '이미지 생성해줘', '보고서 써줘'"
+                        rows="3"
+                    ></textarea>
+                    <div class="search-actions">
+                        <button class="search-btn primary" onclick="improvePrompt()">
+                            ✨ AI 개선 시작
+                        </button>
+                        <button class="search-btn secondary" onclick="clearResults()">
+                            🗑️ 초기화
+                        </button>
+                    </div>
+                </div>
             </div>
-        </div>
+            
+            <!-- 간단 가이드 -->
+            <div class="quick-guide">
+                <div class="guide-steps" id="guideSteps">
+                    <span class="step">1️⃣ 원하는 작업 입력</span>
+                    <span class="step">2️⃣ AI 질문에 답변</span>
+                    <span class="step">3️⃣ 개선된 프롬프트 완성</span>
+                </div>
+                <button class="guide-detail-btn" onclick="showDetailedGuide()">
+                    📖 자세한 사용법
+                </button>
+            </div>
+        </main>
         
         <!-- AI 질문 섹션 -->
-        <div class="ai-questions" id="aiQuestions" style="display: none;">
-            <h3>🤖 AI 질문 시스템</h3>
-            <div id="questionsContainer"></div>
-            
-            <!-- 질문 액션 버튼들 -->
-            <div class="questions-actions" id="questionsActions">
-                <button class="search-button" onclick="skipQuestions()">⏭️ 질문 건너뛰고 개선</button>
-                <button class="search-button" onclick="proceedWithAnswers()">✅ 답변 완료하고 개선</button>
+        <section class="ai-questions" id="aiQuestions" style="display: none;">
+            <div class="questions-header">
+                <h3>🤖 AI 질문 시스템</h3>
+                <p>더 정확한 개선을 위해 몇 가지 질문드릴게요</p>
             </div>
-        </div>
+            
+            <div class="questions-content">
+                <div id="questionsContainer"></div>
+                
+                <div class="questions-actions" id="questionsActions">
+                    <button class="action-btn skip" onclick="skipQuestions()">
+                        ⏭️ 질문 건너뛰고 바로 개선
+                    </button>
+                    <button class="action-btn proceed" onclick="proceedWithAnswers()">
+                        ✅ 답변 완료하고 개선하기
+                    </button>
+                </div>
+            </div>
+        </section>
         
         <!-- 결과 섹션 -->
-        <div class="result-section" id="improvedResult" style="display: none;">
-            <h3 style="text-align: center; margin-bottom: 20px;">✨ 개선된 프롬프트</h3>
-            <div style="background: #f8f9fa; border-radius: 15px; padding: 25px; margin-bottom: 20px;">
-                <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
-                    <h4 style="color: #333; margin-bottom: 10px;">📝 원본 입력</h4>
-                    <div id="originalText" style="line-height: 1.6; color: #555;"></div>
+        <section class="result-section" id="improvedResult" style="display: none;">
+            <div class="result-header">
+                <h3>✨ 개선 완료!</h3>
+                <p>AI가 분석하고 개선한 결과입니다</p>
+            </div>
+            
+            <div class="result-content">
+                <div class="result-card original">
+                    <div class="card-header">
+                        <h4>📝 원본 입력</h4>
+                    </div>
+                    <div class="card-content">
+                        <div id="originalText"></div>
+                    </div>
                 </div>
-                <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #28a745;">
-                    <h4 style="color: #333; margin-bottom: 10px;">🚀 AI가 개선한 프롬프트</h4>
-                    <div id="improvedText" style="line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; color: #555;"></div>
+                
+                <div class="result-arrow">→</div>
+                
+                <div class="result-card improved">
+                    <div class="card-header">
+                        <h4>🚀 AI가 개선한 프롬프트</h4>
+                        <div class="score-badge" id="scoreBadge" style="display: none;">
+                            <span id="currentScore">--</span>점
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div id="improvedText"></div>
+                    </div>
                 </div>
             </div>
-            <div style="text-align: center;">
-                <button class="copy-button" onclick="copyToClipboard()">📋 개선된 프롬프트 복사</button>
-                <button class="save-button" onclick="saveToFavorites()">⭐ 즐겨찾기 저장</button>
+            
+            <div class="result-actions">
+                <button class="result-btn copy" onclick="copyToClipboard()">
+                    📋 개선된 프롬프트 복사
+                </button>
+                <button class="result-btn save" onclick="saveToFavorites()">
+                    ⭐ 즐겨찾기 저장
+                </button>
+                <button class="result-btn retry" onclick="improvePrompt()">
+                    🔄 다시 개선하기
+                </button>
             </div>
-        </div>
+        </section>
         
         <!-- 점수 개선 섹션 -->
-        <div class="score-improvement" id="scoreImprovement" style="display: none;">
-            <div class="score-display">
-                <h4>🎯 AI 품질 평가: <span id="currentScore">--</span>/100점</h4>
-            </div>
-            <div class="improvement-options">
-                <button class="search-button" onclick="requestAdditionalQuestions()" style="background: #ffc107; color: #212529;">
-                    📈 점수를 올리시려면? 추가질문 답변하기
-                </button>
-                <button class="search-button" onclick="acceptCurrentResult()" style="background: #28a745;">
-                    ✅ 현재 결과로 만족
-                </button>
-            </div>
-        </div>
-        
-        <!-- 추가 질문 섹션 -->
-        <div class="additional-questions" id="additionalQuestions" style="display: none;">
-            <h3>🔍 더 정밀한 개선을 위한 추가 질문</h3>
-            <div class="questions-container">
-                <div id="additionalQuestionsContainer"></div>
+        <section class="score-improvement" id="scoreImprovement" style="display: none;">
+            <div class="score-content">
+                <h4>🎯 품질 평가 완료</h4>
+                <div class="score-display">
+                    현재 점수: <span class="score-number" id="currentScore">--</span>/100점
+                </div>
+                <p class="score-message">더 높은 점수를 원하시면 추가 질문에 답변해보세요!</p>
                 
-                <div class="questions-actions">
-                    <button class="search-button" onclick="processAdditionalAnswers()">🚀 추가 답변으로 재개선</button>
-                    <button class="search-button" onclick="cancelAdditionalQuestions()" style="background: #6c757d;">❌ 취소</button>
+                <div class="score-actions">
+                    <button class="score-btn improve" onclick="requestAdditionalQuestions()">
+                        📈 점수 높이기 (추가 질문)
+                    </button>
+                    <button class="score-btn accept" onclick="acceptCurrentResult()">
+                        ✅ 현재 결과로 만족
+                    </button>
                 </div>
             </div>
-        </div>
+        </section>
         
         <!-- 상태 메시지 -->
-        <div id="statusMessage" style="display: none;"></div>
-        
-        <!-- 자세한 사용법 모달 -->
-        <div id="guideModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 id="modalTitle">📖 AI 프롬프트 개선기 v5.0 사용법</h2>
-                    <span class="close" onclick="closeDetailedGuide()">&times;</span>
-                </div>
-                <div class="modal-body" id="modalBody">
-                    <!-- 모달 내용은 JavaScript에서 동적 생성 -->
-                </div>
-                <div class="modal-footer">
-                    <button class="search-button" onclick="closeDetailedGuide()">시작하기</button>
-                </div>
-            </div>
-        </div>
+        <div class="status-message" id="statusMessage" style="display: none;"></div>
         
         <!-- 푸터 -->
-        <div class="footer">
-            <p>🚀 AI 프롬프트 개선기 v5.0 | 일반/전문가 모드 지원</p>
-            <p style="font-size: 12px; color: #999; margin-top: 5px;">
-                Made with ❤️ | 동적 질문 + 의도 파악 시스템
-            </p>
+        <footer class="footer">
+            <div class="footer-content">
+                <p>🚀 AI 프롬프트 개선기 v5.0</p>
+                <p class="footer-sub">일반/전문가 모드 지원 · Made with ❤️</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 자세한 사용법 모달 -->
+    <div id="guideModal" class="modal" style="display: none;">
+        <div class="modal-overlay" onclick="closeDetailedGuide()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">📖 AI 프롬프트 개선기 사용법</h2>
+                <button class="modal-close" onclick="closeDetailedGuide()">×</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- JavaScript에서 동적 생성 -->
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn" onclick="closeDetailedGuide()">시작하기</button>
+            </div>
         </div>
     </div>
 
