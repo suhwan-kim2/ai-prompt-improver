@@ -1,79 +1,67 @@
-// script.js - API 없이 임시로 동작하는 버전
+// script.js - 새로운 API 경로로 테스트
 
-// 🔥 API 대신 클라이언트에서 직접 처리
-async function callAPI(step, data) {
-    console.log('=== 클라이언트 처리 ===');
-    console.log('Step:', step);
+async function improvePrompt() {
+    const userInput = document.getElementById('searchInput').value.trim();
     
-    // API 호출 대신 클라이언트에서 직접 결과 생성
-    await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 딜레이로 로딩 효과
-    
-    if (step === 'questions') {
-        const userInput = data.userInput.toLowerCase();
-        let questions = [];
-        
-        if (userInput.includes('그림') || userInput.includes('이미지')) {
-            questions = [
-                {
-                    question: "어떤 스타일의 그림을 원하시나요?",
-                    type: "choice",
-                    options: ["사실적", "만화적", "3D", "수채화"]
-                },
-                {
-                    question: "주요 색상을 선택해주세요.",
-                    type: "choice",
-                    options: ["밝은 톤", "어두운 톤", "무채색", "화려한 색상"]
-                }
-            ];
-        } else if (userInput.includes('웹사이트') || userInput.includes('사이트')) {
-            questions = [
-                {
-                    question: "웹사이트의 주요 목적은?",
-                    type: "choice",
-                    options: ["회사 소개", "쇼핑몰", "포트폴리오", "블로그"]
-                },
-                {
-                    question: "디자인 스타일은?",
-                    type: "choice",
-                    options: ["모던", "클래식", "미니멀", "화려함"]
-                }
-            ];
-        } else {
-            questions = [
-                {
-                    question: "어떤 스타일을 원하시나요?",
-                    type: "choice",
-                    options: ["공식적", "친근한", "전문적", "창의적"]
-                },
-                {
-                    question: "주요 목적은?",
-                    type: "choice",
-                    options: ["업무용", "개인용", "교육용", "상업용"]
-                }
-            ];
-        }
-        
-        return questions;
-        
-    } else if (step === 'final-improve') {
-        return `다음과 같이 "${data.userInput}"을 상세하게 구현해주세요:
-
-주제: ${data.userInput}
-요구사항: 고품질, 전문적인 결과물
-세부사항: 사용자의 모든 답변을 반영한 완성도 높은 작품
-
-${data.answers ? '사용자 답변 반영:\n' + data.answers : ''}
-
-위 내용을 바탕으로 정확하고 완성도 높은 결과물을 제작해주세요.`;
-        
-    } else if (step === 'evaluate') {
-        return {
-            score: 85,
-            strengths: ["구체적인 요구사항 포함", "사용자 답변 반영"],
-            improvements: ["더 세부적인 기술 사양", "구체적인 수치 추가"],
-            recommendation: "좋은 품질의 프롬프트입니다!"
-        };
+    if (!userInput) {
+        alert('텍스트를 입력해주세요!');
+        return;
     }
     
-    return "처리 완료";
-}
+    console.log('=== 새로운 API 테스트 시작 ===');
+    
+    try {
+        // 🔥 새로운 API 경로들을 순차적으로 시도
+        const apiPaths = [
+            '/api/index',           // 새로운 경로 1
+            '/api',                 // 새로운 경로 2  
+            '/api/improve-prompt'   // 기존 경로
+        ];
+        
+        let success = false;
+        let lastError = null;
+        
+        for (const apiPath of apiPaths) {
+            try {
+                console.log('시도 중인 API 경로:', apiPath);
+                
+                const response = await fetch(apiPath, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        step: 'questions',
+                        userInput: userInput,
+                        isExpertMode: isExpertMode || false
+                    })
+                });
+                
+                console.log(`${apiPath} 응답:`, response.status, response.statusText);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(`${apiPath} 성공!`, result);
+                    
+                    alert(`API 연결 성공!\n경로: ${apiPath}\n응답: ${JSON.stringify(result, null, 2)}`);
+                    success = true;
+                    break;
+                    
+                } else {
+                    const errorText = await response.text();
+                    console.log(`${apiPath} 실패:`, response.status, errorText);
+                    lastError = `${apiPath}: ${response.status} ${errorText}`;
+                }
+                
+            } catch (error) {
+                console.log(`${apiPath} 오류:`, error);
+                lastError = `${apiPath}: ${error.message}`;
+            }
+        }
+        
+        if (!success) {
+            throw new Error(`모든 API 경로 실패:\n${lastError}`);
+        }
+        
+    } catch (
