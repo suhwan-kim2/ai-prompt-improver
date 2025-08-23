@@ -1,6 +1,6 @@
-// utils/intentAnalyzer.js - 의도 분석 엔진
+// utils/intentAnalyzer.js - 의도 분석 엔진 (Node.js 호환 버전)
 
-export class IntentAnalyzer {
+class IntentAnalyzer {
   constructor() {
     // 의도 슬롯 키워드 맵핑
     this.slotKeywords = {
@@ -80,8 +80,10 @@ export class IntentAnalyzer {
     
     const numbers = [];
     patterns.forEach(pattern => {
-      const matches = [...text.matchAll(pattern)];
-      numbers.push(...matches.map(m => m[0]));
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        numbers.push(match[0]);
+      }
     });
     
     return numbers;
@@ -96,8 +98,10 @@ export class IntentAnalyzer {
     
     const negatives = [];
     negativePatterns.forEach(pattern => {
-      const matches = [...text.matchAll(pattern)];
-      negatives.push(...matches.map(m => m[0]));
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        negatives.push(match[0]);
+      }
     });
     
     return negatives;
@@ -122,7 +126,7 @@ export class IntentAnalyzer {
     }
     
     // 다양한 슬롯 커버 (+10점)
-    const filledSlots = Object.values(signature).filter(v => v && v.length > 0).length;
+    const filledSlots = Object.values(signature).filter(v => v && Array.isArray(v) && v.length > 0).length;
     score += Math.min(10, filledSlots * 1.5);
     details.다양성보너스 = filledSlots;
     
@@ -154,7 +158,7 @@ export class IntentAnalyzer {
     const important = ['목표', '대상', '제약', '스타일'];
     
     important.forEach(slot => {
-      if (!signature[slot] || signature[slot].length === 0) {
+      if (!signature[slot] || !Array.isArray(signature[slot]) || signature[slot].length === 0) {
         missing.push(slot);
       }
     });
@@ -179,7 +183,7 @@ export class IntentAnalyzer {
     if (intentScore >= 75) {
       return {
         needMore: true,
-        questionCount: 1-3,
+        questionCount: 3,
         focus: "마지막 디테일",
         message: "거의 완벽합니다. 마지막 몇 가지만 확인하겠습니다.",
         confidence: "높음"
@@ -189,7 +193,7 @@ export class IntentAnalyzer {
     if (intentScore >= 50) {
       return {
         needMore: true,
-        questionCount: 4-6,
+        questionCount: 5,
         focus: "핵심 정보",
         message: "좋은 시작입니다. 몇 가지 더 구체화해보겠습니다.",
         confidence: "보통"
@@ -198,7 +202,7 @@ export class IntentAnalyzer {
     
     return {
       needMore: true,
-      questionCount: 7-10,
+      questionCount: 8,
       focus: "기본 정보",
       message: "더 구체적인 정보가 필요합니다.",
       confidence: "낮음"
@@ -261,3 +265,6 @@ export class IntentAnalyzer {
     return recommendations;
   }
 }
+
+// Node.js 환경에서 사용할 수 있도록 export
+module.exports = { IntentAnalyzer };
