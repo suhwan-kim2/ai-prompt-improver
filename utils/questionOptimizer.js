@@ -1,6 +1,6 @@
-// utils/questionOptimizer.js - 질문 최적화 시스템
+// utils/questionOptimizer.js - 질문 최적화 시스템 (Node.js 호환 버전)
 
-export class QuestionOptimizer {
+class QuestionOptimizer {
   constructor() {
     this.similarityThreshold = 0.7; // 유사도 임계값
     this.maxQuestions = 8; // 기본 최대 질문 수
@@ -10,23 +10,29 @@ export class QuestionOptimizer {
   optimize(questions, mentionedInfo = {}, domainInfo = {}, maxCount = 8) {
     console.log('질문 최적화 시작:', { questions, mentionedInfo, domainInfo });
     
-    // 1. 유효성 검증
-    const validQuestions = this.validateQuestions(questions);
-    
-    // 2. 중복 제거
-    const uniqueQuestions = this.removeDuplicates(validQuestions);
-    
-    // 3. 언급된 정보 기반 필터링
-    const filteredQuestions = this.filterMentioned(uniqueQuestions, mentionedInfo);
-    
-    // 4. 우선순위 계산 및 정렬
-    const prioritizedQuestions = this.prioritize(filteredQuestions, domainInfo, mentionedInfo);
-    
-    // 5. 최종 개수 조정
-    const finalQuestions = this.adjustCount(prioritizedQuestions, maxCount);
-    
-    console.log('질문 최적화 완료:', finalQuestions);
-    return finalQuestions;
+    try {
+      // 1. 유효성 검증
+      const validQuestions = this.validateQuestions(questions);
+      
+      // 2. 중복 제거
+      const uniqueQuestions = this.removeDuplicates(validQuestions);
+      
+      // 3. 언급된 정보 기반 필터링
+      const filteredQuestions = this.filterMentioned(uniqueQuestions, mentionedInfo);
+      
+      // 4. 우선순위 계산 및 정렬
+      const prioritizedQuestions = this.prioritize(filteredQuestions, domainInfo, mentionedInfo);
+      
+      // 5. 최종 개수 조정
+      const finalQuestions = this.adjustCount(prioritizedQuestions, maxCount);
+      
+      console.log('질문 최적화 완료:', finalQuestions);
+      return finalQuestions;
+    } catch (error) {
+      console.error('질문 최적화 중 오류:', error);
+      // 안전한 폴백: 원본 질문 중 일부만 반환
+      return Array.isArray(questions) ? questions.slice(0, maxCount) : [];
+    }
   }
   
   // 1. 질문 유효성 검증
@@ -90,7 +96,7 @@ export class QuestionOptimizer {
     const intersection = new Set([...words1].filter(x => words2.has(x)));
     const union = new Set([...words1, ...words2]);
     
-    return intersection.size / union.size;
+    return union.size > 0 ? intersection.size / union.size : 0;
   }
   
   // 3. 언급된 정보 기반 필터링
@@ -186,39 +192,49 @@ export class QuestionOptimizer {
   calculateEntropy(question, mentionedInfo) {
     let entropy = 5; // 기본 엔트로피
     
-    // 이미 알려진 정보와 관련될수록 엔트로피 감소
-    const questionWords = question.toLowerCase().split(' ');
-    const mentionedWords = Object.keys(mentionedInfo).join(' ').toLowerCase().split(' ');
-    
-    const overlap = questionWords.filter(word => mentionedWords.includes(word)).length;
-    entropy -= overlap * 2;
-    
-    // 구체적인 선택지가 있는 질문일수록 엔트로피 감소
-    if (question.includes('아니면') || question.includes('또는')) entropy -= 1;
-    
-    return Math.max(0, entropy);
+    try {
+      // 이미 알려진 정보와 관련될수록 엔트로피 감소
+      const questionWords = question.toLowerCase().split(' ');
+      const mentionedWords = Object.keys(mentionedInfo).join(' ').toLowerCase().split(' ');
+      
+      const overlap = questionWords.filter(word => mentionedWords.includes(word)).length;
+      entropy -= overlap * 2;
+      
+      // 구체적인 선택지가 있는 질문일수록 엔트로피 감소
+      if (question.includes('아니면') || question.includes('또는')) entropy -= 1;
+      
+      return Math.max(0, entropy);
+    } catch (error) {
+      console.error('엔트로피 계산 오류:', error);
+      return 5; // 안전한 기본값
+    }
   }
   
   // 질문의 구체성 계산
   calculateSpecificity(question) {
     let specificity = 0;
     
-    // 구체적인 단어 포함시 +
-    const specificWords = ['정확히', '구체적으로', '어떤', '몇', '어느'];
-    specificWords.forEach(word => {
-      if (question.includes(word)) specificity += 1;
-    });
-    
-    // 모호한 단어 포함시 -
-    const vagueWords = ['적당히', '알아서', '대충', '좀'];
-    vagueWords.forEach(word => {
-      if (question.includes(word)) specificity -= 2;
-    });
-    
-    // 선택지 제공시 +
-    if (question.includes('(') && question.includes(')')) specificity += 2;
-    
-    return specificity;
+    try {
+      // 구체적인 단어 포함시 +
+      const specificWords = ['정확히', '구체적으로', '어떤', '몇', '어느'];
+      specificWords.forEach(word => {
+        if (question.includes(word)) specificity += 1;
+      });
+      
+      // 모호한 단어 포함시 -
+      const vagueWords = ['적당히', '알아서', '대충', '좀'];
+      vagueWords.forEach(word => {
+        if (question.includes(word)) specificity -= 2;
+      });
+      
+      // 선택지 제공시 +
+      if (question.includes('(') && question.includes(')')) specificity += 2;
+      
+      return specificity;
+    } catch (error) {
+      console.error('구체성 계산 오류:', error);
+      return 0;
+    }
   }
   
   // 5. 최종 개수 조정
@@ -239,7 +255,8 @@ export class QuestionOptimizer {
       relevance: this.checkRelevance(questions)
     };
     
-    const overallQuality = Object.values(qualityChecks).reduce((sum, score) => sum + score, 0) / 3;
+    const scores = Object.values(qualityChecks);
+    const overallQuality = scores.reduce((sum, score) => sum + score, 0) / scores.length;
     
     return {
       quality: overallQuality,
@@ -250,9 +267,14 @@ export class QuestionOptimizer {
   
   // 다양성 체크
   checkDiversity(questions) {
-    const questionTypes = questions.map(q => this.classifyQuestionType(q));
-    const uniqueTypes = new Set(questionTypes);
-    return uniqueTypes.size / Math.max(questionTypes.length, 1);
+    try {
+      const questionTypes = questions.map(q => this.classifyQuestionType(q));
+      const uniqueTypes = new Set(questionTypes);
+      return uniqueTypes.size / Math.max(questionTypes.length, 1);
+    } catch (error) {
+      console.error('다양성 체크 오류:', error);
+      return 0.5;
+    }
   }
   
   // 질문 타입 분류
@@ -272,40 +294,53 @@ export class QuestionOptimizer {
   
   // 명확성 체크
   checkClarity(questions) {
-    const clarityScores = questions.map(q => {
-      let score = 0.5;
+    try {
+      const clarityScores = questions.map(q => {
+        let score = 0.5;
+        
+        // 명확한 구조
+        if (q.includes('?') || q.endsWith('요') || q.endsWith('까요')) score += 0.3;
+        
+        // 구체적 단어
+        if (q.match(/(어떤|무엇|언제|어디|얼마나)/)) score += 0.2;
+        
+        // 너무 길거나 복잡한 문장
+        if (q.length > 50) score -= 0.2;
+        
+        return Math.max(0, Math.min(1, score));
+      });
       
-      // 명확한 구조
-      if (q.includes('?') || q.endsWith('요') || q.endsWith('까요')) score += 0.3;
-      
-      // 구체적 단어
-      if (q.match(/(어떤|무엇|언제|어디|얼마나)/)) score += 0.2;
-      
-      // 너무 길거나 복잡한 문장
-      if (q.length > 50) score -= 0.2;
-      
-      return Math.max(0, Math.min(1, score));
-    });
-    
-    return clarityScores.reduce((sum, score) => sum + score, 0) / clarityScores.length;
+      return clarityScores.reduce((sum, score) => sum + score, 0) / Math.max(clarityScores.length, 1);
+    } catch (error) {
+      console.error('명확성 체크 오류:', error);
+      return 0.5;
+    }
   }
   
   // 관련성 체크
   checkRelevance(questions) {
-    // 모든 질문이 실제로 답변 가능한지 체크
-    const relevantCount = questions.filter(q => {
-      const qLower = q.toLowerCase();
+    try {
+      // 모든 질문이 실제로 답변 가능한지 체크
+      const relevantCount = questions.filter(q => {
+        const qLower = q.toLowerCase();
+        
+        // 답변하기 어려운 질문들 제외
+        const difficultPatterns = [
+          /완벽한|최고의|절대적/,
+          /모든|전체|다/,
+          /반드시|무조건/
+        ];
+        
+        return !difficultPatterns.some(pattern => qLower.match(pattern));
+      }).length;
       
-      // 답변하기 어려운 질문들 제외
-      const difficultPatterns = [
-        /완벽한|최고의|절대적/,
-        /모든|전체|다/,
-        /반드시|무조건/
-      ];
-      
-      return !difficultPatterns.some(pattern => qLower.match(pattern));
-    }).length;
-    
-    return relevantCount / Math.max(questions.length, 1);
+      return relevantCount / Math.max(questions.length, 1);
+    } catch (error) {
+      console.error('관련성 체크 오류:', error);
+      return 0.5;
+    }
   }
 }
+
+// Node.js 환경에서 사용할 수 있도록 export
+module.exports = { QuestionOptimizer };
