@@ -1149,12 +1149,118 @@ function showStatus(message, type = 'info') {
     console.log(`상태 메시지 [${type}]:`, message);
 }
 
-// 가이드 모달 함수들 (기존 유지)
+// 가이드 모달 함수들
 function showDetailedGuide() {
     const modal = document.getElementById('guideModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalBody = document.getElementById('modalBody');
     
-    if (!modal || !modalBody) return;
+    if (!modal || !modalBody) {
+        console.error('가이드 모달 요소를 찾을 수 없습니다.');
+        return;
+    }
     
-    modal
+    modalTitle.textContent = 'AI 프롬프트 개선기 사용법 - ' + (isExpertMode ? '전문가모드' : '일반모드');
+    
+    const guideContent = isExpertMode ? getExpertModeGuide() : getNormalModeGuide();
+    modalBody.innerHTML = guideContent;
+    
+    modal.style.display = 'block';
+    
+    // 모달 열릴 때 포커스 설정
+    const closeButton = modal.querySelector('.modal-close');
+    if (closeButton) {
+        closeButton.focus();
+    }
+}
+
+function closeDetailedGuide() {
+    const modal = document.getElementById('guideModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function getNormalModeGuide() {
+    return `
+        <div class="guide-section">
+            <h3>🚀 일반모드 특징</h3>
+            <ul>
+                <li>AI가 사용자 의도를 분석해서 맞춤 질문 생성</li>
+                <li>의도 파악 점수에 따라 동적 질문 개수 조절</li>
+                <li>90점+ 의도 파악시 질문 생략하고 바로 개선</li>
+                <li>빠르고 효율적인 프롬프트 개선</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>📝 사용 팁</h3>
+            <ul>
+                <li><strong>구체적으로 작성:</strong> "그림 그려줘" → "귀여운 강아지 캐릭터 일러스트"</li>
+                <li><strong>목적 명시:</strong> "SNS 프로필용", "발표 자료용" 등</li>
+                <li><strong>제약사항 포함:</strong> "A4 사이즈", "30초 이내" 등</li>
+                <li><strong>대상 설정:</strong> "초등학생용", "전문가용" 등</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>💡 입력 예시</h3>
+            <div class="example-box">
+                <strong>좋은 예:</strong><br>
+                "유튜브 썸네일용 밝고 귀여운 고양이 일러스트, 1920x1080 해상도"
+            </div>
+            <div class="example-box">
+                <strong>나쁜 예:</strong><br>
+                "예쁜 그림 만들어줘"
+            </div>
+        </div>
+    `;
+}
+
+function getExpertModeGuide() {
+    return `
+        <div class="guide-section">
+            <h3>🎯 전문가모드 특징</h3>
+            <ul>
+                <li>3단계 의도 파악 시스템</li>
+                <li>사용자의 숨겨진 의도까지 완전 분석</li>
+                <li>전문가급 95점 이상 프롬프트 생성</li>
+                <li>복잡한 요구사항도 완벽하게 처리</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>🔍 프로세스 흐름</h3>
+            <ol>
+                <li><strong>1차 의도 분석:</strong> 기본 요구사항 파악</li>
+                <li><strong>1차 질문:</strong> 부족한 정보 수집</li>
+                <li><strong>2차 의도 분석:</strong> 심층 의도 파악</li>
+                <li><strong>2차 질문:</strong> 숨겨진 요구사항 발굴</li>
+                <li><strong>3차 의도 분석:</strong> 완전한 의도 파악</li>
+                <li><strong>최종 개선:</strong> 전문가급 프롬프트 완성</li>
+            </ol>
+        </div>
+        
+        <div class="guide-section">
+            <h3>⚡ 전문가모드 활용법</h3>
+            <ul>
+                <li><strong>복잡한 프로젝트:</strong> 웹사이트, 앱 개발, 영상 제작</li>
+                <li><strong>비즈니스 용도:</strong> 마케팅, 브랜딩, 전략 수립</li>
+                <li><strong>기술적 요구사항:</strong> 구체적 스펙, 고급 기능</li>
+                <li><strong>창작 작업:</strong> 소설, 시나리오, 음악 등</li>
+            </ul>
+        </div>
+        
+        <div class="guide-section">
+            <h3>🎨 전문가 입력 예시</h3>
+            <div class="example-box">
+                <strong>비즈니스:</strong><br>
+                "스타트업 브랜딩 전략 수립, B2B SaaS 대상, 기술업계 고객"
+            </div>
+            <div class="example-box">
+                <strong>개발:</strong><br>
+                "React 기반 대시보드 웹앱, 실시간 데이터 시각화, 반응형 디자인"
+            </div>
+        </div>
+    `;
+}
