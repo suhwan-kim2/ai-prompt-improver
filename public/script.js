@@ -657,36 +657,208 @@ function displayQuestions(questions) {
         return;
     }
     
-    // 유효한 질문만 필터링
-    const validQuestions = questions.filter(q => {
-        if (typeof q !== 'string') {
-            console.warn('문자열이 아닌 질문 제외:', typeof q, q);
-            return false;
-        }
-        if (q.trim().length < 3) {
-            console.warn('너무 짧은 질문 제외:', q);
-            return false;
-        }
-        return true;
-    }).map(q => q.trim());
+   // 개선된 질문 표시 함수 (선택지 + 주관식 혼합)
+function displayQuestions(questions) {
+    console.log('질문 표시 시작:', questions);
+    
+    if (!Array.isArray(questions) || questions.length === 0) {
+        console.error('유효하지 않은 질문 데이터:', questions);
+        finalImprove(); // 질문 없으면 바로 개선
+        return;
+    }
+    
+    const validQuestions = questions.filter(q => 
+        typeof q === 'string' && q.trim().length > 3
+    ).map(q => q.trim());
     
     if (validQuestions.length === 0) {
-        console.error('유효한 질문이 없습니다. 원본:', questions);
-        showStatus('유효한 질문을 생성하지 못했습니다. 다시 시도해주세요.', 'error');
+        console.error('유효한 질문이 없음');
+        finalImprove();
         return;
     }
     
     currentQuestions = validQuestions;
-    console.log('유효한 질문들:', currentQuestions);
     
     const aiQuestionsDiv = document.getElementById('aiQuestions');
     const questionsContainer = document.getElementById('questionsContainer');
     
     if (!questionsContainer || !aiQuestionsDiv) {
         console.error('질문 컨테이너를 찾을 수 없습니다');
-        showStatus('페이지 구조 오류가 발생했습니다.', 'error');
         return;
     }
+    
+    let questionsHTML = '<div class="questions-round">';
+    questionsHTML += '<div class="round-title">🎯 AI 맞춤 질문</div>';
+    
+    validQuestions.forEach((question, index) => {
+        const escapedQuestion = escapeHtml(question);
+        const questionType = detectQuestionType(question);
+        
+        questionsHTML += `
+            <div class="question-item" id="question-${index}">
+                <div class="question-text">${escapedQuestion}</div>
+                <div class="question-input">
+                    ${generateQuestionInput(question, index, questionType)}
+                </div>
+            </div>
+        `;
+    });
+    
+    questionsHTML += '</div>';
+    
+    questionsContainer.innerHTML = questionsHTML;
+    aiQuestionsDiv.style.display = 'block';
+    
+    // 첫 번째 입력에 포커스
+    setTimeout(() => {
+        const firstInput = questionsContainer.querySelector('input, textarea, .option-button');
+        if (firstInput) firstInput.focus();
+    }, 500);
+}
+
+// 질문 타입 감지
+function detectQuestionType(question) {
+    const q = question.toLowerCase();
+    
+    // 선택형 질문 패턴
+    if (q.includes('스타일') || q.includes('느낌')) {
+        return {
+            type: 'choice',
+            options: ['사실적', '3D 애니메이션', '일러스트', '수채화', '만화풍', '기타']
+        };
+    }
+    
+    if (q.includes('크기') || q.includes('해상도') || q.includes('사이즈')) {
+        return {
+            type: 'choice',
+            options: ['1920x1080 (FHD)', '3840x2160 (4K)', '1280x720 (HD)', 'A4 용지', '정사각형', '기타']
+        };
+    }
+    
+    if (q.includes('길이') || q.includes('시간') || q.includes('분량')) {
+        return {
+            type: 'choice',
+            options: ['15초 이하', '30초 이하', '1-2분', '3-5분', '5분 이상', '기타']
+        };
+    }
+    
+    if (q.includes('대상') || q.includes('누구')) {
+        return {
+            type: 'choice',
+            options: ['일반인', '전문가', '학생', '어린이', '비즈니스', '기타']
+        };
+    }
+    
+    if (q.includes('용도') || q.includes('목적')) {
+        return {
+            type: 'choice',
+            options: ['SNS 게시용', '유튜브', '발표자료', '교육용', '홍보용', '개인용', '기타']
+        };
+    }
+    
+    // 기본은 주관식
+    return { type: 'text' };
+}
+
+// 질문 입력 형태 생성
+function generateQuestionInput(question, index, questionType) {
+    if (questionType.type === 'choice') {
+        // 객관식 선택지
+        let html = '<div class="question-options">';
+        
+        questionType.options.forEach((option, optIndex) => {
+            html += `
+                <button type="button" 
+                        class="option-button" 
+                        onclick="selectOption(${index}, '${escapeHtml(option)}')"
+                        data-value="${escapeHtml(option)}">
+                    ${escapeHtml(option)}
+                </button>
+            `;
+        });
+        
+        html += '</div>';
+        
+        // 기타 선택시 주관식 입력창
+        html += `
+            <div class="other-input" id="other-${index}" style="display: none;">
+                <textarea class="answer-textarea other-textarea" 
+                          placeholder="구체적으로 설명해주세요..." 
+                          oninput="saveAnswer(${index}, this.value)"
+                          id="other-answer-${index}" 
+                          rows="2"></textarea>
+            </div>
+        `;
+        
+        return html;
+    } else {
+        // 주관식
+        return `
+            <textarea class="answer-textarea" 
+                      placeholder="답변을 입력해주세요..." 
+                      oninput="saveAnswer(${index}, this.value)"
+                      id="answer-${index}" 
+                      rows="3"></textarea>
+        `;
+    }
+}
+
+// 선택지 선택 함수
+function selectOption(questionIndex, optionValue) {
+    // 기존 선택 해제
+    const questionItem = document.getElementById(`question-${questionIndex}`);
+    const buttons = questionItem.querySelectorAll('.option-button');
+    buttons.forEach(btn => btn.classList.remove('selected'));
+    
+    // 새 선택 활성화
+    const selectedButton = [...buttons].find(btn => btn.dataset.value === optionValue);
+    if (selectedButton) {
+        selectedButton.classList.add('selected');
+    }
+    
+    // 기타 선택시 입력창 표시
+    const otherInput = document.getElementById(`other-${questionIndex}`);
+    if (optionValue === '기타') {
+        if (otherInput) {
+            otherInput.style.display = 'block';
+            const textarea = otherInput.querySelector('textarea');
+            if (textarea) textarea.focus();
+        }
+        // 답변은 사용자가 입력할 때까지 저장하지 않음
+    } else {
+        if (otherInput) {
+            otherInput.style.display = 'none';
+        }
+        // 선택된 옵션을 답변으로 저장
+        saveAnswer(questionIndex, optionValue);
+    }
+    
+    // UI 업데이트
+    questionItem.classList.add('answered');
+}
+
+// 개선된 답변 저장 함수
+function saveAnswer(questionIndex, answer) {
+    if (typeof questionIndex !== 'number' || questionIndex < 0) {
+        console.error('잘못된 질문 인덱스:', questionIndex);
+        return;
+    }
+    
+    const cleanAnswer = typeof answer === 'string' ? answer.trim() : '';
+    console.log(`답변 저장: 질문 ${questionIndex}, 답변: "${cleanAnswer}"`);
+    
+    currentAnswers[questionIndex] = cleanAnswer;
+    
+    // UI 업데이트
+    const questionItem = document.getElementById(`question-${questionIndex}`);
+    if (questionItem) {
+        if (cleanAnswer.length > 0) {
+            questionItem.classList.add('answered');
+        } else {
+            questionItem.classList.remove('answered');
+        }
+    }
+}
     
     // 질문 HTML 생성 (보안 강화)
     let questionsHTML = '<div class="questions-round">';
@@ -800,7 +972,7 @@ async function proceedWithAnswers() {
     }
 }
 
-// 최종 프롬프트 개선 (개선됨)
+// 수정된 최종 프롬프트 개선 함수 (점수 시스템 포함)
 async function finalImprove() {
     try {
         console.log('최종 개선 시작:', {
@@ -832,12 +1004,21 @@ async function finalImprove() {
         // 결과 처리
         let improvedPrompt;
         let score = 0;
+        let improvements = [];
         
         if (typeof result === 'string') {
             improvedPrompt = result;
+            // 폴백 점수 계산
+            score = calculateFallbackScore(result, originalUserInput);
         } else if (result && result.improved_prompt) {
             improvedPrompt = result.improved_prompt;
             score = result.score || 0;
+            improvements = result.improvements || [];
+            
+            // 점수가 0이면 자체 계산
+            if (score === 0) {
+                score = calculateFallbackScore(improvedPrompt, originalUserInput);
+            }
         } else {
             throw new Error('서버에서 올바른 개선 결과를 받지 못했습니다.');
         }
@@ -845,9 +1026,9 @@ async function finalImprove() {
         // 결과 표시
         displayResult(originalUserInput, improvedPrompt);
         
-        // 점수 표시
+        // 점수와 개선사항 표시
         if (score > 0) {
-            showScoreImprovement(score);
+            showScoreImprovement(score, improvements);
         }
         
         showStatus('프롬프트 개선이 완료되었습니다!', 'success');
@@ -857,7 +1038,8 @@ async function finalImprove() {
             original: originalUserInput,
             improved: improvedPrompt,
             score: score,
-            answersCount: answersArray.length
+            answersCount: answersArray.length,
+            improvements: improvements
         });
         
     } catch (error) {
@@ -872,6 +1054,14 @@ async function finalImprove() {
             
             if (fallbackResult && fallbackResult.improved_prompt) {
                 displayResult(originalUserInput, fallbackResult.improved_prompt);
+                
+                // 폴백 점수 계산
+                const fallbackScore = calculateFallbackScore(
+                    fallbackResult.improved_prompt, 
+                    originalUserInput
+                );
+                
+                showScoreImprovement(fallbackScore, fallbackResult.improvements || []);
                 showStatus('기본 개선 시스템으로 처리되었습니다.', 'success');
             } else {
                 throw new Error('폴백 개선도 실패했습니다.');
@@ -882,6 +1072,95 @@ async function finalImprove() {
         }
     }
 }
+
+// 폴백 점수 계산 시스템
+function calculateFallbackScore(improvedPrompt, originalPrompt) {
+    let score = 30; // 기본 점수
+    
+    // 길이 개선도 (최대 20점)
+    const lengthRatio = improvedPrompt.length / originalPrompt.length;
+    if (lengthRatio > 1.2 && lengthRatio < 3) {
+        score += Math.min(20, (lengthRatio - 1) * 15);
+    }
+    
+    // 구체성 점수 (최대 25점)
+    const numbers = (improvedPrompt.match(/\d+/g) || []).length;
+    const units = (improvedPrompt.match(/(px|cm|초|분|k|hd|4k)/gi) || []).length;
+    const colors = (improvedPrompt.match(/(빨간|파란|노란|검은|흰)/gi) || []).length;
+    
+    score += Math.min(25, (numbers * 3) + (units * 4) + (colors * 2));
+    
+    // 기술적 용어 점수 (최대 15점)
+    const techTerms = (improvedPrompt.match(/(해상도|fps|화질|고품질|전문적)/gi) || []).length;
+    score += Math.min(15, techTerms * 3);
+    
+    // 답변 반영 보너스 (최대 10점)
+    const answerCount = Object.keys(currentAnswers).length;
+    score += Math.min(10, answerCount * 2);
+    
+    return Math.min(95, Math.round(score));
+}
+
+// 개선된 점수 표시 함수
+function showScoreImprovement(score, improvements = []) {
+    const scoreSection = document.getElementById('scoreImprovement');
+    const scoreDisplay = document.querySelector('#scoreImprovement .score-number');
+    const scoreBadge = document.getElementById('scoreBadge');
+    
+    if (scoreDisplay) {
+        scoreDisplay.textContent = score;
+    }
+    
+    // 결과 카드의 점수 배지도 업데이트
+    if (scoreBadge) {
+        scoreBadge.style.display = 'block';
+        scoreBadge.textContent = `${score}점`;
+        
+        // 점수에 따른 색상 변경
+        if (score >= 90) {
+            scoreBadge.style.backgroundColor = '#34a853'; // 초록
+        } else if (score >= 75) {
+            scoreBadge.style.backgroundColor = '#fbbc04'; // 노랑
+        } else {
+            scoreBadge.style.backgroundColor = '#ea4335'; // 빨강
+        }
+    }
+    
+    if (scoreSection) {
+        scoreSection.style.display = 'block';
+        
+        // 개선사항 목록 업데이트
+        const improvementsList = scoreSection.querySelector('.improvements-list');
+        if (improvementsList && improvements.length > 0) {
+            improvementsList.innerHTML = improvements
+                .map(imp => `<li>${escapeHtml(imp)}</li>`)
+                .join('');
+        }
+    }
+    
+    currentScore = score;
+    
+    // 점수 애니메이션
+    animateScoreCounter(scoreDisplay, score);
+}
+
+// 점수 애니메이션 효과
+function animateScoreCounter(element, targetScore) {
+    if (!element) return;
+    
+    let currentScore = 0;
+    const increment = targetScore / 30; // 30 프레임에 걸쳐 애니메이션
+    
+    const animation = setInterval(() => {
+        currentScore += increment;
+        if (currentScore >= targetScore) {
+            currentScore = targetScore;
+            clearInterval(animation);
+        }
+        element.textContent = Math.round(currentScore);
+    }, 33); // 약 30fps
+}
+
 
 // 나머지 함수들은 기존과 동일하지만 오류 처리 강화...
 // (질문 건너뛰기, 결과 표시, 클립보드 복사 등)
