@@ -960,3 +960,55 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #a1a1a1;
 }
+
+
+/* 가이드 모달 추가 스타일 */
+.guide-section {
+    margin-bottom: 24px;
+}
+
+.guide-section h3 {
+    color: #1a73e8;
+    margin-bottom: 12px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.guide-section ul {
+    margin-left: 20px;
+    margin-bottom: 16px;
+}
+
+.guide-section li {
+    margin-bottom: 8px;
+    color: #5f6368;
+    line-height: 1.5;
+}
+
+.guide-section ol {
+    margin-left: 20px;
+    margin-bottom: 16px;
+}
+
+.guide-section ol li {
+    margin-bottom: 12px;
+    color: #5f6368;
+    line-height: 1.5;
+}
+
+.example-box {
+    background: #f8f9fa;
+    border: 1px solid #e8eaed;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+}
+
+.example-box strong {
+    color: #1a73e8;
+    display: block;
+    margin-bottom: 8px;
+    font-family: inherit;
+}
