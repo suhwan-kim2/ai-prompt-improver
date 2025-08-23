@@ -5,14 +5,22 @@ import { MentionExtractor } from '../utils/mentionExtractor.js';
 import { QuestionOptimizer } from '../utils/questionOptimizer.js';
 
 // IntentAnalyzer import 디버깅 - 더 안정적으로
+// ✅ 수정 코드
 let IntentAnalyzer = null;
-try {
-  const intentModule = await import('../utils/intentAnalyzer.js');
-  IntentAnalyzer = intentModule.IntentAnalyzer;
-  console.log('IntentAnalyzer 로드 성공');
-} catch (error) {
-  console.error('IntentAnalyzer 로드 실패, 폴백 모드 사용:', error);
-  IntentAnalyzer = null;
+
+async function loadIntentAnalyzer() {
+  if (IntentAnalyzer !== null) return IntentAnalyzer;
+  
+  try {
+    const intentModule = await import('../utils/intentAnalyzer.js');
+    IntentAnalyzer = intentModule.IntentAnalyzer;
+    console.log('IntentAnalyzer 로드 성공');
+    return IntentAnalyzer;
+  } catch (error) {
+    console.error('IntentAnalyzer 로드 실패:', error);
+    IntentAnalyzer = false; // 실패 표시
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -140,34 +148,26 @@ export default async function handler(req, res) {
     }
 
     // 1단계: 의도 분석 기반 스마트 질문 생성
-    if (step === 'questions') {
-      try {
-        console.log('질문 생성 단계 시작:', { userInput, answers });
-        
-        let analysis = null;
-        
-        // 의도 분석 (선택적 실행)
-        if (IntentAnalyzer) {
-          try {
-            const intentAnalyzer = new IntentAnalyzer();
-            analysis = intentAnalyzer.generateAnalysisReport(userInput, answers || []);
-            console.log('의도 분석 성공:', analysis);
-            
-            // 충분한 의도 파악이면 질문 생략 (90점 이상)
-            if (analysis && analysis.intentScore >= 90) {
-              console.log('의도 점수가 높아서 질문 건너뛰기:', analysis.intentScore);
-              return res.json({
-                questions: [],
-                analysis: analysis,
-                message: "충분한 정보로 바로 개선하겠습니다!",
-                skipToImprovement: true
-              });
+    // 1단계: 의도 분석 기반 스마트 질문 생성
+      if (step === 'questions') {
+        try {
+          console.log('질문 생성 단계 시작:', { userInput, answers });
+          
+          let analysis = null;
+          
+          // ✅ 수정된 부분
+          const intentAnalyzer = await loadIntentAnalyzer();
+          if (intentAnalyzer) {
+            try {
+              const analyzer = new intentAnalyzer();
+              analysis = analyzer.generateAnalysisReport(userInput, answers || []);
+              console.log('의도 분석 성공:', analysis);
+              // ...
+            } catch (intentError) {
+              console.error('의도 분석 실패:', intentError);
+              analysis = null;
             }
-          } catch (intentError) {
-            console.error('의도 분석 실패:', intentError);
-            analysis = null;
           }
-        }
 
         // 기존 사용자 입력 분석 (항상 실행)
         const mentionExtractor = new MentionExtractor();
