@@ -9,12 +9,31 @@ let isProcessing = false;
 let currentScore = 0;
 let analysisData = null;
 
-// 페이지 로드시 초기화
-window.onload = function() {
+// 통합된 페이지 초기화
+document.addEventListener('DOMContentLoaded', function() {
     console.log('페이지 로드 완료 - 개선된 API 버전');
     
+    // 동적 스타일 적용
+    addDynamicStyles();
+    
+    // 브라우저 호환성 체크
+    if (!window.fetch) {
+        showStatus('이 브라우저는 지원되지 않습니다. 최신 브라우저를 사용해주세요.', 'error');
+        return;
+    }
+    
+    // localStorage 지원 체크
+    try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+    } catch (e) {
+        console.warn('localStorage를 사용할 수 없습니다. 즐겨찾기 기능이 제한됩니다.');
+    }
+    
+    // 검색 입력창 이벤트 설정
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
+        // Enter 키 처리
         searchInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -35,13 +54,26 @@ window.onload = function() {
     window.onclick = function(event) {
         const modal = document.getElementById('guideModal');
         if (modal && event.target === modal) {
-            modalTitle.textContent = 'AI 프롬프트 개선기 사용법 - ' + (isExpertMode ? '전문가모드' : '일반모드');
+            modal.style.display = 'none';
+        }
+    };
     
-    const guideContent = isExpertMode ? getExpertModeGuide() : getNormalModeGuide();
-    modalBody.innerHTML = guideContent;
+    // 전역 오류 핸들러
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('전역 오류 발생:', { msg, url, lineNo, columnNo, error });
+        showStatus('예상치 못한 오류가 발생했습니다. 새로고림 후 다시 시도해주세요.', 'error');
+        return false;
+    };
     
-    modal.style.display = 'block';
-}
+    // Promise 거부 처리
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('처리되지 않은 Promise 오류:', event.reason);
+        showStatus('비동기 작업 중 오류가 발생했습니다.', 'error');
+        event.preventDefault();
+    });
+});
+
+console.log('개선된 script.js 로드 완료 - 오류 처리 강화 버전');
 
 function closeDetailedGuide() {
     const modal = document.getElementById('guideModal');
@@ -295,17 +327,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-console.log('개선된 script.js 로드 완료 - 오류 처리 강화 버전');.style.display = 'none';
-        }
-    };
-    
-    // 오류 리포팅 시스템
-    window.onerror = function(msg, url, lineNo, columnNo, error) {
-        console.error('전역 오류 발생:', { msg, url, lineNo, columnNo, error });
-        showStatus('예상치 못한 오류가 발생했습니다. 새로고침 후 다시 시도해주세요.', 'error');
-        return false;
-    };
+// 오류 리포팅 시스템 (전역 스코프에 별도로 설정)
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+    console.error('전역 오류 발생:', { msg, url, lineNo, columnNo, error });
+    showStatus('예상치 못한 오류가 발생했습니다. 새로고침 후 다시 시도해주세요.', 'error');
+    return false;
 };
+
+
+console.log('개선된 script.js 로드 완료 - 오류 처리 강화 버전');
+
 
 // 모드 토글 함수 (개선됨)
 function toggleMode() {
