@@ -1,8 +1,0 @@
-{
-  "functions": {
-    "api/improve-prompt.js": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 30
-    }
-  }
-}
