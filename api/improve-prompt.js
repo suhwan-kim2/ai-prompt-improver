@@ -3,7 +3,17 @@ import { evaluatePrompt } from '../utils/evaluationSystem.js';
 import { SlotSystem } from '../utils/slotSystem.js';
 import { MentionExtractor } from '../utils/mentionExtractor.js';
 import { QuestionOptimizer } from '../utils/questionOptimizer.js';
-import { IntentAnalyzer } from '../utils/intentAnalyzer.js';
+
+// IntentAnalyzer import 디버깅
+let IntentAnalyzer;
+try {
+  const intentModule = await import('../utils/intentAnalyzer.js');
+  IntentAnalyzer = intentModule.IntentAnalyzer;
+  console.log('IntentAnalyzer 로드 성공');
+} catch (error) {
+  console.error('IntentAnalyzer 로드 실패:', error);
+  IntentAnalyzer = null;
+}
 
 export default async function handler(req, res) {
   // CORS 설정 (브라우저 접근 허용)
@@ -16,9 +26,63 @@ export default async function handler(req, res) {
   }
 }
 
-// 의도 분석 기반 폴백 질문 생성
+// 안전한 폴백 질문 생성
+function generateSafeFallbackQuestions(userInput, analysis) {
+  console.log('안전한 폴백 질문 생성:', { userInput, analysis });
+  
+  const basicQuestions = [
+    "구체적으로 무엇을 만들고 싶으신가요?",
+    "누가 사용하거나 볼 예정인가요?",
+    "어떤 스타일이나 느낌을 원하시나요?",
+    "크기나 해상도 등 요구사항이 있나요?",
+    "특별히 중요하게 생각하는 부분이 있나요?",
+    "주로 어디에 사용할 예정인가요?"
+  ];
+  
+  // 의도 분석이 있으면 우선순위 기반
+  if (analysis && analysis.priorities) {
+    const priorityQuestions = [];
+    
+    analysis.priorities.forEach(({ slot }) => {
+      switch(slot) {
+        case '목표':
+          priorityQuestions.push("구체적으로 무엇을 만들고 싶으신가요?");
+          break;
+        case '대상':
+          priorityQuestions.push("누가 사용하거나 볼 예정인가요?");
+          break;
+        case '제약':
+          priorityQuestions.push("크기, 시간, 예산 등 제약사항이 있나요?");
+          break;
+        case '스타일':
+          priorityQuestions.push("어떤 스타일이나 느낌을 원하시나요?");
+          break;
+        case '용도':
+          priorityQuestions.push("주로 어디에 사용할 예정인가요?");
+          break;
+      }
+    });
+    
+    // 중복 제거 후 반환
+    const uniqueQuestions = [...new Set(priorityQuestions)];
+    return uniqueQuestions.slice(0, 5);
+  }
+  
+  // 기본 질문 반환
+  return basicQuestions.slice(0, 5);
+}
+
+// 의도 분석 기반 폴백 질문 생성 (기존)
 function generateFallbackQuestions(analysis) {
   const questions = [];
+  
+  if (!analysis || !analysis.priorities) {
+    return [
+      "구체적으로 무엇을 만들고 싶으신가요?",
+      "누가 사용하거나 볼 예정인가요?",
+      "어떤 스타일이나 느낌을 원하시나요?"
+    ];
+  }
   
   // 우선순위 기반으로 질문 생성
   analysis.priorities.forEach(({ slot, priority }) => {
@@ -48,9 +112,11 @@ function generateFallbackQuestions(analysis) {
   });
   
   // 전략에 맞는 개수만 반환
-  const targetCount = typeof analysis.strategy.questionCount === 'string' 
-    ? parseInt(analysis.strategy.questionCount.split('-')[1]) || 6
-    : analysis.strategy.questionCount;
+  const targetCount = analysis.strategy?.questionCount 
+    ? (typeof analysis.strategy.questionCount === 'string' 
+        ? parseInt(analysis.strategy.questionCount.split('-')[1]) || 6
+        : analysis.strategy.questionCount)
+    : 5;
     
   return questions.slice(0, targetCount);
 }
@@ -145,33 +211,42 @@ function generateFallbackQuestions(analysis) {
     // 1단계: 의도 분석 기반 스마트 질문 생성
     if (step === 'questions') {
       try {
-        // 의도 분석 먼저 실행
-        const intentAnalyzer = new IntentAnalyzer();
-        const analysis = intentAnalyzer.generateAnalysisReport(userInput, answers || []);
+        console.log('질문 생성 단계 시작:', { userInput, answers });
         
-        console.log('의도 분석 결과:', analysis);
+        let analysis = null;
         
-        // 충분한 의도 파악이면 질문 생략
-        if (!analysis.strategy.needMore) {
-          return res.json({
-            questions: [],
-            analysis: analysis,
-            message: analysis.strategy.message,
-            skipToImprovement: true
-          });
+        // 의도 분석 (선택적 실행)
+        if (IntentAnalyzer) {
+          try {
+            const intentAnalyzer = new IntentAnalyzer();
+            analysis = intentAnalyzer.generateAnalysisReport(userInput, answers || []);
+            console.log('의도 분석 성공:', analysis);
+            
+            // 충분한 의도 파악이면 질문 생략
+            if (analysis && !analysis.strategy.needMore) {
+              return res.json({
+                questions: [],
+                analysis: analysis,
+                message: analysis.strategy.message,
+                skipToImprovement: true
+              });
+            }
+          } catch (intentError) {
+            console.error('의도 분석 실패:', intentError);
+            analysis = null;
+          }
         }
 
-        // 사용자 입력 분석 (기존 로직도 유지)
+        // 기존 사용자 입력 분석 (항상 실행)
         const mentionExtractor = new MentionExtractor();
         const mentionedInfo = mentionExtractor.extract(userInput);
         
         const slotSystem = new SlotSystem();
         const detectedDomains = slotSystem.detectDomains(userInput);
         
-        console.log('감지된 도메인:', detectedDomains);
-        console.log('언급된 정보:', mentionedInfo);
+        console.log('기본 분석 완료:', { detectedDomains, mentionedInfo });
 
-        // AI를 통한 의도 기반 질문 생성
+        // AI를 통한 질문 생성
         const questionPrompt = [
           {
             role: 'system',
@@ -179,41 +254,41 @@ function generateFallbackQuestions(analysis) {
 
 당신은 사용자 의도 파악 전문가입니다.
 
+${analysis ? `
 현재 의도 분석 결과:
 - 의도 점수: ${analysis.intentScore}/100
-- 부족한 슬롯: ${analysis.priorities.map(p => p.slot).join(', ')}
-- 전략: ${analysis.strategy.focus}
+- 부족한 슬롯: ${analysis.priorities?.map(p => p.slot).join(', ') || '없음'}
+- 전략: ${analysis.strategy?.focus || '기본'}
 
-목표: ${analysis.strategy.message}
-
-부족한 정보를 채우기 위한 질문을 ${analysis.strategy.questionCount}개 생성해주세요.
-
-우선순위:
-${analysis.priorities.map((p, i) => `${i+1}. ${p.slot} (중요도: ${p.priority})`).join('\n')}
+목표: ${analysis.strategy?.message || '사용자 의도 파악'}
+` : '기본 질문 생성 모드'}
 
 질문 생성 규칙:
 1. 반드시 한국어로만 질문
-2. 우선순위가 높은 슬롯부터 질문  
-3. 이미 파악된 정보는 절대 다시 묻지 않기
-4. 구체적이고 답변하기 쉬운 질문
-5. 사용자 의도를 정확히 파악하는 데 집중
+2. 이미 파악된 정보는 절대 다시 묻지 않기
+3. 구체적이고 답변하기 쉬운 질문
+4. 사용자 의도를 정확히 파악하는 데 집중
+5. 3-6개의 적절한 질문 생성
 
 응답 형식 (JSON):
 {
   "questions": [
-    "우선순위 높은 질문부터 순서대로"
-  ],
-  "reasoning": "이 질문들이 필요한 이유"
+    "구체적인 질문 1",
+    "구체적인 질문 2",
+    "구체적인 질문 3"
+  ]
 }`
           },
           {
             role: 'user',
             content: `사용자 입력: "${userInput}"
 
-의도 분석:
+${analysis ? `
+의도 분석 결과:
 - 점수: ${analysis.intentScore}점
 - 부족한 정보: ${analysis.missingSlots?.join(', ') || '없음'}
 - 추천사항: ${analysis.recommendations?.join(', ') || '없음'}
+` : ''}
 
 이 분석을 바탕으로 사용자 의도를 완벽히 파악하기 위한 질문을 생성해주세요.`
           }
@@ -223,31 +298,42 @@ ${analysis.priorities.map((p, i) => `${i+1}. ${p.slot} (중요도: ${p.priority}
         
         try {
           const parsedResult = JSON.parse(result);
+          console.log('AI 질문 생성 성공:', parsedResult);
           
-          console.log('AI 질문 생성 결과:', parsedResult);
+          // 질문 배열 검증
+          let questions = [];
+          if (parsedResult.questions && Array.isArray(parsedResult.questions)) {
+            questions = parsedResult.questions.filter(q => typeof q === 'string' && q.trim().length > 0);
+          }
           
-          // AI가 생성한 질문들
-          const questions = parsedResult.questions || [];
+          console.log('검증된 질문들:', questions);
+          
+          if (questions.length === 0) {
+            console.log('유효한 질문이 없음, 폴백 모드 사용');
+            throw new Error('No valid questions generated');
+          }
           
           return res.json({
             questions: questions,
             analysis: analysis,
-            reasoning: parsedResult.reasoning,
+            reasoning: parsedResult.reasoning || '질문 생성됨',
             domains: detectedDomains,
             mentioned: mentionedInfo,
             ai_mode: true
           });
           
         } catch (parseError) {
-          console.log('AI 질문 생성 실패, 의도 분석 기반 폴백 사용');
+          console.error('AI 질문 생성 실패:', parseError);
           
-          // AI 실패시 의도 분석 결과로 폴백 질문 생성
-          const fallbackQuestions = this.generateFallbackQuestions(analysis);
+          // 안전한 폴백 질문 생성
+          const fallbackQuestions = generateSafeFallbackQuestions(userInput, analysis);
           
           return res.json({
             questions: fallbackQuestions,
             analysis: analysis,
-            mode: 'fallback_intent'
+            domains: detectedDomains,
+            mentioned: mentionedInfo,
+            mode: 'fallback'
           });
         }
 
