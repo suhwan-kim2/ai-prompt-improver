@@ -309,30 +309,6 @@ function addDynamicStyles() {
     document.head.appendChild(style);
 }
 
-// 초기화시 스타일 적용
-document.addEventListener('DOMContentLoaded', function() {
-    addDynamicStyles();
-    
-    // 브라우저 호환성 체크
-    if (!window.fetch) {
-        showStatus('이 브라우저는 지원되지 않습니다. 최신 브라우저를 사용해주세요.', 'error');
-    }
-    
-    // localStorage 지원 체크
-    try {
-        localStorage.setItem('test', 'test');
-        localStorage.removeItem('test');
-    } catch (e) {
-        console.warn('localStorage를 사용할 수 없습니다. 즐겨찾기 기능이 제한됩니다.');
-    }
-});
-
-// 오류 리포팅 시스템 (전역 스코프에 별도로 설정)
-window.onerror = function(msg, url, lineNo, columnNo, error) {
-    console.error('전역 오류 발생:', { msg, url, lineNo, columnNo, error });
-    showStatus('예상치 못한 오류가 발생했습니다. 새로고침 후 다시 시도해주세요.', 'error');
-    return false;
-};
 
 
 console.log('개선된 script.js 로드 완료 - 오류 처리 강화 버전');
@@ -640,23 +616,7 @@ function showIntentScore(score, message) {
     }, 5000);
 }
 
-// 질문 표시 함수 (개선됨)
-function displayQuestions(questions) {
-    console.log('질문 표시 시작:', questions);
-    
-    // 입력값 검증 강화
-    if (!Array.isArray(questions)) {
-        console.error('questions가 배열이 아닙니다:', typeof questions, questions);
-        showStatus('질문 데이터 형식이 올바르지 않습니다.', 'error');
-        return;
-    }
-    
-    if (questions.length === 0) {
-        console.log('질문이 없어서 바로 개선 단계로 진행');
-        finalImprove();
-        return;
-    }
-    
+   
    // 개선된 질문 표시 함수 (선택지 + 주관식 혼합)
 function displayQuestions(questions) {
     console.log('질문 표시 시작:', questions);
