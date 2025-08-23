@@ -1619,7 +1619,66 @@ function selectOption(questionIndex, optionValue) {
         // 선택된 옵션을 답변으로 저장
         saveAnswer(questionIndex, optionValue);
     }
-    
+
+
     // UI 업데이트
     questionItem.classList.add('answered');
+}
+
+
+
+
+// 임시 테스트 함수들 - 버튼 작동 확인용
+function improvePrompt() {
+    console.log('improvePrompt 버튼 클릭됨');
+    
+    const searchInput = document.getElementById('searchInput');
+    const userInput = searchInput ? searchInput.value.trim() : '';
+    
+    if (!userInput) {
+        alert('텍스트를 입력해주세요');
+        return;
+    }
+    
+    console.log('입력값:', userInput);
+    
+    // 서버 테스트
+    fetch('/api/improve-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            step: 'questions',
+            userInput: userInput,
+            mode: 'normal'
+        })
+    })
+    .then(response => {
+        console.log('서버 응답 상태:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('서버 응답 성공:', data);
+        alert('서버 연결 성공! 콘솔을 확인하세요.');
+    })
+    .catch(error => {
+        console.error('서버 오류:', error);
+        alert('서버 연결 실패: ' + error.message);
+    });
+}
+
+function toggleMode() {
+    console.log('toggleMode 버튼 클릭됨');
+    alert('모드 토글 버튼 작동함');
+}
+
+function clearResults() {
+    console.log('clearResults 버튼 클릭됨');
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = '';
+    alert('초기화 완료');
+}
+
+function showDetailedGuide() {
+    console.log('showDetailedGuide 버튼 클릭됨');
+    alert('가이드 버튼 작동함');
 }
