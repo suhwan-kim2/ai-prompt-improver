@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/improve-prompt.js": {
-      "runtime": "@vercel/node@18.x",
+      "runtime": "nodejs18.x",
       "maxDuration": 30
     }
   }
