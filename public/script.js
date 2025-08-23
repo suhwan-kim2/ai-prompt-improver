@@ -1543,3 +1543,123 @@ function getExpertModeGuide() {
         </div>
     `;
 }
+// 질문 타입 감지
+function detectQuestionType(question) {
+    const q = question.toLowerCase();
+    
+    // 선택형 질문 패턴
+    if (q.includes('스타일') || q.includes('느낌')) {
+        return {
+            type: 'choice',
+            options: ['사실적', '3D 애니메이션', '일러스트', '수채화', '만화풍', '기타']
+        };
+    }
+    
+    if (q.includes('크기') || q.includes('해상도') || q.includes('사이즈')) {
+        return {
+            type: 'choice',
+            options: ['1920x1080 (FHD)', '3840x2160 (4K)', '1280x720 (HD)', 'A4 용지', '정사각형', '기타']
+        };
+    }
+    
+    if (q.includes('길이') || q.includes('시간') || q.includes('분량')) {
+        return {
+            type: 'choice',
+            options: ['15초 이하', '30초 이하', '1-2분', '3-5분', '5분 이상', '기타']
+        };
+    }
+    
+    if (q.includes('대상') || q.includes('누구')) {
+        return {
+            type: 'choice',
+            options: ['일반인', '전문가', '학생', '어린이', '비즈니스', '기타']
+        };
+    }
+    
+    if (q.includes('용도') || q.includes('목적')) {
+        return {
+            type: 'choice',
+            options: ['SNS 게시용', '유튜브', '발표자료', '교육용', '홍보용', '개인용', '기타']
+        };
+    }
+    
+    // 기본은 주관식
+    return { type: 'text' };
+}
+
+// 질문 입력 형태 생성
+function generateQuestionInput(question, index, questionType) {
+    if (questionType.type === 'choice') {
+        // 객관식 선택지
+        let html = '<div class="question-options">';
+        
+        questionType.options.forEach((option, optIndex) => {
+            html += `
+                <button type="button" 
+                        class="option-button" 
+                        onclick="selectOption(${index}, '${escapeHtml(option)}')"
+                        data-value="${escapeHtml(option)}">
+                    ${escapeHtml(option)}
+                </button>
+            `;
+        });
+        
+        html += '</div>';
+        
+        // 기타 선택시 주관식 입력창
+        html += `
+            <div class="other-input" id="other-${index}" style="display: none;">
+                <textarea class="answer-textarea other-textarea" 
+                          placeholder="구체적으로 설명해주세요..." 
+                          oninput="saveAnswer(${index}, this.value)"
+                          id="other-answer-${index}" 
+                          rows="2"></textarea>
+            </div>
+        `;
+        
+        return html;
+    } else {
+        // 주관식
+        return `
+            <textarea class="answer-textarea" 
+                      placeholder="답변을 입력해주세요..." 
+                      oninput="saveAnswer(${index}, this.value)"
+                      id="answer-${index}" 
+                      rows="3"></textarea>
+        `;
+    }
+}
+
+// 선택지 선택 함수
+function selectOption(questionIndex, optionValue) {
+    // 기존 선택 해제
+    const questionItem = document.getElementById(`question-${questionIndex}`);
+    const buttons = questionItem.querySelectorAll('.option-button');
+    buttons.forEach(btn => btn.classList.remove('selected'));
+    
+    // 새 선택 활성화
+    const selectedButton = [...buttons].find(btn => btn.dataset.value === optionValue);
+    if (selectedButton) {
+        selectedButton.classList.add('selected');
+    }
+    
+    // 기타 선택시 입력창 표시
+    const otherInput = document.getElementById(`other-${questionIndex}`);
+    if (optionValue === '기타') {
+        if (otherInput) {
+            otherInput.style.display = 'block';
+            const textarea = otherInput.querySelector('textarea');
+            if (textarea) textarea.focus();
+        }
+        // 답변은 사용자가 입력할 때까지 저장하지 않음
+    } else {
+        if (otherInput) {
+            otherInput.style.display = 'none';
+        }
+        // 선택된 옵션을 답변으로 저장
+        saveAnswer(questionIndex, optionValue);
+    }
+    
+    // UI 업데이트
+    questionItem.classList.add('answered');
+}
