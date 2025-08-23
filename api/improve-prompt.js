@@ -12,7 +12,7 @@ async function loadIntentAnalyzer() {
   if (IntentAnalyzer !== null) return IntentAnalyzer;
   
   try {
-    const intentModule = await import('../utils/intentAnalyzer.js');
+   // const intentModule = await import('../utils/intentAnalyzer.js');
     IntentAnalyzer = intentModule.IntentAnalyzer;
     console.log('IntentAnalyzer 로드 성공');
     return IntentAnalyzer;
