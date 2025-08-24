@@ -1,6 +1,6 @@
-// api/improve-prompt.js - 완전 수정된 버그 없는 버전
+// api/improve-prompt.js - 객관식 질문 + 자동 반복 개선 시스템
 
-// Utils import (안전한 방식)
+// Utils import
 import { evaluatePrompt } from '../utils/evaluationSystem.js';
 import { SlotSystem } from '../utils/slotSystem.js';
 import { MentionExtractor } from '../utils/mentionExtractor.js';
@@ -39,14 +39,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { step, userInput, answers, mode = 'normal' } = req.body;
+    const { step, userInput, answers, mode = 'normal', round = 1 } = req.body;
     
-    console.log('API 요청 받음:', { step, mode, userInput: userInput?.substring(0, 50) + '...' });
+    console.log('API 요청:', { step, mode, round, userInput: userInput?.substring(0, 50) + '...' });
 
-    // step 파라미터 검증 (모든 가능한 값 포함)
-    const validSteps = ['questions', 'final-improve', 'additional-questions'];
+    // step 파라미터 검증
+    const validSteps = ['questions', 'final-improve', 'additional-questions', 'auto-improve'];
     if (!step || !validSteps.includes(step)) {
-      console.error('잘못된 step 파라미터:', step);
       return res.status(400).json({ 
         error: '유효하지 않은 step 파라미터',
         received: step,
@@ -57,15 +56,12 @@ export default async function handler(req, res) {
     // 사용자 입력 검증
     if (!userInput || typeof userInput !== 'string' || userInput.trim().length === 0) {
       return res.status(400).json({ 
-        error: '사용자 입력이 필요합니다',
-        received: { userInput, step, mode }
+        error: '사용자 입력이 필요합니다'
       });
     }
 
     // OpenAI API 키 확인
-    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || 
-                          process.env.REACT_APP_OPENAI_API_KEY || 
-                          process.env.VITE_OPENAI_API_KEY;
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     
     if (!OPENAI_API_KEY) {
       console.log('OpenAI API 키가 없어서 폴백 모드로 실행');
@@ -73,19 +69,12 @@ export default async function handler(req, res) {
     }
 
     // 한국어 강제 프롬프트
-    const KOREAN_ENFORCER = `
-!!! 절대 중요한 지시사항 !!!
-- 반드시 모든 응답을 한국어로만 작성하세요
-- 영어나 다른 언어는 절대 사용 금지
-- 질문도 한국어로만 생성하세요
-`;
+    const KOREAN_ENFORCER = `반드시 모든 응답을 한국어로만 작성하세요. 영어 사용 절대 금지.`;
 
     // OpenAI API 호출 함수
     async function callOpenAI(messages, maxRetries = 2) {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`OpenAI API 호출 시도 ${attempt}/${maxRetries}`);
-          
           const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -96,8 +85,8 @@ export default async function handler(req, res) {
               model: 'gpt-4o-mini',
               messages: messages,
               temperature: 0.7,
-              max_tokens: 1500,
-              timeout: 25000
+              max_tokens: 2000,
+              timeout: 30000
             })
           });
 
@@ -107,14 +96,7 @@ export default async function handler(req, res) {
           }
 
           const data = await response.json();
-          const content = data.choices[0].message.content;
-          
-          if (!isValidKoreanResponse(content)) {
-            console.log('영어 응답 감지, 재시도');
-            throw new Error('영어 응답 감지됨');
-          }
-          
-          return content;
+          return data.choices[0].message.content;
 
         } catch (error) {
           console.log(`OpenAI 시도 ${attempt} 실패:`, error.message);
@@ -128,41 +110,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // 한국어 응답 검증
-    function isValidKoreanResponse(text) {
-      if (!text || text.trim().length === 0) return false;
-      
-      try {
-        if (text.trim().startsWith('{')) {
-          const parsed = JSON.parse(text);
-          if (parsed.questions && Array.isArray(parsed.questions)) {
-            return parsed.questions.every(q => 
-              typeof q === 'string' && /[가-힣]/.test(q)
-            );
-          }
-          if (parsed.improved_prompt) {
-            return /[가-힣]/.test(parsed.improved_prompt);
-          }
-        }
-      } catch (e) {
-        // JSON 아닌 경우
-      }
-      
-      const koreanChars = (text.match(/[가-힣]/g) || []).length;
-      const totalChars = text.replace(/\s/g, '').length;
-      return koreanChars > 0 && (koreanChars / totalChars) > 0.1;
-    }
-
     // ============================================================================
-    // 1단계: 질문 생성
+    // 1단계: 객관식 질문 생성 (선택지 포함)
     // ============================================================================
     if (step === 'questions') {
       try {
-        console.log('질문 생성 단계 시작');
+        console.log('객관식 질문 생성 시작');
         
+        // 의도 분석
         let analysis = null;
-        
-        // 의도 분석 시도
         const intentAnalyzer = await loadIntentAnalyzer();
         if (intentAnalyzer) {
           try {
@@ -174,14 +130,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // 기본 분석 (항상 실행)
-        const mentionExtractor = new MentionExtractor();
-        const mentionedInfo = mentionExtractor.extract(userInput);
-        
-        const slotSystem = new SlotSystem();
-        const detectedDomains = slotSystem.detectDomains(userInput);
-        
-        // AI 질문 생성
         const questionCount = mode === 'expert' ? 6 : 4;
         
         const questionPrompt = [
@@ -189,28 +137,40 @@ export default async function handler(req, res) {
             role: 'system',
             content: `${KOREAN_ENFORCER}
 
-당신은 사용자 의도 파악 전문가입니다.
+당신은 객관식 질문 생성 전문가입니다.
 
-${analysis ? `현재 의도 분석:
-- 의도 점수: ${analysis.intentScore}/100
-- 전략: ${analysis.strategy?.message || '기본'}` : '기본 분석 모드'}
+목표: 사용자 의도 파악을 위한 객관식 질문 생성
 
 질문 생성 규칙:
-1. 반드시 한국어로만 질문 작성
-2. 구체적이고 답변하기 쉬운 질문
-3. ${questionCount}개 이하의 적절한 질문 생성
-4. 이미 파악된 정보는 다시 묻지 않기
+1. 반드시 한국어로만 작성
+2. 각 질문마다 4-6개의 구체적인 선택지 제공
+3. 마지막 선택지는 항상 "기타"로 설정
+4. 선택지는 구체적이고 실용적으로 작성
+5. ${questionCount}개의 질문 생성
 
 응답 형식 (반드시 JSON):
 {
-  "questions": ["질문1", "질문2", "질문3"]
+  "questions": [
+    {
+      "question": "어떤 스타일로 제작하고 싶으신가요?",
+      "options": ["사실적", "3D 애니메이션", "일러스트", "수채화", "만화풍", "기타"]
+    },
+    {
+      "question": "크기나 해상도는 어떻게 설정할까요?",
+      "options": ["1920x1080 (FHD)", "3840x2160 (4K)", "1280x720 (HD)", "A4 용지", "정사각형", "기타"]
+    }
+  ]
 }`
           },
           {
             role: 'user',
             content: `사용자 입력: "${userInput}"
 
-이 입력을 분석해서 사용자 의도를 완벽히 파악하기 위한 ${questionCount}개 이하의 질문을 생성해주세요.`
+${analysis ? `의도 분석 결과:
+- 점수: ${analysis.intentScore}점
+- 부족한 정보: ${analysis.missingSlots?.join(', ') || '없음'}` : ''}
+
+이 정보를 바탕으로 객관식 질문 ${questionCount}개를 생성해주세요. 각 질문마다 구체적인 선택지 4-6개와 "기타" 옵션을 포함해주세요.`
           }
         ];
 
@@ -218,42 +178,46 @@ ${analysis ? `현재 의도 분석:
           const result = await callOpenAI(questionPrompt);
           const parsedResult = JSON.parse(result);
           
-          // 질문 검증 및 정리
+          // 객관식 질문 검증
           let questions = [];
           if (parsedResult.questions && Array.isArray(parsedResult.questions)) {
             questions = parsedResult.questions
-              .filter(q => typeof q === 'string' && q.trim().length > 0)
-              .map(q => q.trim())
+              .filter(q => q.question && Array.isArray(q.options))
+              .map(q => ({
+                question: q.question.trim(),
+                options: q.options.filter(opt => typeof opt === 'string' && opt.trim().length > 0)
+              }))
+              .filter(q => q.options.length >= 3) // 최소 3개 선택지
               .slice(0, questionCount);
           }
           
           if (questions.length === 0) {
-            throw new Error('유효한 질문이 생성되지 않음');
+            throw new Error('유효한 객관식 질문이 생성되지 않음');
           }
           
-          console.log(`AI 질문 생성 성공: ${questions.length}개`);
+          console.log(`객관식 질문 생성 성공: ${questions.length}개`);
           
           return res.json({
             questions: questions,
             analysis: analysis,
-            domains: detectedDomains,
-            mentioned: mentionedInfo,
+            question_type: 'multiple_choice',
+            round: round,
             ai_mode: true
           });
           
         } catch (error) {
-          console.log('AI 질문 생성 실패, 폴백 사용:', error.message);
+          console.log('AI 객관식 질문 생성 실패, 폴백 사용');
           throw error;
         }
 
       } catch (error) {
         console.log('질문 생성 전체 실패, 폴백 모드');
-        return handleFallbackQuestions(userInput, res, mode);
+        return generateFallbackMultipleChoice(userInput, res, mode);
       }
     }
 
     // ============================================================================
-    // 2단계: 추가 질문 생성
+    // 2단계: 추가 질문 생성 (자동 호출용)
     // ============================================================================
     if (step === 'additional-questions') {
       try {
@@ -267,13 +231,24 @@ ${analysis ? `현재 의도 분석:
             role: 'system',
             content: `${KOREAN_ENFORCER}
 
-당신은 추가 정보 수집 전문가입니다.
+당신은 부족한 정보 파악 전문가입니다.
 
-기존 답변을 분석해서 부족한 부분을 찾아 2-3개의 추가 질문을 생성하세요.
+목표: 기존 답변을 분석해서 부족한 부분에 대한 객관식 질문 생성
+
+질문 생성 규칙:
+1. 반드시 한국어로만 작성
+2. 2-3개의 객관식 질문 생성
+3. 각 질문마다 4-5개 선택지 + "기타"
+4. 기존 답변에서 부족한 정보만 질문
 
 응답 형식 (반드시 JSON):
 {
-  "questions": ["추가질문1", "추가질문2"]
+  "questions": [
+    {
+      "question": "부족한 정보에 대한 질문",
+      "options": ["선택지1", "선택지2", "선택지3", "선택지4", "기타"]
+    }
+  ]
 }`
           },
           {
@@ -283,7 +258,7 @@ ${analysis ? `현재 의도 분석:
 기존 답변들:
 ${existingInfo || '답변 없음'}
 
-이 정보를 바탕으로 더 완벽한 결과물을 위한 추가 질문 2-3개를 생성해주세요.`
+기존 답변에서 부족한 부분을 파악해서 2-3개의 추가 객관식 질문을 생성해주세요.`
           }
         ];
 
@@ -294,7 +269,7 @@ ${existingInfo || '답변 없음'}
           let additionalQuestions = [];
           if (parsedResult.questions && Array.isArray(parsedResult.questions)) {
             additionalQuestions = parsedResult.questions
-              .filter(q => typeof q === 'string' && q.trim().length > 0)
+              .filter(q => q.question && Array.isArray(q.options))
               .slice(0, 3);
           }
           
@@ -304,7 +279,9 @@ ${existingInfo || '답변 없음'}
           
           return res.json({
             questions: additionalQuestions,
-            mode: 'additional'
+            question_type: 'multiple_choice',
+            mode: 'additional',
+            round: round + 1
           });
           
         } catch (error) {
@@ -315,207 +292,338 @@ ${existingInfo || '답변 없음'}
       } catch (error) {
         // 폴백 추가 질문
         const fallbackQuestions = [
-          "더 구체적으로 설명하고 싶은 부분이 있나요?",
-          "추가로 고려해야 할 사항이 있나요?",
-          "특별한 제약이나 조건이 있나요?"
+          {
+            question: "더 구체적으로 어떤 부분을 개선하고 싶으신가요?",
+            options: ["스타일", "크기", "색상", "품질", "기타"]
+          },
+          {
+            question: "특별한 요구사항이 있나요?",
+            options: ["시간 제약", "예산 제약", "기술 제약", "없음", "기타"]
+          }
         ];
         
         return res.json({
-          questions: fallbackQuestions.slice(0, 2),
-          mode: 'fallback_additional'
+          questions: fallbackQuestions,
+          question_type: 'multiple_choice',
+          mode: 'fallback_additional',
+          round: round + 1
         });
       }
     }
 
     // ============================================================================
-    // 3단계: 최종 프롬프트 개선
+    // 3단계: 자동 점수 체크 및 반복 개선 시스템
     // ============================================================================
-    if (step === 'final-improve') {
+    if (step === 'auto-improve') {
       try {
-        console.log('최종 프롬프트 개선 시작');
+        console.log('자동 반복 개선 시작, 라운드:', round);
         
         const answersArray = Array.isArray(answers) ? answers : [];
         const answersText = answersArray
           .filter(a => a && typeof a === 'string' && a.trim().length > 0)
           .join('\n');
 
+        // 1차: 프롬프트 개선
         const improvePrompt = [
           {
             role: 'system',
             content: `${KOREAN_ENFORCER}
 
-당신은 세계 최고 수준의 프롬프트 엔지니어링 전문가입니다.
+당신은 95점+ 달성 전문가입니다.
 
-목표: 95점 이상의 전문가급 프롬프트를 한국어로 생성
+목표: 라운드 ${round}에서 더 높은 점수 달성
 
-95점 달성 기준:
-1. 구체적 기술 사양 (해상도, fps, 크기 등)
-2. 정확한 수치 정보 (시간, 크기, 비율 등)  
-3. 세부적인 스타일 지시사항
-4. 명확한 품질 요구사항
+95점 달성 필수 요소:
+1. 구체적 수치 (1920x1080, 30초, 4K 등)
+2. 정확한 기술 사양 (fps, 해상도, 포맷 등)
+3. 세부 스타일 지시 (조명, 각도, 색감 등)
+4. 명확한 품질 기준 (고화질, 프리미엄 등)
 5. 실행 가능한 구체성
-6. 불필요한 감정 표현 제거
+6. 감정 표현 완전 제거
 
-개선 원칙:
-- "감동적이고 따뜻한" → 삭제 (감정 표현 불필요)
-- "30초 이하" → "정확히 25-30초"
-- "큰 개" → "골든 리트리버 (체고 60cm)"
-- "밝고 화사한" → "밝은 조명, 채도 높은 색감"
-- "고품질" → "4K 해상도, 고화질"
+개선 전략:
+- 모호한 표현 → 구체적 수치
+- 일반적 요청 → 전문적 지시사항
+- 감정적 묘사 → 기술적 설명
 
 응답 형식 (반드시 JSON):
 {
-  "improved_prompt": "구체적이고 기술적인 95점 프롬프트",
-  "score": 95,
-  "improvements": ["개선사항1", "개선사항2", "개선사항3"]
+  "improved_prompt": "95점+ 전문가급 프롬프트",
+  "confidence": 95,
+  "technical_improvements": ["기술적 개선사항들"]
 }`
           },
           {
             role: 'user',
-            content: `원본 요청: "${userInput}"
+            content: `${round === 1 ? '원본' : '이전 라운드'} 요청: "${userInput}"
 
-${answersText ? `사용자 추가 정보:
+${answersText ? `누적 정보:
 ${answersText}` : '추가 정보 없음'}
 
-위 정보를 바탕으로 95점 이상의 전문가급 프롬프트로 개선해주세요.`
+라운드 ${round}: 더 높은 점수를 위해 전문가급 프롬프트로 개선해주세요.`
           }
         ];
 
-        try {
-          const result = await callOpenAI(improvePrompt);
-          const parsedResult = JSON.parse(result);
+        const aiResult = await callOpenAI(improvePrompt);
+        const parsedResult = JSON.parse(aiResult);
+        
+        if (!parsedResult.improved_prompt) {
+          throw new Error('개선된 프롬프트가 없음');
+        }
+        
+        // 2차: 점수 평가
+        const evaluationResult = evaluatePrompt(parsedResult.improved_prompt, userInput);
+        const finalScore = typeof evaluationResult === 'object' ? evaluationResult.total : evaluationResult;
+        
+        console.log(`라운드 ${round} 개선 완료, 점수: ${finalScore}`);
+        
+        // 3차: 점수 체크 및 반복 결정
+        const maxRounds = mode === 'expert' ? 3 : 2;
+        const targetScore = mode === 'expert' ? 90 : 80;
+        
+        if (finalScore < targetScore && round < maxRounds) {
+          console.log(`점수 ${finalScore} < ${targetScore}, 추가 라운드 필요`);
           
-          if (!parsedResult.improved_prompt) {
-            throw new Error('개선된 프롬프트가 없음');
-          }
-          
-          // 평가 시스템으로 점수 계산
-          const evaluationResult = evaluatePrompt(parsedResult.improved_prompt, userInput);
-          const finalScore = typeof evaluationResult === 'object' ? evaluationResult.total : evaluationResult;
-          
-          console.log('AI 프롬프트 개선 성공, 점수:', finalScore);
-          
+          // 자동으로 추가 질문 생성
           return res.json({
             improved_prompt: parsedResult.improved_prompt,
             score: finalScore,
-            improvements: parsedResult.improvements || ['AI 기반 전문가급 개선'],
-            evaluation_details: evaluationResult
+            improvements: parsedResult.technical_improvements || [],
+            evaluation_details: evaluationResult,
+            need_more_rounds: true,
+            current_round: round,
+            max_rounds: maxRounds,
+            target_score: targetScore,
+            auto_continue: true
           });
+        } else {
+          console.log(`최종 완성! 점수: ${finalScore} (목표: ${targetScore})`);
           
-        } catch (error) {
-          console.log('AI 프롬프트 개선 실패, 폴백 사용');
-          throw error;
+          // 최종 완성
+          return res.json({
+            improved_prompt: parsedResult.improved_prompt,
+            score: finalScore,
+            improvements: parsedResult.technical_improvements || [],
+            evaluation_details: evaluationResult,
+            final_round: true,
+            completed: true
+          });
         }
-
+        
       } catch (error) {
-        console.log('최종 개선 전체 실패, 폴백 모드');
+        console.log('자동 개선 실패, 폴백 사용');
         return handleFallbackImprovement(userInput, answers || [], res);
       }
     }
 
-    // 잘못된 step
-    return res.status(400).json({ 
-      error: 'step은 questions, final-improve 또는 additional-questions 이어야 합니다',
-      received: step,
-      expected: validSteps
-    });
+    // ============================================================================
+    // 4단계: 기존 final-improve (호환성 유지)
+    // ============================================================================
+    if (step === 'final-improve') {
+      // auto-improve로 리다이렉트
+      req.body.step = 'auto-improve';
+      return handler(req, res);
+    }
+
+    // ============================================================================
+    // 5단계: 추가 질문 (수동 요청시)
+    // ============================================================================
+    if (step === 'additional-questions') {
+      try {
+        console.log('수동 추가 질문 생성');
+        
+        const answersArray = Array.isArray(answers) ? answers : [];
+        const existingInfo = answersArray.join(' ');
+        
+        const additionalPrompt = [
+          {
+            role: 'system',
+            content: `${KOREAN_ENFORCER}
+
+부족한 정보 파악 후 객관식 질문 생성 전문가입니다.
+
+목표: 더 완벽한 결과를 위한 추가 객관식 질문
+
+응답 형식 (반드시 JSON):
+{
+  "questions": [
+    {
+      "question": "추가로 필요한 정보 질문",
+      "options": ["선택지1", "선택지2", "선택지3", "선택지4", "기타"]
+    }
+  ]
+}`
+          },
+          {
+            role: 'user',
+            content: `원본: "${userInput}"
+기존 답변: ${existingInfo}
+
+더 완벽한 결과를 위한 추가 객관식 질문 2개를 생성해주세요.`
+          }
+        ];
+
+        const result = await callOpenAI(additionalPrompt);
+        const parsedResult = JSON.parse(result);
+        
+        let additionalQuestions = [];
+        if (parsedResult.questions && Array.isArray(parsedResult.questions)) {
+          additionalQuestions = parsedResult.questions
+            .filter(q => q.question && Array.isArray(q.options))
+            .slice(0, 2);
+        }
+        
+        if (additionalQuestions.length === 0) {
+          throw new Error('추가 질문 생성 실패');
+        }
+        
+        return res.json({
+          questions: additionalQuestions,
+          question_type: 'multiple_choice',
+          mode: 'manual_additional'
+        });
+        
+      } catch (error) {
+        console.log('추가 질문 생성 실패, 폴백 사용');
+        
+        const fallbackQuestions = [
+          {
+            question: "어떤 부분을 더 구체화하고 싶으신가요?",
+            options: ["색상", "크기", "스타일", "품질", "기타"]
+          }
+        ];
+        
+        return res.json({
+          questions: fallbackQuestions,
+          question_type: 'multiple_choice',
+          mode: 'fallback_additional'
+        });
+      }
+    }
 
   } catch (error) {
     console.error('전체 API 오류:', error);
     return res.status(500).json({ 
       error: '서버 내부 오류가 발생했습니다',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: error.message
     });
   }
 }
 
 // ============================================================================
-// 폴백 모드 함수들
+// 폴백 함수들
 // ============================================================================
 
 function handleFallbackMode(step, userInput, answers, res) {
-  console.log('폴백 모드 실행:', step);
+  console.log('폴백 모드:', step);
   
   if (step === 'questions') {
-    return handleFallbackQuestions(userInput, res, 'normal');
+    return generateFallbackMultipleChoice(userInput, res, 'normal');
+  }
+  
+  if (step === 'auto-improve' || step === 'final-improve') {
+    return handleFallbackImprovement(userInput, answers, res);
   }
   
   if (step === 'additional-questions') {
     const fallbackQuestions = [
-      "더 구체적으로 설명하고 싶은 부분이 있나요?",
-      "추가로 고려해야 할 사항이 있나요?"
+      {
+        question: "추가로 고려할 사항이 있나요?",
+        options: ["색상", "크기", "품질", "없음", "기타"]
+      }
     ];
     
     return res.json({
       questions: fallbackQuestions,
-      mode: 'fallback_additional'
+      question_type: 'multiple_choice',
+      mode: 'fallback'
     });
   }
   
-  if (step === 'final-improve') {
-    return handleFallbackImprovement(userInput, answers, res);
-  }
-  
-  return res.status(400).json({ error: '잘못된 step 파라미터' });
+  return res.status(400).json({ error: '잘못된 폴백 요청' });
 }
 
-function handleFallbackQuestions(userInput, res, mode = 'normal') {
-  console.log('폴백 질문 생성');
+function generateFallbackMultipleChoice(userInput, res, mode) {
+  console.log('폴백 객관식 질문 생성');
   
-  // 완성도 분석
-  const analysis = analyzeCompleteness(userInput);
+  // 도메인 감지
+  const input = userInput.toLowerCase();
+  let domain = 'general';
   
-  if (analysis.completeness > 75) {
-    return res.json({
-      questions: [],
-      analysis: { intentScore: analysis.completeness },
-      message: "충분한 정보가 제공되어 바로 개선 가능합니다.",
-      mode: 'fallback_skip'
-    });
-  }
+  if (input.match(/(그림|이미지|디자인|포스터)/)) domain = 'visual';
+  else if (input.match(/(영상|비디오|동영상)/)) domain = 'video';
+  else if (input.match(/(웹|앱|프로그램|코딩)/)) domain = 'development';
+  else if (input.match(/(글|텍스트|문서|기사)/)) domain = 'text';
   
-  // 기본 질문 생성
-  const basicQuestions = [
-    "구체적으로 무엇을 만들고 싶으신가요?",
-    "어떤 스타일이나 느낌을 원하시나요?",
-    "크기나 해상도 등 요구사항이 있나요?",
-    "누가 사용하거나 볼 예정인가요?",
-    "특별히 중요하게 생각하는 부분이 있나요?",
-    "용도나 목적이 정해져 있나요?"
-  ];
+  const questionTemplates = {
+    visual: [
+      {
+        question: "어떤 스타일로 제작하고 싶으신가요?",
+        options: ["사실적", "3D 애니메이션", "일러스트", "수채화", "만화풍", "기타"]
+      },
+      {
+        question: "크기나 해상도는 어떻게 설정할까요?",
+        options: ["1920x1080 (FHD)", "3840x2160 (4K)", "1280x720 (HD)", "A4 용지", "정사각형", "기타"]
+      },
+      {
+        question: "누가 주로 사용하거나 볼 예정인가요?",
+        options: ["일반인", "전문가", "학생", "어린이", "비즈니스", "기타"]
+      }
+    ],
+    video: [
+      {
+        question: "영상 길이는 어느 정도로 생각하고 계신가요?",
+        options: ["15초 이하", "30초-1분", "1-3분", "3-5분", "5분 이상", "기타"]
+      },
+      {
+        question: "어떤 용도로 사용할 예정인가요?",
+        options: ["SNS 게시", "유튜브", "광고", "교육", "홍보", "기타"]
+      }
+    ],
+    development: [
+      {
+        question: "어떤 종류의 프로그램을 만들고 싶으신가요?",
+        options: ["웹사이트", "모바일 앱", "데스크톱", "API", "게임", "기타"]
+      },
+      {
+        question: "주요 사용자는 누구인가요?",
+        options: ["일반 사용자", "관리자", "개발자", "고객", "내부 직원", "기타"]
+      }
+    ],
+    text: [
+      {
+        question: "어떤 형식의 글을 원하시나요?",
+        options: ["기사", "블로그", "보고서", "이메일", "SNS 포스트", "기타"]
+      },
+      {
+        question: "글의 분량은 어느 정도로 생각하고 계신가요?",
+        options: ["짧게(500자)", "보통(1000자)", "길게(2000자)", "매우 길게(5000자+)", "기타"]
+      }
+    ],
+    general: [
+      {
+        question: "구체적으로 무엇을 만들고 싶으신가요?",
+        options: ["이미지/그림", "영상/동영상", "웹사이트/앱", "문서/글", "음악/오디오", "기타"]
+      },
+      {
+        question: "누가 주로 사용하거나 볼 예정인가요?",
+        options: ["일반인", "전문가", "학생", "어린이", "비즈니스", "기타"]
+      },
+      {
+        question: "어떤 스타일이나 느낌을 원하시나요?",
+        options: ["전문적", "친근한", "창의적", "심플한", "화려한", "기타"]
+      }
+    ]
+  };
   
-  const questionCount = mode === 'expert' ? 5 : 3;
-  const selectedQuestions = [];
-  
-  // 부족한 정보에 따라 질문 선택
-  if (!analysis.already_provided.includes('목적')) {
-    selectedQuestions.push(basicQuestions[0]);
-  }
-  if (!analysis.already_provided.includes('스타일')) {
-    selectedQuestions.push(basicQuestions[1]);
-  }
-  if (!analysis.already_provided.includes('크기')) {
-    selectedQuestions.push(basicQuestions[2]);
-  }
-  if (!analysis.already_provided.includes('대상')) {
-    selectedQuestions.push(basicQuestions[3]);
-  }
-  
-  // 부족하면 나머지 추가
-  while (selectedQuestions.length < questionCount && selectedQuestions.length < basicQuestions.length) {
-    const remaining = basicQuestions.filter(q => !selectedQuestions.includes(q));
-    if (remaining.length > 0) {
-      selectedQuestions.push(remaining[0]);
-    } else {
-      break;
-    }
-  }
+  const questions = questionTemplates[domain] || questionTemplates.general;
+  const questionCount = mode === 'expert' ? 4 : 3;
   
   return res.json({
-    questions: selectedQuestions.slice(0, questionCount),
-    analysis: { intentScore: analysis.completeness },
-    mode: 'fallback'
+    questions: questions.slice(0, questionCount),
+    question_type: 'multiple_choice',
+    mode: 'fallback',
+    domain: domain
   });
 }
 
@@ -532,87 +640,58 @@ function handleFallbackImprovement(userInput, answers, res) {
       .map(a => a.trim());
     
     if (validAnswers.length > 0) {
-      improvedPrompt = `${userInput}\n\n추가 요구사항: ${validAnswers.join(', ')}`;
-      improvements.push('사용자 답변 정보 통합');
+      improvedPrompt = `${userInput}\n\n구체적 요구사항:\n${validAnswers.join('\n')}`;
+      improvements.push('사용자 답변 상세 반영');
     }
   }
   
-  // 기본 품질 향상
-  if (!improvedPrompt.match(/(고품질|고화질|4K|HD)/i)) {
-    improvedPrompt += ', 고품질로 제작';
-    improvements.push('품질 요구사항 추가');
-  }
+  // 고급 개선 로직
+  const input = improvedPrompt.toLowerCase();
   
-  // 해상도 추가
-  if (!improvedPrompt.match(/\d+x\d+|\d+(px|K|p)/i)) {
-    if (improvedPrompt.match(/(이미지|그림|사진|포스터)/i)) {
-      improvedPrompt += ', 1920x1080 해상도';
-      improvements.push('기본 해상도 추가');
+  // 해상도 자동 추가
+  if (!input.match(/\d+x\d+|\d+(px|k|p)/i)) {
+    if (input.match(/(이미지|그림|사진|포스터|디자인)/)) {
+      improvedPrompt += '\n- 해상도: 1920x1080 이상, 고화질';
+      improvements.push('고화질 해상도 추가');
     }
   }
   
-  // 구체성 추가
-  if (!improvedPrompt.match(/\d+/)) {
-    if (improvedPrompt.match(/(시간|길이|분량)/i)) {
-      improvedPrompt += ', 약 30초 길이';
-      improvements.push('시간 정보 추가');
+  // 시간 정보 추가
+  if (!input.match(/\d+\s*(초|분)/)) {
+    if (input.match(/(영상|비디오|동영상|애니메이션)/)) {
+      improvedPrompt += '\n- 길이: 30-60초';
+      improvements.push('적절한 길이 설정');
     }
   }
+  
+  // 품질 기준 강화
+  if (!input.match(/(고품질|고화질|4k|hd|프리미엄)/i)) {
+    improvedPrompt += '\n- 품질: 프로페셔널급, 고품질 제작';
+    improvements.push('품질 기준 강화');
+  }
+  
+  // 구체적 스타일 추가
+  if (!input.match(/(스타일|색상|톤|느낌)/)) {
+    improvedPrompt += '\n- 스타일: 세련되고 전문적인 디자인';
+    improvements.push('구체적 스타일 지정');
+  }
+  
+  // 최종 품질 강화
+  improvedPrompt += '\n\n[최종 지시사항]\n- 모든 요소를 프로페셔널한 수준으로 제작\n- 세부사항까지 완벽하게 구현\n- 고품질 결과물 보장';
+  improvements.push('최종 품질 보장 조항 추가');
   
   // 평가
   const evaluationResult = evaluatePrompt(improvedPrompt, userInput);
   const finalScore = typeof evaluationResult === 'object' ? evaluationResult.total : evaluationResult;
+  
+  console.log('폴백 개선 완료, 점수:', finalScore);
   
   return res.json({
     improved_prompt: improvedPrompt,
     score: finalScore,
     improvements: improvements,
     evaluation_details: evaluationResult,
-    mode: 'fallback'
+    mode: 'fallback',
+    completed: true
   });
-}
-
-function analyzeCompleteness(userInput) {
-  const input = userInput.toLowerCase();
-  const already_provided = [];
-  let completeness = 30;
-  
-  // 크기/해상도
-  if (input.match(/(크기|사이즈|해상도|4k|hd|fhd|px|cm|mm)/)) {
-    already_provided.push('크기');
-    completeness += 15;
-  }
-  
-  // 목적/용도
-  if (input.match(/(만들|생성|제작|디자인|개발|용도|목적)/)) {
-    already_provided.push('목적');
-    completeness += 15;
-  }
-  
-  // 대상
-  if (input.match(/(사용자|고객|아이|어른|학생|대상|타겟)/)) {
-    already_provided.push('대상');
-    completeness += 15;
-  }
-  
-  // 스타일
-  if (input.match(/(스타일|느낌|색상|톤|분위기|방식)/)) {
-    already_provided.push('스타일');
-    completeness += 10;
-  }
-  
-  // 시간
-  if (input.match(/(초|분|시간|길이|기간)/)) {
-    already_provided.push('시간');
-    completeness += 10;
-  }
-  
-  // 구체성 보너스
-  const numbers = (input.match(/\d+/g) || []).length;
-  completeness += Math.min(15, numbers * 5);
-  
-  return {
-    completeness: Math.min(100, completeness),
-    already_provided
-  };
 }
