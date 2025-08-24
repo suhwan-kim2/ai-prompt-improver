@@ -935,3 +935,38 @@ window.debugInfo = function() {
     console.log('현재 점수:', currentScore);
     console.log('히스토리 개수:', promptHistory.length);
 };
+
+// script.js 맨 끝에 추가
+function requestAdditionalQuestions() {
+    console.log('추가 질문 요청됨');
+    
+    if (isProcessing) {
+        showStatus('이미 처리 중입니다.', 'error');
+        return;
+    }
+    
+    isProcessing = true;
+    
+    // 현재 답변들을 서버로 전송해서 추가 질문 요청
+    callAPI('additional-questions', {
+        userInput: originalUserInput,
+        answers: formatAnswersForAPI(currentAnswers)
+    })
+    .then(result => {
+        if (result.questions && result.questions.length > 0) {
+            // 기존 질문에 새 질문 추가
+            currentQuestions = [...currentQuestions, ...result.questions];
+            displayQuestions(currentQuestions);
+            showStatus(`추가 질문 ${result.questions.length}개가 생성되었습니다!`, 'success');
+        } else {
+            showStatus('더 이상 필요한 질문이 없습니다.', 'info');
+        }
+    })
+    .catch(error => {
+        console.error('추가 질문 요청 실패:', error);
+        showStatus('추가 질문 요청에 실패했습니다.', 'error');
+    })
+    .finally(() => {
+        isProcessing = false;
+    });
+}
