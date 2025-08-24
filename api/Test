@@ -1,0 +1,8 @@
+export default function handler(req, res) {
+  console.log('테스트 API 호출됨');
+  res.json({ 
+    message: "테스트 성공!", 
+    timestamp: new Date().toISOString(),
+    method: req.method 
+  });
+}
