@@ -1,6 +1,6 @@
-// utils/mentionExtractor.js - 사용자 언급 정보 추출
+// utils/mentionExtractor.js - 사용자 언급 정보 추출 (Node.js 호환 버전)
 
-export class MentionExtractor {
+class MentionExtractor {
   constructor() {
     this.patterns = {
       색상: {
@@ -68,232 +68,324 @@ export class MentionExtractor {
   
   // 사용자 입력에서 정보 추출
   extract(userInput) {
-    const mentioned = {};
-    const input = userInput.toLowerCase();
-    
-    // 각 패턴별로 정보 추출
-    Object.entries(this.patterns).forEach(([category, pattern]) => {
-      const matches = this.extractCategory(input, pattern);
-      if (matches.length > 0) {
-        mentioned[category] = matches;
+    try {
+      const mentioned = {};
+      const input = userInput.toLowerCase();
+      
+      // 각 패턴별로 정보 추출
+      Object.entries(this.patterns).forEach(([category, pattern]) => {
+        const matches = this.extractCategory(input, pattern);
+        if (matches.length > 0) {
+          mentioned[category] = matches;
+        }
+      });
+      
+      // 복합 정보 추출
+      const complexInfo = this.extractComplexInfo(input);
+      if (Object.keys(complexInfo).length > 0) {
+        mentioned.복합정보 = complexInfo;
       }
-    });
-    
-    // 복합 정보 추출
-    mentioned.복합정보 = this.extractComplexInfo(input);
-    
-    // 컨텍스트 분석
-    mentioned.컨텍스트 = this.analyzeContext(input);
-    
-    return mentioned;
+      
+      // 컨텍스트 분석
+      mentioned.컨텍스트 = this.analyzeContext(input);
+      
+      return mentioned;
+    } catch (error) {
+      console.error('정보 추출 중 오류:', error);
+      return { 컨텍스트: { 복잡도: 0.5, 명확도: 0.5, 완성도: 0.3, 긴급도: 0.5 } };
+    }
   }
   
   // 카테고리별 정보 추출
   extractCategory(input, pattern) {
-    const matches = new Set();
-    
-    // 정규식 매칭
-    if (pattern.regex) {
-      const regexMatches = input.match(pattern.regex);
-      if (regexMatches) {
-        regexMatches.forEach(match => matches.add(match.toLowerCase()));
+    try {
+      const matches = new Set();
+      
+      // 정규식 매칭
+      if (pattern.regex) {
+        const regexMatches = input.match(pattern.regex);
+        if (regexMatches) {
+          regexMatches.forEach(match => matches.add(match.toLowerCase()));
+        }
       }
+      
+      // 숫자 패턴 매칭 (Node.js 호환성을 위해 while 루프 사용)
+      if (pattern.numbers) {
+        let match;
+        const regex = new RegExp(pattern.numbers.source, pattern.numbers.flags);
+        while ((match = regex.exec(input)) !== null) {
+          matches.add(match[0]);
+        }
+      }
+      
+      // 키워드 매칭
+      if (pattern.keywords && Array.isArray(pattern.keywords)) {
+        pattern.keywords.forEach(keyword => {
+          if (input.includes(keyword.toLowerCase())) {
+            matches.add(keyword);
+          }
+        });
+      }
+      
+      return Array.from(matches);
+    } catch (error) {
+      console.error(`카테고리 추출 오류 (${JSON.stringify(pattern)}):`, error);
+      return [];
     }
-    
-    // 숫자 패턴 매칭
-    if (pattern.numbers) {
-      const numberMatches = input.match(pattern.numbers);
-      if (numberMatches) {
-        numberMatches.forEach(match => matches.add(match));
-      }
-    }
-    
-    // 키워드 매칭
-    pattern.keywords.forEach(keyword => {
-      if (input.includes(keyword.toLowerCase())) {
-        matches.add(keyword);
-      }
-    });
-    
-    return Array.from(matches);
   }
   
   // 복합 정보 추출 (여러 카테고리 결합)
   extractComplexInfo(input) {
-    const complexInfo = {};
-    
-    // 크기 + 해상도 조합
-    const sizeMatch = input.match(/(\d+)\s*x\s*(\d+)/);
-    if (sizeMatch) {
-      complexInfo.해상도 = `${sizeMatch[1]}x${sizeMatch[2]}`;
+    try {
+      const complexInfo = {};
+      
+      // 크기 + 해상도 조합
+      const sizeMatch = input.match(/(\d+)\s*x\s*(\d+)/);
+      if (sizeMatch) {
+        complexInfo.해상도 = `${sizeMatch[1]}x${sizeMatch[2]}`;
+      }
+      
+      // 시간 + 길이 조합
+      const durationMatch = input.match(/(\d+)\s*(초|분)\s*(길이|동안)/);
+      if (durationMatch) {
+        complexInfo.길이 = `${durationMatch[1]}${durationMatch[2]}`;
+      }
+      
+      // 색상 + 스타일 조합
+      const colorStyleMatch = input.match(/(빨간|파란|노란|검은|흰|회색)\s*(3d|애니메이션|실사)/);
+      if (colorStyleMatch) {
+        complexInfo.색상스타일 = `${colorStyleMatch[1]} ${colorStyleMatch[2]}`;
+      }
+      
+      // 용도 + 대상 조합
+      const purposeTargetMatch = input.match(/(아이|어른|학생|전문가)\s*(용|위한|대상)/);
+      if (purposeTargetMatch) {
+        complexInfo.대상용도 = `${purposeTargetMatch[1]}용`;
+      }
+      
+      return complexInfo;
+    } catch (error) {
+      console.error('복합 정보 추출 오류:', error);
+      return {};
     }
-    
-    // 시간 + 길이 조합
-    const durationMatch = input.match(/(\d+)\s*(초|분)\s*(길이|동안)/);
-    if (durationMatch) {
-      complexInfo.길이 = `${durationMatch[1]}${durationMatch[2]}`;
-    }
-    
-    // 색상 + 스타일 조합
-    const colorStyleMatch = input.match(/(빨간|파란|노란|검은|흰|회색)\s*(3d|애니메이션|실사)/);
-    if (colorStyleMatch) {
-      complexInfo.색상스타일 = `${colorStyleMatch[1]} ${colorStyleMatch[2]}`;
-    }
-    
-    // 용도 + 대상 조합
-    const purposeTargetMatch = input.match(/(아이|어른|학생|전문가)\s*(용|위한|대상)/);
-    if (purposeTargetMatch) {
-      complexInfo.대상용도 = `${purposeTargetMatch[1]}용`;
-    }
-    
-    return complexInfo;
   }
   
   // 컨텍스트 분석
   analyzeContext(input) {
-    const context = {
-      복잡도: this.calculateComplexity(input),
-      명확도: this.calculateClarity(input),
-      완성도: this.calculateCompleteness(input),
-      긴급도: this.calculateUrgency(input)
-    };
-    
-    return context;
+    try {
+      const context = {
+        복잡도: this.calculateComplexity(input),
+        명확도: this.calculateClarity(input),
+        완성도: this.calculateCompleteness(input),
+        긴급도: this.calculateUrgency(input)
+      };
+      
+      return context;
+    } catch (error) {
+      console.error('컨텍스트 분석 오류:', error);
+      return { 복잡도: 0.5, 명확도: 0.5, 완성도: 0.3, 긴급도: 0.5 };
+    }
   }
   
   // 복잡도 계산
   calculateComplexity(input) {
-    const words = input.split(/\s+/).length;
-    const sentences = input.split(/[.!?]/).length;
-    const specialChars = (input.match(/[,;:()]/g) || []).length;
-    
-    let complexity = 0;
-    if (words > 20) complexity += 0.3;
-    if (sentences > 3) complexity += 0.2;
-    if (specialChars > 5) complexity += 0.2;
-    
-    const technicalTerms = (input.match(/(api|데이터베이스|알고리즘|프레임워크|라이브러리)/gi) || []).length;
-    complexity += technicalTerms * 0.1;
-    
-    return Math.min(1, complexity);
+    try {
+      const words = input.split(/\s+/).length;
+      const sentences = input.split(/[.!?]/).filter(s => s.trim().length > 0).length;
+      const specialChars = (input.match(/[,;:()]/g) || []).length;
+      
+      let complexity = 0;
+      if (words > 20) complexity += 0.3;
+      if (sentences > 3) complexity += 0.2;
+      if (specialChars > 5) complexity += 0.2;
+      
+      const technicalTerms = (input.match(/(api|데이터베이스|알고리즘|프레임워크|라이브러리)/gi) || []).length;
+      complexity += technicalTerms * 0.1;
+      
+      return Math.min(1, complexity);
+    } catch (error) {
+      console.error('복잡도 계산 오류:', error);
+      return 0.5;
+    }
   }
   
   // 명확도 계산
   calculateClarity(input) {
-    let clarity = 0.5; // 기본값
-    
-    // 구체적 수치 포함시 +
-    const numbers = (input.match(/\d+/g) || []).length;
-    clarity += Math.min(0.3, numbers * 0.1);
-    
-    // 명확한 지시어 포함시 +
-    if (input.match(/(정확히|구체적으로|반드시|꼭)/)) clarity += 0.2;
-    
-    // 모호한 표현 포함시 -
-    if (input.match(/(대충|적당히|알아서|좀)/)) clarity -= 0.3;
-    
-    return Math.max(0, Math.min(1, clarity));
+    try {
+      let clarity = 0.5; // 기본값
+      
+      // 구체적 수치 포함시 +
+      const numbers = (input.match(/\d+/g) || []).length;
+      clarity += Math.min(0.3, numbers * 0.1);
+      
+      // 명확한 지시어 포함시 +
+      if (input.match(/(정확히|구체적으로|반드시|꼭)/)) clarity += 0.2;
+      
+      // 모호한 표현 포함시 -
+      if (input.match(/(대충|적당히|알아서|좀)/)) clarity -= 0.3;
+      
+      return Math.max(0, Math.min(1, clarity));
+    } catch (error) {
+      console.error('명확도 계산 오류:', error);
+      return 0.5;
+    }
   }
   
   // 완성도 계산
   calculateCompleteness(input) {
-    let completeness = 0.3; // 기본값
-    
-    // 5W1H 요소 체크
-    const elements = {
-      what: /(무엇|뭘|어떤)/,
-      when: /(언제|시간|기간)/,
-      where: /(어디|장소|위치)/,
-      who: /(누구|대상|사용자)/,
-      why: /(왜|목적|이유)/,
-      how: /(어떻게|방법|방식)/
-    };
-    
-    Object.values(elements).forEach(pattern => {
-      if (input.match(pattern)) completeness += 0.1;
-    });
-    
-    // 도메인별 필수 요소 체크
-    const domainElements = [
-      /(스타일|색상|크기|해상도)/, // 비주얼
-      /(기능|기술|플랫폼)/, // 개발
-      /(길이|형식|톤)/, // 텍스트
-      /(목적|대상|예산)/ // 비즈니스
-    ];
-    
-    domainElements.forEach(pattern => {
-      if (input.match(pattern)) completeness += 0.05;
-    });
-    
-    return Math.min(1, completeness);
+    try {
+      let completeness = 0.3; // 기본값
+      
+      // 5W1H 요소 체크
+      const elements = {
+        what: /(무엇|뭘|어떤)/,
+        when: /(언제|시간|기간)/,
+        where: /(어디|장소|위치)/,
+        who: /(누구|대상|사용자)/,
+        why: /(왜|목적|이유)/,
+        how: /(어떻게|방법|방식)/
+      };
+      
+      Object.values(elements).forEach(pattern => {
+        if (input.match(pattern)) completeness += 0.1;
+      });
+      
+      // 도메인별 필수 요소 체크
+      const domainElements = [
+        /(스타일|색상|크기|해상도)/, // 비주얼
+        /(기능|기술|플랫폼)/, // 개발
+        /(길이|형식|톤)/, // 텍스트
+        /(목적|대상|예산)/ // 비즈니스
+      ];
+      
+      domainElements.forEach(pattern => {
+        if (input.match(pattern)) completeness += 0.05;
+      });
+      
+      return Math.min(1, completeness);
+    } catch (error) {
+      console.error('완성도 계산 오류:', error);
+      return 0.3;
+    }
   }
   
   // 긴급도 계산
   calculateUrgency(input) {
-    let urgency = 0.5; // 기본값
-    
-    // 긴급 키워드
-    if (input.match(/(급해|빨리|즉시|오늘|내일)/)) urgency += 0.3;
-    if (input.match(/(여유|천천히|나중에)/)) urgency -= 0.2;
-    
-    return Math.max(0, Math.min(1, urgency));
+    try {
+      let urgency = 0.5; // 기본값
+      
+      // 긴급 키워드
+      if (input.match(/(급해|빨리|즉시|오늘|내일)/)) urgency += 0.3;
+      if (input.match(/(여유|천천히|나중에)/)) urgency -= 0.2;
+      
+      return Math.max(0, Math.min(1, urgency));
+    } catch (error) {
+      console.error('긴급도 계산 오류:', error);
+      return 0.5;
+    }
   }
   
   // 언급된 정보를 질문에서 제외할지 판단
   shouldSkipQuestion(questionKey, mentionedInfo) {
-    // 직접적으로 언급된 경우
-    if (mentionedInfo[questionKey]) return true;
-    
-    // 유사한 정보가 언급된 경우
-    const synonyms = {
-      색상: ['색깔', '컬러'],
-      스타일: ['느낌', '방식', '타입'],
-      크기: ['사이즈', '규모'],
-      목적: ['용도', '목표'],
-      대상: ['타겟', '사용자']
-    };
-    
-    if (synonyms[questionKey]) {
-      return synonyms[questionKey].some(synonym => mentionedInfo[synonym]);
+    try {
+      // 직접적으로 언급된 경우
+      if (mentionedInfo[questionKey]) return true;
+      
+      // 유사한 정보가 언급된 경우
+      const synonyms = {
+        색상: ['색깔', '컬러'],
+        스타일: ['느낌', '방식', '타입'],
+        크기: ['사이즈', '규모'],
+        목적: ['용도', '목표'],
+        대상: ['타겟', '사용자']
+      };
+      
+      if (synonyms[questionKey]) {
+        return synonyms[questionKey].some(synonym => mentionedInfo[synonym]);
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('질문 스킵 판단 오류:', error);
+      return false;
     }
-    
-    return false;
   }
   
   // 언급 정보를 자연어로 변환
   formatMentioned(mentionedInfo) {
-    const formatted = [];
-    
-    Object.entries(mentionedInfo).forEach(([category, values]) => {
-      if (Array.isArray(values) && values.length > 0) {
-        formatted.push(`${category}: ${values.join(', ')}`);
-      } else if (typeof values === 'object' && Object.keys(values).length > 0) {
-        const subItems = Object.entries(values).map(([k, v]) => `${k}=${v}`);
-        formatted.push(`${category}: ${subItems.join(', ')}`);
-      }
-    });
-    
-    return formatted.join(' | ');
+    try {
+      const formatted = [];
+      
+      Object.entries(mentionedInfo).forEach(([category, values]) => {
+        if (Array.isArray(values) && values.length > 0) {
+          formatted.push(`${category}: ${values.join(', ')}`);
+        } else if (typeof values === 'object' && values && Object.keys(values).length > 0) {
+          const subItems = Object.entries(values).map(([k, v]) => `${k}=${v}`);
+          formatted.push(`${category}: ${subItems.join(', ')}`);
+        }
+      });
+      
+      return formatted.join(' | ');
+    } catch (error) {
+      console.error('언급 정보 포매팅 오류:', error);
+      return '';
+    }
   }
   
   // 언급 정보의 완성도 평가
   evaluateCompleteness(mentionedInfo, targetDomain) {
-    const domainRequirements = {
-      visual_design: ['주제', '스타일'],
-      video: ['목적', '길이'],
-      development: ['프로젝트유형', '주요기능'],
-      text_language: ['목적', '대상독자'],
-      business: ['사업분야', '목표'],
-      music_audio: ['장르', '분위기']
-    };
-    
-    const required = domainRequirements[targetDomain] || ['목적'];
-    const mentioned = Object.keys(mentionedInfo);
-    
-    const coverage = required.filter(req => 
-      mentioned.some(m => m.includes(req) || req.includes(m))
-    ).length;
-    
-    return coverage / required.length;
+    try {
+      const domainRequirements = {
+        visual_design: ['주제', '스타일'],
+        video: ['목적', '길이'],
+        development: ['프로젝트유형', '주요기능'],
+        text_language: ['목적', '대상독자'],
+        business: ['사업분야', '목표'],
+        music_audio: ['장르', '분위기']
+      };
+      
+      const required = domainRequirements[targetDomain] || ['목적'];
+      const mentioned = Object.keys(mentionedInfo || {});
+      
+      if (required.length === 0) return 1;
+      
+      const coverage = required.filter(req => 
+        mentioned.some(m => m.includes(req) || req.includes(m))
+      ).length;
+      
+      return coverage / required.length;
+    } catch (error) {
+      console.error('완성도 평가 오류:', error);
+      return 0.5;
+    }
+  }
+  
+  // 추가 유틸리티: 키워드 빈도 분석
+  analyzeKeywordFrequency(input) {
+    try {
+      const words = input.toLowerCase()
+        .replace(/[^\w\s가-힣]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 1);
+      
+      const frequency = {};
+      words.forEach(word => {
+        frequency[word] = (frequency[word] || 0) + 1;
+      });
+      
+      return Object.entries(frequency)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 10)
+        .reduce((obj, [word, count]) => {
+          obj[word] = count;
+          return obj;
+        }, {});
+    } catch (error) {
+      console.error('키워드 빈도 분석 오류:', error);
+      return {};
+    }
   }
 }
+
+// Node.js 환경에서 사용할 수 있도록 export
+module.exports = { MentionExtractor };
