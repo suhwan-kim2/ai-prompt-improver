@@ -2,7 +2,6 @@
 
 // Utils import
 import { evaluatePrompt } from '../utils/evaluationSystem.js';
-import { evaluateImagePrompt } from '../utils/imageEvaluationSystem.js'; // 🎨 이미지 전용 평가
 import { SlotSystem } from '../utils/slotSystem.js';
 import { MentionExtractor } from '../utils/mentionExtractor.js';
 import { IntentAnalyzer } from '../utils/intentAnalyzer.js';
