@@ -970,3 +970,17 @@ function requestAdditionalQuestions() {
         isProcessing = false;
     });
 }
+
+
+// script.js 맨 끝에 추가
+function formatAnswersForAPI(answers) {
+    const formatted = [];
+    Object.entries(answers).forEach(([index, answer]) => {
+        if (answer && answer.trim().length > 0) {
+            const questionIndex = parseInt(index);
+            const question = currentQuestions[questionIndex] || `질문 ${questionIndex + 1}`;
+            formatted.push(`Q: ${question}\nA: ${answer.trim()}`);
+        }
+    });
+    return formatted;
+}
