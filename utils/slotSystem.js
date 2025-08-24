@@ -1,6 +1,6 @@
-// utils/slotSystem.js - 슬롯 기반 질문 시스템
+// utils/slotSystem.js - 슬롯 기반 질문 시스템 (Node.js 호환 버전)
 
-export class SlotSystem {
+class SlotSystem {
   constructor() {
     this.domainSlots = {
       visual_design: {
@@ -94,61 +94,70 @@ export class SlotSystem {
   
   // 도메인 감지
   detectDomains(userInput) {
-    const input = userInput.toLowerCase();
-    const domainScores = {};
-    
-    // 각 도메인별 키워드 매칭
-    Object.entries(this.domainKeywords).forEach(([domain, keywords]) => {
-      domainScores[domain] = 0;
-      keywords.forEach(keyword => {
-        if (input.includes(keyword)) {
-          domainScores[domain] += 1;
-        }
+    try {
+      const input = userInput.toLowerCase();
+      const domainScores = {};
+      
+      // 각 도메인별 키워드 매칭
+      Object.entries(this.domainKeywords).forEach(([domain, keywords]) => {
+        domainScores[domain] = 0;
+        keywords.forEach(keyword => {
+          if (input.includes(keyword)) {
+            domainScores[domain] += 1;
+          }
+        });
       });
-    });
-    
-    // 점수 기반 정렬
-    const sortedDomains = Object.entries(domainScores)
-      .filter(([domain, score]) => score > 0)
-      .sort(([,a], [,b]) => b - a);
-    
-    if (sortedDomains.length === 0) {
+      
+      // 점수 기반 정렬
+      const sortedDomains = Object.entries(domainScores)
+        .filter(([domain, score]) => score > 0)
+        .sort(([,a], [,b]) => b - a);
+      
+      if (sortedDomains.length === 0) {
+        return { primary: 'general', secondary: [], confidence: 0.5 };
+      }
+      
+      const primary = sortedDomains[0][0];
+      const secondary = sortedDomains.slice(1, 3).map(([domain]) => domain);
+      const confidence = Math.min(1, sortedDomains[0][1] / 3);
+      
+      return { primary, secondary, confidence };
+    } catch (error) {
+      console.error('도메인 감지 오류:', error);
       return { primary: 'general', secondary: [], confidence: 0.5 };
     }
-    
-    const primary = sortedDomains[0][0];
-    const secondary = sortedDomains.slice(1, 3).map(([domain]) => domain);
-    const confidence = Math.min(1, sortedDomains[0][1] / 3);
-    
-    return { primary, secondary, confidence };
   }
   
   // 폴백 질문 생성 (AI 없이 동작)
   generateFallbackQuestions(domainInfo, mentionedInfo = {}) {
-    const domain = domainInfo.primary || 'general';
-    const slots = this.domainSlots[domain] || this.domainSlots.general;
-    
-    const questions = [];
-    
-    // 필수 슬롯부터 처리
-    Object.entries(slots)
-      .filter(([key, slot]) => slot.required && !mentionedInfo[key])
-      .sort(([,a], [,b]) => b.weight - a.weight)
-      .forEach(([key, slot]) => {
-        questions.push(slot.question);
-      });
-    
-    // 선택 슬롯 추가 (필요한 만큼만)
-    Object.entries(slots)
-      .filter(([key, slot]) => !slot.required && !mentionedInfo[key])
-      .sort(([,a], [,b]) => b.weight - a.weight)
-      .slice(0, 8 - questions.length)
-      .forEach(([key, slot]) => {
-        questions.push(slot.question);
-      });
-    
-    // 부족하면 일반 질문 추가
-    while (questions.length < 8) {
+    try {
+      const domain = domainInfo.primary || 'general';
+      const slots = this.domainSlots[domain] || this.domainSlots.general;
+      
+      const questions = [];
+      
+      // 필수 슬롯부터 처리
+      Object.entries(slots)
+        .filter(([key, slot]) => slot.required && !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight)
+        .forEach(([key, slot]) => {
+          if (slot.question && questions.length < 8) {
+            questions.push(slot.question);
+          }
+        });
+      
+      // 선택 슬롯 추가 (필요한 만큼만)
+      Object.entries(slots)
+        .filter(([key, slot]) => !slot.required && !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight)
+        .slice(0, Math.max(0, 8 - questions.length))
+        .forEach(([key, slot]) => {
+          if (slot.question && questions.length < 8) {
+            questions.push(slot.question);
+          }
+        });
+      
+      // 부족하면 일반 질문 추가
       const generalQuestions = [
         "어떤 스타일을 원하시나요?",
         "크기나 규모는 어느 정도로 생각하고 계신가요?",
@@ -160,26 +169,88 @@ export class SlotSystem {
         "기타 추가로 고려할 사항이 있나요?"
       ];
       
-      const remainingQuestions = generalQuestions.filter(q => !questions.includes(q));
-      if (remainingQuestions.length === 0) break;
+      while (questions.length < 8 && questions.length < 8) {
+        const remainingQuestions = generalQuestions.filter(q => !questions.includes(q));
+        if (remainingQuestions.length === 0) break;
+        
+        questions.push(remainingQuestions[0]);
+      }
       
-      questions.push(remainingQuestions[0]);
+      return questions.slice(0, 8);
+    } catch (error) {
+      console.error('폴백 질문 생성 오류:', error);
+      // 안전한 기본 질문들
+      return [
+        "구체적으로 어떤 결과물을 원하시나요?",
+        "어떤 스타일이나 느낌을 선호하시나요?",
+        "크기나 규모는 어느 정도인가요?",
+        "누가 사용하거나 볼 예정인가요?",
+        "특별한 요구사항이나 제약이 있나요?",
+        "참고하고 싶은 예시가 있나요?"
+      ];
     }
-    
-    return questions.slice(0, 8);
   }
   
   // 슬롯 정보 가져오기
   getSlots(domain) {
-    return this.domainSlots[domain] || this.domainSlots.general;
+    try {
+      return this.domainSlots[domain] || this.domainSlots.general;
+    } catch (error) {
+      console.error('슬롯 정보 가져오기 오류:', error);
+      return this.domainSlots.general;
+    }
   }
   
   // 도메인 정보 가져오기
   getDomainInfo(domain) {
-    return {
-      name: domain,
-      slots: this.getSlots(domain),
-      keywords: this.domainKeywords[domain] || []
-    };
+    try {
+      return {
+        name: domain,
+        slots: this.getSlots(domain),
+        keywords: this.domainKeywords[domain] || []
+      };
+    } catch (error) {
+      console.error('도메인 정보 가져오기 오류:', error);
+      return {
+        name: 'general',
+        slots: this.domainSlots.general,
+        keywords: []
+      };
+    }
+  }
+  
+  // 슬롯 기반 질문 우선순위 계산
+  calculateSlotPriority(domain, mentionedInfo = {}) {
+    try {
+      const slots = this.getSlots(domain);
+      const priorities = [];
+      
+      Object.entries(slots).forEach(([key, slot]) => {
+        if (!mentionedInfo[key]) {
+          priorities.push({
+            key: key,
+            weight: slot.weight,
+            required: slot.required,
+            question: slot.question,
+            type: slot.type,
+            options: slot.options || null
+          });
+        }
+      });
+      
+      // 필수 슬롯 먼저, 그 다음 가중치 순
+      return priorities.sort((a, b) => {
+        if (a.required !== b.required) {
+          return b.required - a.required; // 필수가 먼저
+        }
+        return b.weight - a.weight; // 가중치 높은 순
+      });
+    } catch (error) {
+      console.error('슬롯 우선순위 계산 오류:', error);
+      return [];
+    }
   }
 }
+
+// Node.js 환경에서 사용할 수 있도록 export
+module.exports = { SlotSystem };
