@@ -2,6 +2,7 @@
 
 // Utils import
 import { evaluatePrompt } from '../utils/evaluationSystem.js';
+import { evaluateImagePrompt } from '../utils/imageEvaluationSystem.js'; // 🎨 이미지 전용 평가
 import { SlotSystem } from '../utils/slotSystem.js';
 import { MentionExtractor } from '../utils/mentionExtractor.js';
 import { IntentAnalyzer } from '../utils/intentAnalyzer.js';
@@ -484,14 +485,44 @@ async function handleFinalImprove(userInput, answers, round, res) {
         // 2. 영문 프롬프트 생성
         const englishPrompt = await generateEnglishImagePrompt(allInfo);
         
-        // 3. 점수 평가
-        const evaluation = evaluatePrompt(englishPrompt, userInput, { primary: 'visual_design' });
+        // 🎨 3. 이미지 전용 평가 시스템 사용!
+        const evaluation = evaluateImagePrompt(englishPrompt, userInput, answers);
         
-        console.log('📊 평가 결과:', evaluation);
+        console.log('📊 이미지 전용 평가 결과:', evaluation);
         
-        // 4. 자동 반복 판단 (전문가모드에서만)
-        const shouldContinue = evaluation.total < 90 && round < 3;
+        // 4. 자동 반복 판단 (전문가모드 + 90점 미만)
+        const shouldContinue = evaluation.total < 90 && round < 5; // 최대 5라운드로 증가
         
+        // 🔥 5. 90점 미만이면 강제 개선!
+        if (shouldContinue) {
+            console.log(`🔄 ${evaluation.total}점으로 90점 미만! 프롬프트 강제 개선 시작`);
+            
+            // AI에게 현재 프롬프트의 문제점 찾아서 개선 요청
+            const improvedPrompt = await forceImprovePrompt(englishPrompt, evaluation, round);
+            
+            // 개선된 프롬프트 재평가
+            const reEvaluation = evaluateImagePrompt(improvedPrompt, userInput, answers);
+            
+            console.log('📈 재평가 결과:', reEvaluation);
+            
+            return res.json({
+                improved_prompt: improvedPrompt,
+                score: reEvaluation.total,
+                improvements: reEvaluation.improvements,
+                evaluation_details: reEvaluation.details,
+                domain: 'visual_design',
+                round: round,
+                should_continue: reEvaluation.total < 90 && round < 5,
+                completed: reEvaluation.total >= 90 || round >= 5,
+                language: 'english',
+                force_improved: true,
+                previous_score: evaluation.total,
+                score_improvement: reEvaluation.total - evaluation.total,
+                message: `강제 개선 완료! ${evaluation.total}점 → ${reEvaluation.total}점 (${reEvaluation.total - evaluation.total > 0 ? '+' : ''}${reEvaluation.total - evaluation.total}점)`
+            });
+        }
+        
+        // 90점 이상이면 완료
         return res.json({
             improved_prompt: englishPrompt,
             score: evaluation.total,
@@ -499,31 +530,47 @@ async function handleFinalImprove(userInput, answers, round, res) {
             evaluation_details: evaluation.details,
             domain: 'visual_design',
             round: round,
-            should_continue: shouldContinue,
-            completed: !shouldContinue,
+            should_continue: false,
+            completed: true,
             language: 'english',
-            message: shouldContinue ? 
-                `${evaluation.total}점입니다. 더 높은 품질을 위해 다음 라운드를 진행합니다.` : 
-                `${evaluation.total}점의 영문 이미지 프롬프트가 완성되었습니다!`
+            message: `🎉 목표 달성! ${evaluation.total}점의 전문가급 이미지 프롬프트 완성!`
         });
         
     } catch (error) {
         console.error('❌ Step 3 오류:', error);
         
-        // 폴백: 기본 영문 프롬프트
+        // 폴백: 기본 영문 프롬프트 + 강제 개선
         const fallbackPrompt = generateFallbackEnglishPrompt(userInput, answers);
-        const fallbackScore = 75;
+        const fallbackEvaluation = evaluateImagePrompt(fallbackPrompt, userInput, answers);
+        
+        // 폴백도 90점 미만이면 강제 개선
+        let finalPrompt = fallbackPrompt;
+        let finalScore = fallbackEvaluation.total;
+        
+        if (finalScore < 90) {
+            try {
+                finalPrompt = await forceImprovePrompt(fallbackPrompt, fallbackEvaluation, round);
+                const reEval = evaluateImagePrompt(finalPrompt, userInput, answers);
+                finalScore = reEval.total;
+            } catch (forceError) {
+                console.warn('⚠️ 강제 개선도 실패, 수동 개선 시도');
+                finalPrompt = manualImprovePrompt(fallbackPrompt, fallbackEvaluation.details);
+                const manualEval = evaluateImagePrompt(finalPrompt, userInput, answers);
+                finalScore = manualEval.total;
+            }
+        }
         
         return res.json({
-            improved_prompt: fallbackPrompt,
-            score: fallbackScore,
-            improvements: ['기본 영문 변환 완료'],
+            improved_prompt: finalPrompt,
+            score: finalScore,
+            improvements: ['기본 영문 변환 + 강제 개선 완료'],
             domain: 'visual_design',
             round: round,
             completed: true,
             language: 'english',
             fallback: true,
-            message: '기본 영문 프롬프트로 처리되었습니다.'
+            force_improved: finalScore > fallbackEvaluation.total,
+            message: `폴백 시스템으로 ${finalScore}점 달성!`
         });
     }
 }
@@ -617,6 +664,172 @@ function enhanceImagePrompt(prompt, allInfo) {
     return enhanced;
 }
 
+// 🔥 강제 프롬프트 개선 함수 (핵심!)
+async function forceImprovePrompt(currentPrompt, evaluation, round) {
+    console.log('🔥 강제 프롬프트 개선 시작');
+    
+    try {
+        // 평가 결과에서 부족한 부분 파악
+        const weakPoints = identifyWeakPoints(evaluation.details);
+        console.log('📉 부족한 부분:', weakPoints);
+        
+        const improveContext = `
+현재 영문 프롬프트: "${currentPrompt}"
+
+평가 결과: ${evaluation.total}/96점
+부족한 부분: ${weakPoints.join(', ')}
+
+이 프롬프트를 다음 기준으로 개선해주세요:
+
+${generateImprovementInstructions(weakPoints)}
+
+목표: 90점+ 달성
+결과: 개선된 영문 프롬프트만 출력 (설명 없이)
+`;
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4',
+                messages: [
+                    {
+                        role: 'system',
+                        content: '당신은 AI 이미지 생성 프롬프트 개선 전문가입니다. 기존 프롬프트의 약점을 찾아 완벽하게 개선해주세요.'
+                    },
+                    {
+                        role: 'user',
+                        content: improveContext
+                    }
+                ],
+                temperature: 0.4,
+                max_tokens: 600
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`OpenAI API 오류: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        let improvedPrompt = result.choices[0].message.content.trim();
+        
+        // 개선된 프롬프트 후처리
+        improvedPrompt = postProcessImprovedPrompt(improvedPrompt, weakPoints);
+        
+        console.log('✨ 강제 개선 완료:', improvedPrompt);
+        return improvedPrompt;
+        
+    } catch (error) {
+        console.error('❌ 강제 개선 실패:', error);
+        
+        // 폴백: 수동 개선
+        return manualImprovePrompt(currentPrompt, evaluation.details);
+    }
+}
+
+// 평가 결과에서 부족한 부분 파악
+function identifyWeakPoints(evaluationDetails) {
+    const weakPoints = [];
+    
+    Object.entries(evaluationDetails).forEach(([key, result]) => {
+        if (result.score < 6) { // 8점 만점에서 6점 미만
+            weakPoints.push(key);
+        }
+    });
+    
+    return weakPoints;
+}
+
+// 개선 지시사항 생성
+function generateImprovementInstructions(weakPoints) {
+    const instructionMap = {
+        주체구체화: "- 주체를 더 구체적으로: 정확한 품종, 크기, 나이, 특징 추가",
+        감정표정: "- 감정 표현 강화: 구체적 눈빛, 표정, 미묘한 감정 상태 추가",
+        포즈동작: "- 포즈 디테일 추가: 정확한 자세, 각도, 손발 위치, 움직임 묘사",
+        배경설정: "- 배경 상세화: 구체적 장소, 환경 디테일, 소품, 분위기 추가",
+        조명정보: "- 조명 전문화: 조명 종류, 방향, 강도, 색온도, 그림자 설정",
+        카메라구도: "- 카메라 설정 추가: 구도 법칙, 초점, 앵글, 거리감 명시",
+        예술스타일: "- 스타일 구체화: 구체적 작가, 스튜디오, 세부 기법 언급",
+        색상팔레트: "- 색상 정확화: 구체적 색상명, 조합, 채도, 명도 설정",
+        품질지시어: "- 품질 키워드 강화: masterpiece, award-winning, gallery quality 추가",
+        참고플랫폼: "- 참고 사이트 추가: trending on ArtStation, featured on Behance",
+        부정명령어: "- 부정 명령어 강화: --no blurry, low quality, dark, watermark, text",
+        기술스펙: "- 기술 사양 추가: 4K resolution, 16:9 ratio, PNG format, 300 DPI"
+    };
+    
+    return weakPoints.map(point => instructionMap[point] || `- ${point} 개선 필요`).join('\n');
+}
+
+// 개선된 프롬프트 후처리
+function postProcessImprovedPrompt(prompt, weakPoints) {
+    let processed = prompt;
+    
+    // 따옴표 제거
+    processed = processed.replace(/^["']|["']$/g, '');
+    
+    // 기본 품질 키워드 강제 추가 (부족한 경우)
+    if (weakPoints.includes('품질지시어') && !processed.includes('masterpiece')) {
+        processed += ', masterpiece quality';
+    }
+    
+    // 부정 명령어 강제 추가 (부족한 경우)
+    if (weakPoints.includes('부정명령어') && !processed.includes('--no')) {
+        processed += ' --no blurry, low quality, watermark';
+    }
+    
+    // 기술 스펙 강제 추가 (부족한 경우)
+    if (weakPoints.includes('기술스펙') && !processed.includes('4K')) {
+        processed += ', 4K resolution';
+    }
+    
+    return processed;
+}
+
+// 수동 개선 (AI 실패시 폴백)
+function manualImprovePrompt(currentPrompt, evaluationDetails) {
+    console.log('🔄 수동 개선 시작');
+    
+    let improved = currentPrompt;
+    
+    // 각 약점별로 수동 개선
+    Object.entries(evaluationDetails).forEach(([key, result]) => {
+        if (result.score < 6) {
+            switch(key) {
+                case '주체구체화':
+                    improved = improved.replace(/dog/gi, 'golden retriever puppy');
+                    improved = improved.replace(/cat/gi, 'domestic shorthair cat');
+                    break;
+                case '감정표정':
+                    if (!improved.includes('eyes')) {
+                        improved += ', bright curious eyes';
+                    }
+                    break;
+                case '품질지시어':
+                    if (!improved.includes('masterpiece')) {
+                        improved += ', masterpiece quality, studio lighting';
+                    }
+                    break;
+                case '부정명령어':
+                    if (!improved.includes('--no')) {
+                        improved += ' --no blurry, low quality, dark shadows';
+                    }
+                    break;
+                case '기술스펙':
+                    if (!improved.includes('4K')) {
+                        improved += ', 4K resolution, high detail';
+                    }
+                    break;
+            }
+        }
+    });
+    
+    return improved;
+}
+
 // 폴백 영문 프롬프트 생성
 function generateFallbackEnglishPrompt(userInput, answers) {
     console.log('🔄 폴백 영문 프롬프트 생성');
@@ -640,4 +853,4 @@ function generateFallbackEnglishPrompt(userInput, answers) {
     return prompt;
 }
 
-console.log('🎨 이미지 도메인 API 로드 완료!');
+console.log('🎨 이미지 도메인 API + 전용 평가 시스템 로드 완료!');
