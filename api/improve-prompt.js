@@ -1065,4 +1065,4 @@ function analyzeMissingDetails(mentionedInfo) {
 
 console.log('✅ API 로드 완료 - 20단계 95점 시스템');
 
-export default handler;
+
