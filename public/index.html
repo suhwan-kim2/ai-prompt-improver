@@ -18,7 +18,7 @@
         <header class="header">
             <div class="logo">
                 <h1>🤖 AI 프롬프트 개선기</h1>
-                <p class="tagline">최대 20단계 자동 분석으로 95점 완벽 프롬프트 생성</p>
+                <p class="tagline">최대 20단계 자동 분석으로 목표 점수 프롬프트 생성</p>
             </div>
         </header>
         
@@ -34,7 +34,17 @@
                     <span class="mode-label" data-mode="expert">🎯 전문가모드</span>
                 </div>
                 <div class="mode-description" id="modeDescription">
-                    빠르고 간편한 프롬프트 개선 (3단계)
+                    빠르고 간편한 프롬프트 개선 (기본 3단계, 변경 가능)
+                </div>
+                <div class="step-config">
+                    <label for="maxStepsInput">단계 수:</label>
+                    <input type="number" id="maxStepsInput" min="1" max="50" value="3">
+                    <div class="step-hint">기본 3단계(전문가 20단계). 필요 시 숫자를 직접 입력해 조정하세요</div>
+                </div>
+                <div class="score-config">
+                    <label for="targetScoreInput">목표 점수:</label>
+                    <input type="number" id="targetScoreInput" min="0" max="100" value="95">
+                    <div class="score-hint">0~100, 기본 95</div>
                 </div>
             </div>
             
@@ -65,7 +75,7 @@
                     <span class="step">1️⃣ 원하는 작업 입력</span>
                     <span class="step">2️⃣ AI 질문에 답변</span>
                     <span class="step">3️⃣ 자동 반복 개선</span>
-                    <span class="step">4️⃣ 95점 달성!</span>
+                    <span class="step">4️⃣ 목표 점수 달성!</span>
                 </div>
                 <button class="guide-detail-btn" onclick="showDetailedGuide()">
                     📖 자세한 사용법
@@ -97,7 +107,7 @@
         <section class="ai-questions" id="aiQuestions" style="display: none;">
             <div class="questions-header">
                 <h3>🤖 AI 자동 질문 시스템</h3>
-                <p>95점 달성까지 자동으로 진행됩니다</p>
+                <p>목표 점수 달성까지 자동으로 진행됩니다</p>
             </div>
             
             <div class="questions-content">
@@ -159,7 +169,7 @@
                 <div class="score-display">
                     현재 점수: <span class="score-number" id="currentScoreDisplay">--</span>/100점
                 </div>
-                <p class="score-message">목표 점수 95점 달성까지 자동으로 진행됩니다!</p>
+                <p class="score-message">목표 점수 달성까지 자동으로 진행됩니다!</p>
                 
                 <div class="score-progress">
                     <div class="progress-bar">
@@ -177,7 +187,7 @@
             <div class="footer-content">
                 <p>🚀 AI 프롬프트 개선기 v2.0 - 20단계 자동 완성 시스템</p>
                 <p class="footer-sub">
-                    일반모드(3단계) · 전문가모드(20단계) · 95점 목표 달성 · Made with ❤️
+                    일반모드(3단계) · 전문가모드(20단계) · 목표 점수 설정 가능 · Made with ❤️
                 </p>
             </div>
         </footer>
@@ -197,7 +207,8 @@
                     <ul>
                         <li><strong>일반모드:</strong> 3단계로 빠른 완성</li>
                         <li><strong>전문가모드:</strong> 최대 20단계 자동 진행</li>
-                        <li><strong>목표:</strong> 의도 파악 95점 달성</li>
+                        <li><strong>목표:</strong> 의도 파악 원하는 점수 달성</li>
+                        <li><strong>단계 설정:</strong> 입력 칸에서 원하는 단계 수를 직접 조정 (필요 시 20단계 이상도 가능)</li>
                         <li><strong>특징:</strong> 답변만 하면 자동으로 다음 단계 진행</li>
                     </ul>
                 </div>
@@ -207,8 +218,8 @@
                     <ol>
                         <li><strong>1-3단계:</strong> 기본 정보 파악 (40-60점)</li>
                         <li><strong>4-10단계:</strong> 세부 디테일 확인 (60-85점)</li>
-                        <li><strong>11-20단계:</strong> 초정밀 분석 (85-95점+)</li>
-                        <li><strong>완료:</strong> 95점 달성 또는 최대 단계 도달시 자동 완성</li>
+                        <li><strong>11-20단계:</strong> 초정밀 분석 (85점 이상)</li>
+                        <li><strong>완료:</strong> 목표 점수 달성 또는 최대 단계 도달 시 자동 완성</li>
                     </ol>
                 </div>
                 
@@ -228,7 +239,7 @@
                         <li><strong>의도 파악 점수:</strong> 사용자의 진짜 의도를 얼마나 파악했는지</li>
                         <li><strong>품질 점수:</strong> 생성된 프롬프트의 품질과 완성도</li>
                         <li><strong>최종 점수:</strong> 두 점수의 평균</li>
-                        <li><strong>목표:</strong> 95점 이상 달성시 최고 품질 보장</li>
+                        <li><strong>목표:</strong> 높은 점수 달성 시 최고 품질 보장</li>
                     </ul>
                 </div>
             </div>

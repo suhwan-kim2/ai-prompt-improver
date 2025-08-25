@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     }
     
     try {
-        const { step, userInput, answers = [], mode = 'normal', currentStep = 1 } = req.body;
+        const { step, userInput, answers = [], mode = 'normal', currentStep = 1, targetScore = 95 } = req.body;
         
         console.log('📨 요청 정보:', { 
             step, 
@@ -47,10 +47,10 @@ export default async function handler(req, res) {
                 return await handleQuestions(userInput, mode, res);
             
             case 'additional-questions':
-                return await handleAdditionalQuestions(userInput, answers, currentStep, mode, res);
-            
+                return await handleAdditionalQuestions(userInput, answers, currentStep, mode, targetScore, res);
+
             case 'final-improve':
-                return await handleFinalImprove(userInput, answers, currentStep, mode, res);
+                return await handleFinalImprove(userInput, answers, currentStep, mode, targetScore, res);
             
             default:
                 throw new Error('알 수 없는 step: ' + step);
@@ -106,7 +106,7 @@ async function handleQuestions(userInput, mode, res) {
 // =============================================================================
 // 🎯 2-20단계: 추가 질문 생성
 // =============================================================================
-async function handleAdditionalQuestions(userInput, answers, currentStep, mode, res) {
+async function handleAdditionalQuestions(userInput, answers, currentStep, mode, targetScore, res) {
     try {
         console.log(`📝 ${currentStep}단계: 추가 질문 생성`);
         
@@ -116,15 +116,15 @@ async function handleAdditionalQuestions(userInput, answers, currentStep, mode, 
         
         console.log(`📊 현재 의도 파악 점수: ${currentScore}점`);
         
-        // 95점 이상이면 질문 종료
-        if (currentScore >= 95) {
-            console.log('🎉 95점 달성! 질문 종료');
+        // 목표 점수 이상이면 질문 종료
+        if (currentScore >= targetScore) {
+            console.log(`🎉 목표 ${targetScore}점 달성! 질문 종료`);
             return res.json({
                 questions: [],
                 completed: true,
                 currentStep: currentStep,
                 intentScore: currentScore,
-                message: `🎉 완벽합니다! 95점 달성으로 바로 개선하겠습니다.`
+                message: `🎉 완벽합니다! 목표 ${targetScore}점 달성으로 바로 개선하겠습니다.`
             });
         }
         
@@ -161,15 +161,28 @@ async function handleAdditionalQuestions(userInput, answers, currentStep, mode, 
             slotSystem.detectDomains(userInput),
             8
         );
-        
+
+        if (!optimizedQuestions || optimizedQuestions.length === 0) {
+            console.log('⚠️ 추가 질문 생성 실패, 현재 정보로 개선 진행');
+            return res.json({
+                questions: [],
+                completed: true,
+                currentStep: currentStep,
+                intentScore: currentScore,
+                message: `${currentStep}단계에서 추가 질문을 생성할 수 없습니다. 현재 정보로 개선을 진행합니다.`
+            });
+        }
+
         return res.json({
             questions: optimizedQuestions,
             question_type: "multiple_choice",
             currentStep: currentStep,
             maxSteps: mode === 'expert' ? 20 : 3,
             intentScore: currentScore,
-            needMoreInfo: currentScore < 95,
-            message: `${currentStep}단계: 더 정확한 의도 파악을 위한 질문입니다 (현재 ${currentScore}점 → 목표 95점)`
+            needMoreInfo: currentScore < targetScore,
+            message:
+                `${currentStep}단계: 더 정확한 의도 파악을 위한 질문입니다 ` +
+                `(현재 ${currentScore}점 → 목표 ${targetScore}점)`
         });
         
     } catch (error) {
@@ -188,7 +201,7 @@ async function handleAdditionalQuestions(userInput, answers, currentStep, mode, 
 // =============================================================================
 // 🎯 최종 개선 (95점 달성 후)
 // =============================================================================
-async function handleFinalImprove(userInput, answers, currentStep, mode, res) {
+async function handleFinalImprove(userInput, answers, currentStep, mode, targetScore, res) {
     try {
         console.log('🎯 최종 개선 시작');
         

@@ -7,7 +7,8 @@
     "dev": "vercel dev",
     "build": "echo 'Static files ready'",
     "start": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18.0.0"
