@@ -34,7 +34,12 @@
                     <span class="mode-label" data-mode="expert">🎯 전문가모드</span>
                 </div>
                 <div class="mode-description" id="modeDescription">
-                    빠르고 간편한 프롬프트 개선 (3단계)
+                   빠르고 간편한 프롬프트 개선 (기본 3단계, 변경 가능)
+                </div>
+                <div class="step-config">
+                    <label for="maxStepsInput">단계 수:</label>
+                    <input type="number" id="maxStepsInput" min="1" value="3">
+                    <div class="step-hint">목표 점수에 맞게 단계 수를 조정하세요</div>
                 </div>
             </div>
             
@@ -198,6 +203,7 @@
                         <li><strong>일반모드:</strong> 3단계로 빠른 완성</li>
                         <li><strong>전문가모드:</strong> 최대 20단계 자동 진행</li>
                         <li><strong>목표:</strong> 의도 파악 95점 달성</li>
+                        <li><strong>단계 설정:</strong> 필요에 따라 단계 수 입력 칸에서 직접 조정</li>
                         <li><strong>특징:</strong> 답변만 하면 자동으로 다음 단계 진행</li>
                     </ul>
                 </div>
