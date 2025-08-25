@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 프롬프트 개선기 - 20단계 자동 완성 시스템</title>
-    <meta name="description" content="한글 입력을 AI가 완벽하게 이해하는 고품질 프롬프트로 자동 개선. 최대 20단계 자동 진행">
+    <title>AI 프롬프트 개선기 - 목표 점수 달성 시스템</title>
+    <meta name="description" content="한글 입력을 AI가 완벽하게 이해하는 고품질 프롬프트로 자동 개선. 목표 점수 달성까지 자동 진행">
     
     <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
@@ -18,7 +18,7 @@
         <header class="header">
             <div class="logo">
                 <h1>🤖 AI 프롬프트 개선기</h1>
-                <p class="tagline">최대 20단계 자동 분석으로 95점 완벽 프롬프트 생성</p>
+                <p class="tagline">목표 점수 달성까지 자동 분석으로 95점 완벽 프롬프트 생성</p>
             </div>
         </header>
         
@@ -34,12 +34,14 @@
                     <span class="mode-label" data-mode="expert">🎯 전문가모드</span>
                 </div>
                 <div class="mode-description" id="modeDescription">
-                   빠르고 간편한 프롬프트 개선 (기본 3단계, 변경 가능)
+                   빠르고 간편한 프롬프트 개선 (초기 3단계, 목표 점수까지 자동 진행)
                 </div>
                 <div class="step-config">
-                    <label for="maxStepsInput">단계 수:</label>
+                    <label for="maxStepsInput">시작 단계 수:</label>
                     <input type="number" id="maxStepsInput" min="1" value="3">
-                    <div class="step-hint">목표 점수에 맞게 단계 수를 조정하세요</div>
+                    <label for="targetScoreInput">목표 점수:</label>
+                    <input type="number" id="targetScoreInput" min="1" max="100" value="95">
+                    <div class="step-hint">필요하면 시작 단계 수를 조정하세요 (목표 점수까지 계속 진행)</div>
                 </div>
             </div>
             
@@ -180,9 +182,9 @@
         <!-- 푸터 -->
         <footer class="footer">
             <div class="footer-content">
-                <p>🚀 AI 프롬프트 개선기 v2.0 - 20단계 자동 완성 시스템</p>
+                <p>🚀 AI 프롬프트 개선기 v2.0 - 목표 점수 달성 시스템</p>
                 <p class="footer-sub">
-                    일반모드(3단계) · 전문가모드(20단계) · 95점 목표 달성 · Made with ❤️
+                    일반모드(3단계 시작) · 전문가모드(20단계 시작) · 95점 목표 달성 · Made with ❤️
                 </p>
             </div>
         </footer>
@@ -200,10 +202,10 @@
                 <div class="guide-section">
                     <h3>🎯 자동 단계 시스템</h3>
                     <ul>
-                        <li><strong>일반모드:</strong> 3단계로 빠른 완성</li>
-                        <li><strong>전문가모드:</strong> 최대 20단계 자동 진행</li>
+                        <li><strong>일반모드:</strong> 3단계에서 시작해 빠른 완성</li>
+                        <li><strong>전문가모드:</strong> 20단계에서 시작해 더 정밀하게 진행</li>
                         <li><strong>목표:</strong> 의도 파악 95점 달성</li>
-                        <li><strong>단계 설정:</strong> 필요에 따라 단계 수 입력 칸에서 직접 조정</li>
+                        <li><strong>단계 설정:</strong> 시작 단계 수를 입력 칸에서 직접 조정</li>
                         <li><strong>특징:</strong> 답변만 하면 자동으로 다음 단계 진행</li>
                     </ul>
                 </div>
@@ -213,8 +215,8 @@
                     <ol>
                         <li><strong>1-3단계:</strong> 기본 정보 파악 (40-60점)</li>
                         <li><strong>4-10단계:</strong> 세부 디테일 확인 (60-85점)</li>
-                        <li><strong>11-20단계:</strong> 초정밀 분석 (85-95점+)</li>
-                        <li><strong>완료:</strong> 95점 달성 또는 최대 단계 도달시 자동 완성</li>
+                        <li><strong>11단계 이상:</strong> 초정밀 분석 (85-95점+)</li>
+                        <li><strong>완료:</strong> 95점 달성 시 자동 완성</li>
                     </ol>
                 </div>
                 
