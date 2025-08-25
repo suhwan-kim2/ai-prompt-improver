@@ -1,4 +1,18 @@
-// api/improve-prompt.js - 완전 새로운 내부 개선 + 자동 반복 시스템
+const forcePrompt = `
+현재 프롬프트: "${currentPrompt}"
+평가 점수: ${evaluation.total}/100점
+부족한 부분: ${weakPoints.join(', ')}
+
+🔥 90점 이상 달성을 위한 완전한 프롬프트 재작성을 해주세요!
+
+🎯 필수 포함 요소들:
+1. 구체적 주제: 정확한 대상과 특징 명시
+2. 세부 스타일: 구체적인 예술 스타일이나 기법
+3. 색상 팔레트: 구체적인 색상 조합과 톤
+4. 구체적 포즈/동작: 정확한 자세와 표정
+5. 상세한 배경: 구체적인 환경과 소품들
+6. 조명 설정: 조명 종류, 방향, 분위기
+7. 카메// api/improve-prompt.js - 완전 새로운 내부 개선 + 자동 반복 시스템
 
 // ✅ 올바른 Utils import
 import { evaluatePrompt } from '../utils/evaluationSystem.js';
@@ -500,16 +514,27 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
     console.log('🎯 Step 3: 최종 프롬프트 개선, 라운드:', round, '모드:', mode);
     
     try {
+        // 🚨 API 키 확인
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('❌ OpenAI API 키가 없습니다!');
+            throw new Error('OpenAI API 키가 설정되지 않았습니다');
+        }
+        
+        console.log('✅ OpenAI API 키 확인됨');
+        
         // 1. 내부 프롬프트 개선 (사용자가 모르게)
+        console.log('🔄 내부 개선 시작...');
         const internallyImprovedPrompt = await performInternalImprovement(userInput, answers, round);
-        console.log('🔄 내부 개선된 프롬프트:', internallyImprovedPrompt);
+        console.log('✅ 내부 개선 완료:', internallyImprovedPrompt);
         
         // 2. 도메인 감지
         const domainInfo = slotSystem.detectDomains(internallyImprovedPrompt);
+        console.log('🔍 도메인 감지:', domainInfo);
         
         // 3. 프롬프트 평가 (올바른 함수 사용!)
+        console.log('📊 프롬프트 평가 시작...');
         const evaluation = evaluatePrompt(internallyImprovedPrompt, userInput, domainInfo);
-        console.log('📊 프롬프트 평가:', evaluation);
+        console.log('📊 평가 결과:', evaluation);
         
         // 4. 전문가모드이고 90점 미만이면 자동 개선 시도
         if (mode === 'expert' && evaluation.total < 90 && round < 5) {
@@ -522,6 +547,8 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
                 answers
             );
             
+            console.log('🔥 강제 개선 완료:', forceImprovedPrompt);
+            
             // 강제 개선된 프롬프트 재평가
             const reEvaluation = evaluatePrompt(forceImprovedPrompt, userInput, domainInfo);
             console.log('📈 재평가 결과:', reEvaluation);
@@ -529,6 +556,7 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
             // 이미지 도메인이면 영문 번역
             let finalPrompt = forceImprovedPrompt;
             if (domainInfo.primary === 'visual_design') {
+                console.log('🌍 영문 번역 시작...');
                 finalPrompt = await translateToEnglish(forceImprovedPrompt, answers);
                 console.log('🌍 영문 번역 완료:', finalPrompt);
             }
@@ -555,6 +583,7 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
         
         // 이미지 도메인이면 영문 번역
         if (domainInfo.primary === 'visual_design') {
+            console.log('🌍 영문 번역 시작...');
             finalPrompt = await translateToEnglish(internallyImprovedPrompt, answers);
             console.log('🌍 영문 번역 완료:', finalPrompt);
         }
@@ -576,26 +605,43 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
         
     } catch (error) {
         console.error('❌ Step 3 오류:', error);
+        console.error('❌ 오류 상세:', error.stack);
         
-        // 폴백: 기본 개선 + 영문 번역
-        try {
-            let fallbackPrompt = `${userInput}. 고품질로 상세하게 제작해주세요.`;
-            
-            // 답변 내용 반영
-            if (answers.length > 0) {
-                const answerSummary = answers.join(' ').replace(/A:/g, '').trim();
-                fallbackPrompt += ` 요구사항: ${answerSummary}`;
-            }
-            
-            const domainInfo = slotSystem.detectDomains(userInput);
-            
-            // 이미지 도메인이면 영문 번역
-            if (domainInfo.primary === 'visual_design') {
-                fallbackPrompt = await translateToEnglish(fallbackPrompt, answers);
-            }
-            
-            // 폴백 평가
-            const fallbackEvaluation = evaluatePrompt(fallbackPrompt, userInput, domainInfo);
+        // 🚨 긴급 폴백: 수동 개선
+        console.log('🆘 긴급 수동 개선 시작...');
+        
+        // 사용자 답변을 실제로 반영한 수동 개선
+        let manualPrompt = createManualImprovedPrompt(userInput, answers);
+        const domainInfo = slotSystem.detectDomains(userInput);
+        
+        // 이미지 도메인이면 영문 번역
+        if (domainInfo.primary === 'visual_design') {
+            manualPrompt = createManualEnglishPrompt(manualPrompt, answers);
+        }
+        
+        // 수동 평가
+        const manualEvaluation = evaluatePrompt(manualPrompt, userInput, domainInfo);
+        
+        console.log('🆘 수동 개선 완료:', {
+            prompt: manualPrompt,
+            score: manualEvaluation.total
+        });
+        
+        return res.json({
+            improved_prompt: manualPrompt,
+            score: manualEvaluation.total,
+            improvements: manualEvaluation.improvements,
+            evaluation_details: manualEvaluation.details,
+            domain: domainInfo.primary,
+            round: round,
+            completed: true,
+            language: domainInfo.primary === 'visual_design' ? 'english' : 'korean',
+            manual_fallback: true,
+            error_message: error.message,
+            message: `🆘 수동 개선으로 ${manualEvaluation.total}점 달성`
+        });
+    }
+}
             
             return res.json({
                 improved_prompt: fallbackPrompt,
@@ -610,21 +656,220 @@ async function handleFinalImprove(userInput, answers, round, mode, res) {
                 message: `폴백 시스템으로 ${fallbackEvaluation.total}점 달성`
             });
             
-        } catch (fallbackError) {
-            console.error('❌ 폴백도 실패:', fallbackError);
+// 수동 개선 프롬프트 생성 (사용자 답변 실제 반영)
+function createManualImprovedPrompt(userInput, answers) {
+    console.log('🔧 수동 개선 시작:', { userInput, answers });
+    
+    // 사용자 답변에서 핵심 정보 추출
+    const answerInfo = {
+        style: null,
+        color: null,
+        size: null,
+        quality: null,
+        mood: null,
+        background: null,
+        pose: null,
+        effect: null
+    };
+    
+    // answers 배열에서 실제 답변 추출
+    if (Array.isArray(answers)) {
+        answers.forEach(answer => {
+            const answerStr = typeof answer === 'string' ? answer : JSON.stringify(answer);
+            console.log('📝 분석 중인 답변:', answerStr);
             
-            return res.json({
-                improved_prompt: userInput + '. 고품질로 제작해주세요.',
-                score: 65,
-                improvements: ['기본 품질 향상'],
-                domain: 'general',
-                round: round,
-                completed: true,
-                emergency_fallback: true,
-                message: '비상 폴백으로 기본 개선 완료'
-            });
-        }
+            // A: 부분에서 실제 답변 추출
+            const answerMatch = answerStr.match(/A:\s*([^,\n]+)/);
+            const actualAnswer = answerMatch ? answerMatch[1].trim() : answerStr;
+            
+            // 답변별로 카테고리 분류
+            if (actualAnswer.includes('사실적') || actualAnswer.includes('애니메이션') || actualAnswer.includes('3D')) {
+                answerInfo.style = actualAnswer;
+            } else if (actualAnswer.includes('파스텔') || actualAnswer.includes('비비드') || actualAnswer.includes('톤')) {
+                answerInfo.color = actualAnswer;
+            } else if (actualAnswer.includes('세로형') || actualAnswer.includes('가로형') || actualAnswer.includes('정사각형')) {
+                answerInfo.size = actualAnswer;
+            } else if (actualAnswer.includes('HD') || actualAnswer.includes('4K') || actualAnswer.includes('웹용')) {
+                answerInfo.quality = actualAnswer;
+            } else if (actualAnswer.includes('밝고') || actualAnswer.includes('어둡고') || actualAnswer.includes('신비')) {
+                answerInfo.mood = actualAnswer;
+            } else if (actualAnswer.includes('우주') || actualAnswer.includes('배경') || actualAnswer.includes('공원')) {
+                answerInfo.background = actualAnswer;
+            } else if (actualAnswer.includes('측면') || actualAnswer.includes('정면') || actualAnswer.includes('포즈')) {
+                answerInfo.pose = actualAnswer;
+            } else if (actualAnswer.includes('특수') || actualAnswer.includes('효과') || actualAnswer.includes('디테일')) {
+                answerInfo.effect = actualAnswer;
+            }
+        });
     }
+    
+    console.log('✅ 추출된 답변 정보:', answerInfo);
+    
+    // 수동으로 고품질 프롬프트 생성
+    let improvedPrompt = '';
+    
+    // 기본 주제
+    if (userInput.includes('강아지')) {
+        improvedPrompt += '사랑스러운 강아지';
+        
+        // 스타일 반영
+        if (answerInfo.style) {
+            if (answerInfo.style.includes('사실적')) {
+                improvedPrompt += '의 사실적이고 생동감 있는 모습';
+            } else if (answerInfo.style.includes('3D')) {
+                improvedPrompt += '의 입체적이고 현대적인 3D 렌더링';
+            } else {
+                improvedPrompt += `의 ${answerInfo.style} 스타일`;
+            }
+        }
+        
+        // 포즈 반영
+        if (answerInfo.pose) {
+            if (answerInfo.pose.includes('측면')) {
+                improvedPrompt += '을 측면에서 바라본 우아한 프로필 샷';
+            } else {
+                improvedPrompt += `을 ${answerInfo.pose}으로 표현`;
+            }
+        }
+        
+        // 배경 반영
+        if (answerInfo.background) {
+            if (answerInfo.background.includes('우주')) {
+                improvedPrompt += '. 신비로운 우주 공간을 배경으로 한 환상적인 장면';
+            } else {
+                improvedPrompt += `. ${answerInfo.background}을 배경으로 한 아름다운 장면`;
+            }
+        }
+        
+        // 분위기 반영
+        if (answerInfo.mood) {
+            if (answerInfo.mood.includes('밝고 화사')) {
+                improvedPrompt += '. 밝고 화사한 자연광 조명 아래 행복한 분위기';
+            } else if (answerInfo.mood.includes('어둡고 신비')) {
+                improvedPrompt += '. 어둡고 신비로운 조명으로 연출된 몽환적 분위기';
+            } else if (answerInfo.mood.includes('신비')) {
+                improvedPrompt += '. 신비롭고 매혹적인 표정과 눈빛';
+            }
+        }
+        
+        // 색상 반영
+        if (answerInfo.color) {
+            if (answerInfo.color.includes('파스텔')) {
+                improvedPrompt += '. 부드러운 파스텔 톤의 따뜻한 색감';
+            } else {
+                improvedPrompt += `. ${answerInfo.color} 색상으로 표현`;
+            }
+        }
+        
+        // 효과 반영
+        if (answerInfo.effect) {
+            if (answerInfo.effect.includes('특수')) {
+                improvedPrompt += '. 마법같은 특수 효과와 반짝이는 디테일';
+            }
+        }
+        
+        // 품질 지시어
+        if (answerInfo.quality) {
+            if (answerInfo.quality.includes('웹용')) {
+                improvedPrompt += '. 웹 최적화된 선명한 고품질';
+            } else {
+                improvedPrompt += `. ${answerInfo.quality} 고해상도 품질`;
+            }
+        }
+        
+        // 크기 반영
+        if (answerInfo.size) {
+            if (answerInfo.size.includes('세로형')) {
+                improvedPrompt += '. 세로형 9:16 비율의 모바일 최적화 구도';
+            } else {
+                improvedPrompt += `. ${answerInfo.size} 비율로 구성`;
+            }
+        }
+        
+        // 전문적 마무리
+        improvedPrompt += '. 전문가급 펫 포트레이트 사진 품질로 정교한 디테일과 완성도 높은 마감. 4K 해상도.';
+    } else {
+        // 강아지가 아닌 경우 기본 처리
+        improvedPrompt = `${userInput}을 고품질로 전문적으로 제작. `;
+        
+        // 답변 정보 반영
+        Object.values(answerInfo).forEach(info => {
+            if (info) {
+                improvedPrompt += `${info} 적용. `;
+            }
+        });
+        
+        improvedPrompt += '전문가급 품질로 완성.';
+    }
+    
+    console.log('🎯 수동 생성된 프롬프트:', improvedPrompt);
+    return improvedPrompt;
+}
+
+// 수동 영문 번역
+function createManualEnglishPrompt(koreanPrompt, answers) {
+    console.log('🌍 수동 영문 번역 시작:', koreanPrompt);
+    
+    let englishPrompt = '';
+    
+    // 기본 번역
+    if (koreanPrompt.includes('강아지')) {
+        englishPrompt = 'Adorable cute dog ';
+        
+        // 스타일
+        if (koreanPrompt.includes('사실적')) {
+            englishPrompt += 'photorealistic portrait ';
+        } else if (koreanPrompt.includes('3D')) {
+            englishPrompt += '3D rendered character ';
+        }
+        
+        // 배경
+        if (koreanPrompt.includes('우주')) {
+            englishPrompt += 'in mystical space background with stars and nebula ';
+        }
+        
+        // 포즈
+        if (koreanPrompt.includes('측면')) {
+            englishPrompt += 'side profile view ';
+        }
+        
+        // 분위기
+        if (koreanPrompt.includes('밝고 화사')) {
+            englishPrompt += 'bright cheerful lighting ';
+        } else if (koreanPrompt.includes('신비')) {
+            englishPrompt += 'mysterious magical atmosphere ';
+        }
+        
+        // 색상
+        if (koreanPrompt.includes('파스텔')) {
+            englishPrompt += 'soft pastel colors ';
+        }
+        
+        // 효과
+        if (koreanPrompt.includes('특수 효과')) {
+            englishPrompt += 'magical sparkle effects ';
+        }
+        
+        // 품질
+        englishPrompt += 'professional pet portrait photography, highly detailed, 4K resolution, masterpiece quality';
+        
+        // 비율
+        if (koreanPrompt.includes('세로형')) {
+            englishPrompt += ', 9:16 aspect ratio';
+        }
+        
+        // 부정 명령어
+        englishPrompt += ' --no blurry, low quality, watermark, text, dark shadows';
+    } else {
+        // 기본 번역
+        englishPrompt = koreanPrompt
+            .replace(/고품질/g, 'high quality')
+            .replace(/전문가/g, 'professional')
+            .replace(/완성/g, 'masterpiece') + ', 4K resolution --no low quality, blurry';
+    }
+    
+    console.log('🌍 수동 번역 완료:', englishPrompt);
+    return englishPrompt;
 }
 
 // =============================================================================
@@ -645,16 +890,25 @@ async function performInternalImprovement(userInput, answers, round) {
 ${answerContext}
 현재 라운드: ${round}
 
-이 정보를 바탕으로 더 구체적이고 완성도 높은 프롬프트로 개선해주세요.
+이 정보를 바탕으로 완전히 새롭고 구체적인 고품질 프롬프트를 작성해주세요.
 
-요구사항:
-1. 사용자의 원래 의도 보존
-2. 답변 내용을 자연스럽게 반영
-3. 구체적인 세부사항 추가
-4. 전문적인 용어 사용
-5. 한국어로 작성
+🎯 필수 개선사항:
+1. 구체적인 주제 명시 (정확한 품종, 나이, 특징)
+2. 세부적인 스타일과 분위기 (사실적/애니메이션/일러스트 등)
+3. 구체적인 색상과 톤 (따뜻한/차가운/파스텔 등)
+4. 정확한 포즈와 표정 (앉아있는/뛰어가는/웃고있는 등)
+5. 상세한 배경 설정 (공원/집/스튜디오 등)
+6. 조명과 분위기 (자연광/스튜디오/황금시간 등)
+7. 카메라 구도 (클로즈업/전신/측면 등)
+8. 품질 지시어 (고해상도/전문가급/마스터피스 등)
 
-결과만 출력하세요 (설명 없이):
+❌ 금지사항: 단순 번역이나 키워드 나열 금지
+✅ 목표: 완전히 새로운 고품질 프롬프트 작성
+
+예시 수준:
+"사랑스러운 골든리트리버 강아지가 화창한 봄날 벚꽃이 만개한 공원에서 활짝 웃으며 앉아있는 모습. 부드러운 황금빛 털과 맑고 순수한 눈망울, 살짝 내민 분홍색 혀. 자연스러운 황금시간 조명 아래 따뜻하고 행복한 분위기. 얕은 심도로 배경은 부드럽게 흐려진 클로즈업 구도. 전문가급 펫 포트레이트 사진 품질로 4K 해상도."
+
+이런 수준으로 완전히 새롭게 작성해주세요:
 `;
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
