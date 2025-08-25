@@ -1,6 +1,6 @@
-// script.js - 20단계 95점 자동 달성 시스템 (완성본)
+// script.js - 목표 점수 자동 달성 시스템 (완성본)
 
-console.log('🚀 AI 프롬프트 개선기 v2.0 - 20단계 자동 시스템');
+console.log('🚀 AI 프롬프트 개선기 v2.0 - 목표 점수 자동 시스템');
 
 // =============================================================================
 // 📱 전역 변수들
@@ -37,6 +37,14 @@ document.addEventListener('DOMContentLoaded', function() {
         maxStepsInput.addEventListener('change', (e) => updateMaxSteps(e.target.value));
     } else {
         updateMaxSteps(isExpertMode ? 20 : 3);
+    }
+    const targetScoreInput = document.getElementById('targetScoreInput');
+    if (targetScoreInput) {
+        targetScoreInput.value = targetScore;
+        targetScoreInput.addEventListener('change', (e) => {
+            const value = parseInt(e.target.value, 10);
+            targetScore = isNaN(value) ? 95 : value;
+        });
     }
 
     updateProgressDisplay();
@@ -89,8 +97,12 @@ async function improvePrompt() {
     const maxStepsInput = document.getElementById('maxStepsInput');
     maxSteps = maxStepsInput ? parseInt(maxStepsInput.value, 10) || (isExpertMode ? 20 : 3) : (isExpertMode ? 20 : 3);
 
+    const targetScoreInput = document.getElementById('targetScoreInput');
+    targetScore = targetScoreInput ? parseInt(targetScoreInput.value, 10) || 95 : 95;
+
+
     
-    showStatus(`🤖 AI가 ${maxSteps}단계에 걸쳐 완벽한 프롬프트를 만들어드립니다...`, 'processing');
+    showStatus(`🤖 AI가 목표 점수(${targetScore}점)에 도달할 때까지 프롬프트를 개선합니다...`, 'processing');
     updateProgressDisplay();
     
     try {
@@ -103,7 +115,8 @@ async function improvePrompt() {
             body: JSON.stringify({
                 step: 'questions',
                 userInput: userInput,
-                mode: isExpertMode ? 'expert' : 'normal'
+                mode: isExpertMode ? 'expert' : 'normal',
+                targetScore: targetScore
             })
         });
 
@@ -155,7 +168,7 @@ function displayQuestions(questions) {
         if (intentScore >= targetScore || qualityScore >= targetScore) {
             finalImprove();
         } else {
-            requestAdditionalQuestions(currentStep + 1);
+            requestAdditionalQuestions(currentStep);
         }
         return;
     }
@@ -177,9 +190,9 @@ function displayQuestions(questions) {
             <div class="step-title">🎯 ${currentStep}단계 질문 ${isExpertMode ? '(전문가모드)' : '(일반모드)'}</div>
             <div class="step-progress">
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${(currentStep / maxSteps) * 100}%"></div>
+                    <div class="progress-fill" style="width: ${(intentScore / targetScore) * 100}%"></div>
                 </div>
-                <span class="progress-text">${currentStep} / ${maxSteps} 단계</span>
+                <span class="progress-text">의도파악 ${intentScore} / ${targetScore}점</span>
             </div>
         </div>
     `;
@@ -291,7 +304,7 @@ async function submitAnswers() {
     
     showStatus(`📊 ${currentStep}단계 답변 분석 중...`, 'processing');
     
-    if (currentStep >= maxSteps || intentScore >= targetScore) {
+    if (intentScore >= targetScore) {
         await finalImprove();
     } else {
         currentStep++;
@@ -299,7 +312,7 @@ async function submitAnswers() {
     }
 }
 
-// 추가 질문 요청 (2-20단계)
+// 추가 질문 요청
 async function requestAdditionalQuestions(stepNumber) {
     try {
         console.log(`📝 ${stepNumber}단계 추가 질문 요청 중...`);
@@ -307,7 +320,8 @@ async function requestAdditionalQuestions(stepNumber) {
             step: 'additional-questions',
             userInput: currentUserInput,
             answers: allAnswers,
-            currentStep: stepNumber
+            currentStep: stepNumber,
+            targetScore: targetScore
         });
         
         const response = await fetch('/api/improve-prompt', {
@@ -320,7 +334,8 @@ async function requestAdditionalQuestions(stepNumber) {
                 userInput: currentUserInput,
                 answers: allAnswers,
                 currentStep: stepNumber,
-                mode: isExpertMode ? 'expert' : 'normal'
+                mode: isExpertMode ? 'expert' : 'normal',
+                targetScore: targetScore
             })
         });
 
@@ -350,8 +365,9 @@ async function requestAdditionalQuestions(stepNumber) {
             currentStep = stepNumber;
             updateProgressDisplay();
             showStatus(`📝 ${currentStep}단계: 추가 정보 파악 중 (현재 ${intentScore}점 → 목표 ${targetScore}점)`, 'success');
-        } else if (data.completed || intentScore >= targetScore) {
-            await finalImprove();
+              } else if (!data.completed && intentScore < targetScore) {
+            console.log('⚠️ 질문이 없어 추가 질문을 재요청합니다');
+            await requestAdditionalQuestions(stepNumber);
         } else {
             console.error('예상치 못한 응답:', data);
             await finalImprove();
@@ -370,7 +386,7 @@ async function requestAdditionalQuestions(stepNumber) {
 async function skipQuestions() {
     console.log(`⏭️ ${currentStep}단계 건너뛰기`);
     
-    if (currentStep >= maxSteps || intentScore >= targetScore) {
+    if (intentScore >= targetScore) {
         await finalImprove();
     } else {
         currentStep++;
@@ -398,7 +414,8 @@ async function finalImprove() {
                 userInput: currentUserInput,
                 answers: allAnswers,
                 currentStep: currentStep,
-                mode: isExpertMode ? 'expert' : 'normal'
+                mode: isExpertMode ? 'expert' : 'normal',
+                targetScore: targetScore
             })
         });
 
@@ -459,12 +476,17 @@ function updateScores(intent, quality) {
 
 // 진행 상황 업데이트
 function updateProgressDisplay() {
-    console.log(`📊 진행 상황: ${currentStep}/${maxSteps} 단계`);
-    
-    const progress = (currentStep / maxSteps) * 100;
+    console.log(`📊 진행 상황: ${intentScore}/${targetScore}점`);
+
+    const progress = Math.min((intentScore / targetScore) * 100, 100);
     const progressFills = document.querySelectorAll('.progress-fill');
     progressFills.forEach(fill => {
         if (fill) fill.style.width = `${progress}%`;
+    });
+    
+    const progressTexts = document.querySelectorAll('.progress-text');
+    progressTexts.forEach(text => {
+        if (text) text.textContent = `의도파악 ${intentScore} / ${targetScore}점`;
     });
 }
 // 최대 단계 수 업데이트
@@ -500,8 +522,8 @@ function toggleMode() {
     
     if (description) {
         description.textContent = isExpertMode ?
-            `전문가급 의도 분석 시스템 (최대 ${maxSteps}단계)` :
-            `빠르고 간편한 프롬프트 개선 (${maxSteps}단계)`;
+            `전문가급 의도 분석 시스템 (목표 ${targetScore}점까지)` :
+            `빠르고 간편한 프롬프트 개선 (목표 ${targetScore}점까지)`;
     }
     
     showStatus(`${isExpertMode ? '🎯 전문가' : '💨 일반'}모드로 변경되었습니다.`, 'success');
@@ -592,7 +614,7 @@ function saveToFavorites() {
 }
 
 function showDetailedGuide() {
-    alert(`📖 사용법\n\n${isExpertMode ? '전문가' : '일반'}모드 (최대 ${maxSteps}단계)\n\n1. 프롬프트 입력\n2. 질문에 답변\n3. 자동으로 개선 완료!`);
+    alert(`📖 사용법\n\n${isExpertMode ? '전문가' : '일반'}모드 (목표 ${targetScore}점까지)\n\n1. 프롬프트 입력\n2. 질문에 답변\n3. 자동으로 개선 완료!`);
 }
 
 function closeDetailedGuide() {
