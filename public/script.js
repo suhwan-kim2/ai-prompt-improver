@@ -28,6 +28,17 @@ document.addEventListener('DOMContentLoaded', function() {
     addDynamicStyles();
     setupInputEvents();
     setupModalEvents();
+    
+    const maxStepsInput = document.getElementById('maxStepsInput');
+    if (maxStepsInput) {
+        const defaultSteps = isExpertMode ? 20 : 3;
+        maxStepsInput.value = defaultSteps;
+        updateMaxSteps(defaultSteps);
+        maxStepsInput.addEventListener('change', (e) => updateMaxSteps(e.target.value));
+    } else {
+        updateMaxSteps(isExpertMode ? 20 : 3);
+    }
+
     updateProgressDisplay();
     updateScores(0, 0); // 추가
     console.log('✅ 초기화 완료!');
@@ -74,7 +85,10 @@ async function improvePrompt() {
     intentScore = 0;
     qualityScore = 0;
     
-    maxSteps = isExpertMode ? 20 : 3;
+ 
+    const maxStepsInput = document.getElementById('maxStepsInput');
+    maxSteps = maxStepsInput ? parseInt(maxStepsInput.value, 10) || (isExpertMode ? 20 : 3) : (isExpertMode ? 20 : 3);
+
     
     showStatus(`🤖 AI가 ${maxSteps}단계에 걸쳐 완벽한 프롬프트를 만들어드립니다...`, 'processing');
     updateProgressDisplay();
@@ -138,7 +152,7 @@ function displayQuestions(questions) {
     
     if (!Array.isArray(questions) || questions.length === 0) {
         console.log('❌ 유효하지 않은 질문 데이터');
-        if (intentScore >= targetScore || currentStep >= maxSteps) {
+        if (intentScore >= targetScore || qualityScore >= targetScore) {
             finalImprove();
         } else {
             requestAdditionalQuestions(currentStep + 1);
@@ -453,6 +467,14 @@ function updateProgressDisplay() {
         if (fill) fill.style.width = `${progress}%`;
     });
 }
+// 최대 단계 수 업데이트
+function updateMaxSteps(value) {
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && num > 0) {
+        maxSteps = num;
+        updateProgressDisplay();
+    }
+}
 
 // =============================================================================
 // 🎛️ 모드 전환
@@ -460,8 +482,15 @@ function updateProgressDisplay() {
 
 function toggleMode() {
     isExpertMode = !isExpertMode;
-    maxSteps = isExpertMode ? 20 : 3;
-    
+    const maxStepsInput = document.getElementById('maxStepsInput');
+    const defaultSteps = isExpertMode ? 20 : 3;
+    if (maxStepsInput) {
+        maxStepsInput.value = defaultSteps;
+        updateMaxSteps(maxStepsInput.value);
+    } else {
+        maxSteps = defaultSteps;
+    }
+
     const toggle = document.getElementById('modeToggle');
     const description = document.getElementById('modeDescription');
     
@@ -470,8 +499,8 @@ function toggleMode() {
     }
     
     if (description) {
-        description.textContent = isExpertMode ? 
-            `전문가급 의도 분석 시스템 (최대 ${maxSteps}단계)` : 
+        description.textContent = isExpertMode ?
+            `전문가급 의도 분석 시스템 (최대 ${maxSteps}단계)` :
             `빠르고 간편한 프롬프트 개선 (${maxSteps}단계)`;
     }
     
