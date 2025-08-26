@@ -1,96 +1,342 @@
-// utils/slotSystem.js - 슬롯 기반 질문 시스템 (Node.js 호환 버전)
+// utils/slotSystem.js - 완전 개선된 슬롯 기반 질문 시스템
 
 class SlotSystem {
   constructor() {
+    // 6개 도메인별 슬롯 시스템 (확장됨)
     this.domainSlots = {
       visual_design: {
-        주제: { required: true, weight: 10, type: "text", question: "정확히 어떤 주제로 그림을 만들고 싶으신가요?" },
-        스타일: { required: true, weight: 9, type: "enum", options: ["사실적", "3D", "애니메이션", "일러스트", "수채화", "유화"], question: "어떤 스타일로 제작하고 싶으신가요?" },
-        색상: { required: false, weight: 7, type: "enum", options: ["따뜻한톤", "차가운톤", "모노톤", "비비드", "파스텔"], question: "선호하는 색상 톤이 있나요?" },
-        크기: { required: false, weight: 6, type: "enum", options: ["정사각형", "가로형", "세로형", "4K", "HD"], question: "어떤 크기나 비율로 만들까요?" },
-        해상도: { required: false, weight: 5, type: "enum", options: ["HD", "4K", "8K", "인쇄용"], question: "해상도나 품질 요구사항이 있나요?" },
-        배경: { required: false, weight: 6, type: "text", question: "배경은 어떻게 구성하고 싶으신가요?" },
-        조명: { required: false, weight: 4, type: "enum", options: ["자연광", "스튜디오", "어두운", "밝은"], question: "조명이나 분위기는 어떻게 설정할까요?" },
-        각도: { required: false, weight: 3, type: "enum", options: ["정면", "측면", "위에서", "아래서"], question: "어떤 각도에서 촬영한 느낌을 원하시나요?" }
+        주제: { 
+          required: true, weight: 10, type: "text", 
+          question: "정확히 어떤 주제로 그림을 만들고 싶으신가요?",
+          step1: true
+        },
+        스타일: { 
+          required: true, weight: 9, type: "enum", 
+          options: ["사실적", "3D렌더링", "애니메이션", "일러스트", "수채화", "유화", "기타"],
+          question: "어떤 스타일로 제작하고 싶으신가요?",
+          step1: true
+        },
+        색상: { 
+          required: false, weight: 8, type: "enum", 
+          options: ["따뜻한톤", "차가운톤", "모노톤", "비비드", "파스텔", "기타"],
+          question: "선호하는 색상 톤이 있나요?",
+          step1: true
+        },
+        크기: { 
+          required: false, weight: 7, type: "enum", 
+          options: ["정사각형(1:1)", "가로형(16:9)", "세로형(9:16)", "A4용지", "상관없음", "기타"],
+          question: "어떤 크기나 비율로 만들까요?",
+          step1: true
+        },
+        
+        // 2-3단계 전문 질문들
+        표정: {
+          required: false, weight: 9, type: "enum",
+          options: ["밝고 긍정적", "진지하고 집중", "신비롭고 몽환적", "역동적이고 열정적", "무표정/중립", "기타"],
+          question: "주인공의 표정이나 감정 표현은 어떻게 할까요?",
+          step2: true
+        },
+        포즈: {
+          required: false, weight: 8, type: "enum",
+          options: ["정면 직립", "측면 프로필", "역동적 동작", "앉아있는 자세", "자유로운 포즈", "기타"],
+          question: "구체적인 포즈나 동작이 있나요?",
+          step2: true
+        },
+        의상: {
+          required: false, weight: 7, type: "enum",
+          options: ["현대적/일상복", "전통적/클래식", "미래적/SF", "판타지/코스튬", "없음", "기타"],
+          question: "의상이나 액세서리는 어떻게 할까요?",
+          step2: true
+        },
+        조명: { 
+          required: false, weight: 6, type: "enum", 
+          options: ["밝고 화사한", "어둡고 드라마틱", "부드럽고 몽환적", "강렬한 명암", "자연광", "기타"],
+          question: "조명과 분위기는 어떻게 설정할까요?",
+          step2: true
+        },
+        배경: { 
+          required: false, weight: 6, type: "text", 
+          question: "배경 환경을 자세히 설명해주세요 (예: 우주 성운, 숲 속, 도시 등)",
+          step2: true
+        },
+        
+        // 4-10단계 디테일 질문들  
+        각도: { 
+          required: false, weight: 5, type: "enum", 
+          options: ["정면", "측면", "위에서", "아래서", "3/4 각도", "기타"],
+          question: "어떤 카메라 각도나 구도를 원하시나요?",
+          step3: true
+        },
+        품질: {
+          required: false, weight: 4, type: "enum",
+          options: ["초고품질/8K", "고품질/4K", "일반품질/HD", "빠른 제작용", "기타"],
+          question: "품질과 디테일 수준은 어느 정도로 할까요?",
+          step3: true
+        },
+        소품: {
+          required: false, weight: 3, type: "text",
+          question: "손에 들고 있거나 주변에 있었으면 하는 소품이나 도구가 있나요?",
+          step3: true
+        }
       },
       
       video: {
-        목적: { required: true, weight: 10, type: "enum", options: ["광고", "교육", "엔터테인먼트", "홍보", "튜토리얼"], question: "영상의 주요 목적이 무엇인가요?" },
-        길이: { required: true, weight: 9, type: "enum", options: ["짧게(15초)", "중간(1-3분)", "길게(3분+)", "장편(10분+)"], question: "영상 길이는 어느 정도로 생각하고 계신가요?" },
-        스타일: { required: true, weight: 8, type: "enum", options: ["실사", "애니메이션", "3D", "타임랩스", "슬로우모션"], question: "어떤 스타일의 영상을 원하시나요?" },
-        해상도: { required: false, weight: 7, type: "enum", options: ["HD", "4K", "8K"], question: "해상도 요구사항이 있나요?" },
-        프레임레이트: { required: false, weight: 5, type: "enum", options: ["24fps", "30fps", "60fps"], question: "특별한 프레임레이트 요구사항이 있나요?" },
-        음악: { required: false, weight: 6, type: "enum", options: ["배경음악", "내레이션", "효과음", "무음"], question: "음향이나 음악은 어떻게 구성할까요?" },
-        자막: { required: false, weight: 4, type: "enum", options: ["한글자막", "영문자막", "자막없음"], question: "자막이 필요한가요?" },
-        색보정: { required: false, weight: 3, type: "enum", options: ["자연스럽게", "비비드하게", "영화같이", "밝게"], question: "색감이나 보정 스타일이 있나요?" }
+        목적: { 
+          required: true, weight: 10, type: "enum", 
+          options: ["광고/홍보", "교육/설명", "엔터테인먼트", "기록/다큐", "소셜미디어", "기타"],
+          question: "영상의 주요 목적이 무엇인가요?",
+          step1: true
+        },
+        길이: { 
+          required: true, weight: 9, type: "enum", 
+          options: ["15초 이하", "30초-1분", "1-3분", "5분 이상", "정해지지 않음", "기타"],
+          question: "영상 길이는 대략 어느 정도인가요?",
+          step1: true
+        },
+        스타일: { 
+          required: true, weight: 8, type: "enum", 
+          options: ["실사촬영", "애니메이션", "모션그래픽", "슬라이드쇼", "혼합", "기타"],
+          question: "어떤 스타일의 영상을 원하시나요?",
+          step1: true
+        },
+        
+        // 2-3단계
+        오프닝: {
+          required: false, weight: 7, type: "enum",
+          options: ["페이드인", "강렬한 시작", "로고/타이틀", "내레이션 시작", "액션 장면", "기타"],
+          question: "오프닝 장면은 어떻게 시작할까요?",
+          step2: true
+        },
+        전환: {
+          required: false, weight: 6, type: "enum",
+          options: ["부드러운 전환", "컷 편집", "특수효과 전환", "매치컷", "디졸브", "기타"],
+          question: "주요 장면 전환은 어떻게 처리할까요?",
+          step2: true
+        },
+        음악: { 
+          required: false, weight: 6, type: "enum", 
+          options: ["업비트/경쾌한", "감성적/잔잔한", "웅장한/오케스트라", "일렉트로닉", "음악 없음", "기타"],
+          question: "배경음악 스타일은 어떻게 할까요?",
+          step2: true
+        }
       },
       
       development: {
-        프로젝트유형: { required: true, weight: 10, type: "enum", options: ["웹사이트", "모바일앱", "API", "데스크톱", "게임"], question: "어떤 종류의 프로그램을 만들고 싶으신가요?" },
-        주요기능: { required: true, weight: 9, type: "text", question: "가장 중요한 기능이나 목적이 무엇인가요?" },
-        기술스택: { required: false, weight: 7, type: "enum", options: ["React", "Vue", "Angular", "Python", "Java", "Node.js"], question: "선호하는 기술이나 언어가 있나요?" },
-        대상사용자: { required: false, weight: 8, type: "enum", options: ["일반사용자", "관리자", "개발자", "전문가"], question: "누가 주로 사용할 프로그램인가요?" },
-        플랫폼: { required: false, weight: 6, type: "enum", options: ["웹", "모바일", "데스크톱", "크로스플랫폼"], question: "어떤 플랫폼에서 동작해야 하나요?" },
-        데이터베이스: { required: false, weight: 5, type: "enum", options: ["MySQL", "MongoDB", "PostgreSQL", "Firebase"], question: "데이터 저장이 필요한가요?" },
-        보안: { required: false, weight: 4, type: "enum", options: ["로그인", "권한관리", "암호화", "기본보안"], question: "보안 요구사항이 있나요?" },
-        성능: { required: false, weight: 3, type: "enum", options: ["빠른속도", "대용량처리", "실시간", "일반"], question: "성능상 특별한 요구사항이 있나요?" }
+        프로젝트유형: { 
+          required: true, weight: 10, type: "enum", 
+          options: ["웹사이트", "모바일앱", "데스크톱앱", "게임", "API/백엔드", "기타"],
+          question: "어떤 종류의 개발 프로젝트인가요?",
+          step1: true
+        },
+        주요기능: { 
+          required: true, weight: 9, type: "text", 
+          question: "가장 중요한 기능이나 목적이 무엇인가요?",
+          step1: true
+        },
+        대상사용자: { 
+          required: false, weight: 8, type: "enum", 
+          options: ["일반 소비자", "기업/비즈니스", "개발자", "학생/교육", "전문가", "기타"],
+          question: "주요 사용자층은 누구인가요?",
+          step1: true
+        },
+        기술스택: { 
+          required: false, weight: 7, type: "enum", 
+          options: ["React/Vue", "HTML/CSS/JS", "Python", "Java", "상관없음", "기타"],
+          question: "선호하는 기술 스택이 있나요?",
+          step1: true
+        }
       },
       
       text_language: {
-        목적: { required: true, weight: 10, type: "enum", options: ["정보전달", "설득", "감정표현", "교육", "홍보"], question: "글의 주요 목적이 무엇인가요?" },
-        대상독자: { required: true, weight: 9, type: "enum", options: ["전문가", "일반인", "학생", "고객", "동료"], question: "누가 읽을 글인가요?" },
-        분량: { required: false, weight: 7, type: "enum", options: ["짧게(500자)", "중간(1000자)", "길게(2000자+)"], question: "대략 어느 정도 분량으로 작성할까요?" },
-        톤: { required: false, weight: 8, type: "enum", options: ["공식적", "친근한", "전문적", "유머러스", "진지한"], question: "어떤 톤으로 작성하고 싶으신가요?" },
-        형식: { required: false, weight: 6, type: "enum", options: ["기사", "블로그", "보고서", "이메일", "SNS"], question: "어떤 형식의 글인가요?" },
-        구조: { required: false, weight: 5, type: "enum", options: ["서론-본론-결론", "리스트형", "스토리텔링", "Q&A"], question: "글의 구조나 형태가 정해져 있나요?" },
-        키워드: { required: false, weight: 4, type: "text", question: "꼭 포함해야 할 키워드나 내용이 있나요?" },
-        마감: { required: false, weight: 3, type: "enum", options: ["급함", "보통", "여유있음"], question: "언제까지 필요한 글인가요?" }
+        종류: {
+          required: true, weight: 10, type: "enum",
+          options: ["비즈니스 문서", "창작 글쓰기", "기술 문서", "마케팅 카피", "교육 자료", "기타"],
+          question: "어떤 종류의 텍스트인가요?",
+          step1: true
+        },
+        대상독자: {
+          required: true, weight: 9, type: "enum", 
+          options: ["일반인", "전문가", "학생", "고객", "팀원/동료", "기타"],
+          question: "대상 독자는 누구인가요?",
+          step1: true
+        },
+        톤: {
+          required: false, weight: 8, type: "enum",
+          options: ["격식있게", "친근하게", "전문적으로", "창의적으로", "간결하게", "기타"],
+          question: "글의 톤은 어떻게 하고 싶으신가요?",
+          step1: true
+        }
       },
       
       business: {
-        사업분야: { required: true, weight: 10, type: "text", question: "어떤 분야의 사업인가요?" },
-        목표: { required: true, weight: 9, type: "enum", options: ["매출증대", "브랜딩", "고객확보", "효율성", "혁신"], question: "주요 목표가 무엇인가요?" },
-        대상고객: { required: false, weight: 8, type: "text", question: "주요 고객층이 누구인가요?" },
-        예산: { required: false, weight: 7, type: "enum", options: ["제한적", "적당함", "충분함", "무제한"], question: "예산 규모는 어느 정도인가요?" },
-        기간: { required: false, weight: 6, type: "enum", options: ["단기(1개월)", "중기(3개월)", "장기(6개월+)"], question: "목표 달성 기간은 어느 정도로 생각하시나요?" },
-        경쟁사: { required: false, weight: 5, type: "text", question: "주요 경쟁사나 벤치마킹 대상이 있나요?" },
-        차별화: { required: false, weight: 4, type: "text", question: "다른 곳과 차별화할 포인트가 있나요?" },
-        위험요소: { required: false, weight: 3, type: "text", question: "우려되는 위험 요소가 있나요?" }
+        분야: {
+          required: true, weight: 10, type: "enum",
+          options: ["IT/테크", "마케팅/광고", "교육", "헬스케어", "금융", "기타"],
+          question: "어떤 분야의 비즈니스인가요?",
+          step1: true
+        },
+        목표: { 
+          required: true, weight: 9, type: "enum", 
+          options: ["매출 증대", "브랜딩", "고객 확보", "효율성 개선", "혁신", "기타"],
+          question: "주요 목표가 무엇인가요?",
+          step1: true
+        },
+        예산: { 
+          required: false, weight: 7, type: "enum", 
+          options: ["제한적", "적당함", "충분함", "대규모", "미정", "기타"],
+          question: "예산 규모는 어느 정도인가요?",
+          step1: true
+        }
       },
       
       music_audio: {
-        장르: { required: true, weight: 10, type: "enum", options: ["팝", "록", "클래식", "재즈", "일렉트로닉", "힙합"], question: "어떤 장르의 음악인가요?" },
-        분위기: { required: true, weight: 9, type: "enum", options: ["밝은", "어두운", "차분한", "신나는", "슬픈", "웅장한"], question: "어떤 분위기를 원하시나요?" },
-        길이: { required: false, weight: 7, type: "enum", options: ["짧게(30초)", "중간(2-3분)", "길게(5분+)"], question: "음악 길이는 어느 정도인가요?" },
-        악기: { required: false, weight: 6, type: "text", question: "특별히 포함하고 싶은 악기가 있나요?" },
-        용도: { required: false, weight: 8, type: "enum", options: ["배경음악", "주제곡", "효과음", "광고음악"], question: "어디에 사용할 음악인가요?" },
-        템포: { required: false, weight: 5, type: "enum", options: ["느림", "보통", "빠름", "매우빠름"], question: "템포는 어떻게 설정할까요?" },
-        보컬: { required: false, weight: 4, type: "enum", options: ["남성보컬", "여성보컬", "인스트루멘탈", "코러스"], question: "보컬이 필요한가요?" },
-        음질: { required: false, weight: 3, type: "enum", options: ["스튜디오급", "일반", "로파이"], question: "음질 요구사항이 있나요?" }
-      },
-      
-      general: {
-        분야: { required: true, weight: 10, type: "text", question: "어떤 분야에 대한 요청인가요?" },
-        목적: { required: true, weight: 9, type: "text", question: "최종적으로 무엇을 얻고 싶으신가요?" },
-        우선순위: { required: false, weight: 7, type: "text", question: "가장 중요하게 생각하는 부분이 무엇인가요?" },
-        제약사항: { required: false, weight: 6, type: "text", question: "특별한 제약이나 조건이 있나요?" },
-        참고자료: { required: false, weight: 5, type: "text", question: "참고하고 싶은 예시나 자료가 있나요?" },
-        수준: { required: false, weight: 4, type: "enum", options: ["초급", "중급", "고급", "전문가"], question: "어느 수준으로 제작하면 될까요?" },
-        스타일: { required: false, weight: 3, type: "text", question: "선호하는 스타일이나 방향성이 있나요?" },
-        기타: { required: false, weight: 2, type: "text", question: "추가로 고려해야 할 사항이 있나요?" }
+        장르: {
+          required: true, weight: 10, type: "enum",
+          options: ["팝", "록", "클래식", "재즈", "일렉트로닉", "기타"],
+          question: "어떤 장르의 음악인가요?",
+          step1: true
+        },
+        분위기: { 
+          required: true, weight: 9, type: "enum", 
+          options: ["밝고 경쾌한", "차분하고 잔잔한", "웅장하고 드라마틱", "어둡고 미스테리한", "기타"],
+          question: "음악의 분위기는 어떻게 하고 싶으신가요?",
+          step1: true
+        },
+        용도: { 
+          required: false, weight: 8, type: "enum", 
+          options: ["배경음악", "주제곡", "효과음", "광고음악", "기타"],
+          question: "음악의 용도가 무엇인가요?",
+          step1: true
+        }
       }
     };
     
+    // 도메인 감지용 키워드
     this.domainKeywords = {
       visual_design: ["그림", "이미지", "사진", "포스터", "로고", "디자인", "일러스트", "드로잉", "페인팅"],
       video: ["영상", "비디오", "동영상", "애니메이션", "영화", "광고", "편집", "촬영"],
       development: ["웹사이트", "앱", "프로그램", "시스템", "코딩", "개발", "소프트웨어", "플랫폼"],
       text_language: ["글", "텍스트", "문서", "기사", "블로그", "내용", "작성", "번역"],
       business: ["사업", "비즈니스", "전략", "마케팅", "브랜딩", "매출", "고객", "시장"],
-      music_audio: ["음악", "소리", "오디오", "노래", "멜로디", "사운드", "작곡"],
-      general: []
+      music_audio: ["음악", "소리", "오디오", "노래", "멜로디", "사운드", "작곡"]
     };
   }
+  
+  // =============================================================================
+  // 🎯 핵심 질문 생성 함수들 (API에서 호출)
+  // =============================================================================
+  
+  // 1단계: 기본 질문 생성
+  generateStep1Questions(domainInfo, mentionedInfo = {}) {
+    console.log('🔍 SlotSystem: 1단계 질문 생성', { domain: domainInfo.primary });
+    
+    try {
+      const domain = domainInfo.primary || 'visual_design';
+      const slots = this.domainSlots[domain] || this.domainSlots.visual_design;
+      
+      const step1Questions = [];
+      
+      // step1: true인 슬롯들만 가져오기
+      Object.entries(slots)
+        .filter(([key, slot]) => slot.step1 && !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight) // 가중치 순
+        .slice(0, 4) // 최대 4개
+        .forEach(([key, slot]) => {
+          step1Questions.push({
+            question: slot.question,
+            options: slot.options || ["네", "아니오", "모르겠음", "기타"],
+            type: slot.type,
+            slotKey: key
+          });
+        });
+      
+      console.log(`✅ ${domain} 도메인 1단계 질문 ${step1Questions.length}개 생성`);
+      return step1Questions;
+      
+    } catch (error) {
+      console.error('❌ 1단계 질문 생성 오류:', error);
+      return this.generateFallbackQuestions();
+    }
+  }
+  
+  // 2-3단계: 전문 질문 생성
+  generateStep2_3Questions(domainInfo, mentionedInfo = {}, currentStep = 2) {
+    console.log('🔍 SlotSystem: 2-3단계 질문 생성', { domain: domainInfo.primary, step: currentStep });
+    
+    try {
+      const domain = domainInfo.primary || 'visual_design';
+      const slots = this.domainSlots[domain] || this.domainSlots.visual_design;
+      
+      const step2Questions = [];
+      
+      // step2: true인 슬롯들만 가져오기
+      Object.entries(slots)
+        .filter(([key, slot]) => slot.step2 && !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight) // 가중치 순
+        .slice(0, 5) // 최대 5개
+        .forEach(([key, slot]) => {
+          step2Questions.push({
+            question: slot.question,
+            options: slot.options || ["네", "아니오", "모르겠음", "기타"],
+            type: slot.type,
+            slotKey: key
+          });
+        });
+      
+      console.log(`✅ ${domain} 도메인 2-3단계 질문 ${step2Questions.length}개 생성`);
+      return step2Questions;
+      
+    } catch (error) {
+      console.error('❌ 2-3단계 질문 생성 오류:', error);
+      return this.generateFallbackQuestions();
+    }
+  }
+  
+  // 4-10단계: 디테일 질문 생성
+  generateDetailQuestions(domainInfo, mentionedInfo = {}, currentStep = 4) {
+    console.log('🔍 SlotSystem: 디테일 질문 생성', { domain: domainInfo.primary, step: currentStep });
+    
+    try {
+      const domain = domainInfo.primary || 'visual_design';
+      const slots = this.domainSlots[domain] || this.domainSlots.visual_design;
+      
+      const detailQuestions = [];
+      
+      // step3: true인 슬롯들 + 아직 안 물어본 것들
+      Object.entries(slots)
+        .filter(([key, slot]) => (slot.step3 || !slot.step1 && !slot.step2) && !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight)
+        .slice(0, 3) // 최대 3개
+        .forEach(([key, slot]) => {
+          detailQuestions.push({
+            question: slot.question,
+            options: slot.options || ["네", "아니오", "모르겠음", "기타"],
+            type: slot.type,
+            slotKey: key
+          });
+        });
+      
+      // 부족하면 일반 질문 추가
+      if (detailQuestions.length < 2) {
+        detailQuestions.push({
+          question: "특별히 강조하고 싶은 부분이나 요소가 있나요?",
+          options: ["주제/캐릭터", "배경/환경", "색상/분위기", "디테일/질감", "전체 조화", "기타"],
+          type: "enum"
+        });
+      }
+      
+      console.log(`✅ ${domain} 도메인 디테일 질문 ${detailQuestions.length}개 생성`);
+      return detailQuestions;
+      
+    } catch (error) {
+      console.error('❌ 디테일 질문 생성 오류:', error);
+      return this.generateFallbackQuestions();
+    }
+  }
+  
+  // =============================================================================
+  // 🛠️ 기존 함수들 (유지)
+  // =============================================================================
   
   // 도메인 감지
   detectDomains(userInput) {
@@ -114,7 +360,7 @@ class SlotSystem {
         .sort(([,a], [,b]) => b - a);
       
       if (sortedDomains.length === 0) {
-        return { primary: 'general', secondary: [], confidence: 0.5 };
+        return { primary: 'visual_design', secondary: [], confidence: 0.5 };
       }
       
       const primary = sortedDomains[0][0];
@@ -124,102 +370,37 @@ class SlotSystem {
       return { primary, secondary, confidence };
     } catch (error) {
       console.error('도메인 감지 오류:', error);
-      return { primary: 'general', secondary: [], confidence: 0.5 };
+      return { primary: 'visual_design', secondary: [], confidence: 0.5 };
     }
   }
   
-  // 폴백 질문 생성 (AI 없이 동작)
-  generateFallbackQuestions(domainInfo, mentionedInfo = {}) {
-    try {
-      const domain = domainInfo.primary || 'general';
-      const slots = this.domainSlots[domain] || this.domainSlots.general;
-      
-      const questions = [];
-      
-      // 필수 슬롯부터 처리
-      Object.entries(slots)
-        .filter(([key, slot]) => slot.required && !mentionedInfo[key])
-        .sort(([,a], [,b]) => b.weight - a.weight)
-        .forEach(([key, slot]) => {
-          if (slot.question && questions.length < 8) {
-            questions.push(slot.question);
-          }
-        });
-      
-      // 선택 슬롯 추가 (필요한 만큼만)
-      Object.entries(slots)
-        .filter(([key, slot]) => !slot.required && !mentionedInfo[key])
-        .sort(([,a], [,b]) => b.weight - a.weight)
-        .slice(0, Math.max(0, 8 - questions.length))
-        .forEach(([key, slot]) => {
-          if (slot.question && questions.length < 8) {
-            questions.push(slot.question);
-          }
-        });
-      
-      // 부족하면 일반 질문 추가
-      const generalQuestions = [
-        "어떤 스타일을 원하시나요?",
-        "크기나 규모는 어느 정도로 생각하고 계신가요?",
-        "특별히 중요하게 생각하는 부분이 있나요?",
-        "참고하고 싶은 예시가 있나요?",
-        "완성도는 어느 수준으로 원하시나요?",
-        "용도나 목적이 정해져 있나요?",
-        "제약 사항이나 조건이 있나요?",
-        "기타 추가로 고려할 사항이 있나요?"
-      ];
-      
-      while (questions.length < 8 && questions.length < 8) {
-        const remainingQuestions = generalQuestions.filter(q => !questions.includes(q));
-        if (remainingQuestions.length === 0) break;
-        
-        questions.push(remainingQuestions[0]);
+  // 폴백 질문 생성
+  generateFallbackQuestions() {
+    return [
+      {
+        question: "구체적으로 어떤 결과물을 원하시나요?",
+        options: ["이미지/그림", "영상/동영상", "텍스트/문서", "프로그램/앱", "기획/전략", "기타"],
+        type: "enum"
+      },
+      {
+        question: "누가 주로 사용하거나 볼 예정인가요?",
+        options: ["나 혼자", "팀/동료", "고객/클라이언트", "일반 대중", "전문가", "기타"],
+        type: "enum"
+      },
+      {
+        question: "어떤 스타일이나 느낌을 선호하시나요?",
+        options: ["심플하고 깔끔한", "화려하고 역동적인", "전문적이고 격식있는", "친근하고 따뜻한", "상관없음", "기타"],
+        type: "enum"
       }
-      
-      return questions.slice(0, 8);
-    } catch (error) {
-      console.error('폴백 질문 생성 오류:', error);
-      // 안전한 기본 질문들
-      return [
-        "구체적으로 어떤 결과물을 원하시나요?",
-        "어떤 스타일이나 느낌을 선호하시나요?",
-        "크기나 규모는 어느 정도인가요?",
-        "누가 사용하거나 볼 예정인가요?",
-        "특별한 요구사항이나 제약이 있나요?",
-        "참고하고 싶은 예시가 있나요?"
-      ];
-    }
+    ];
   }
   
   // 슬롯 정보 가져오기
   getSlots(domain) {
-    try {
-      return this.domainSlots[domain] || this.domainSlots.general;
-    } catch (error) {
-      console.error('슬롯 정보 가져오기 오류:', error);
-      return this.domainSlots.general;
-    }
+    return this.domainSlots[domain] || this.domainSlots.visual_design;
   }
   
-  // 도메인 정보 가져오기
-  getDomainInfo(domain) {
-    try {
-      return {
-        name: domain,
-        slots: this.getSlots(domain),
-        keywords: this.domainKeywords[domain] || []
-      };
-    } catch (error) {
-      console.error('도메인 정보 가져오기 오류:', error);
-      return {
-        name: 'general',
-        slots: this.domainSlots.general,
-        keywords: []
-      };
-    }
-  }
-  
-  // 슬롯 기반 질문 우선순위 계산
+  // 슬롯 우선순위 계산
   calculateSlotPriority(domain, mentionedInfo = {}) {
     try {
       const slots = this.getSlots(domain);
@@ -233,17 +414,17 @@ class SlotSystem {
             required: slot.required,
             question: slot.question,
             type: slot.type,
-            options: slot.options || null
+            options: slot.options || null,
+            step: slot.step1 ? 1 : slot.step2 ? 2 : 3
           });
         }
       });
       
-      // 필수 슬롯 먼저, 그 다음 가중치 순
       return priorities.sort((a, b) => {
         if (a.required !== b.required) {
-          return b.required - a.required; // 필수가 먼저
+          return b.required - a.required;
         }
-        return b.weight - a.weight; // 가중치 높은 순
+        return b.weight - a.weight;
       });
     } catch (error) {
       console.error('슬롯 우선순위 계산 오류:', error);
@@ -253,4 +434,5 @@ class SlotSystem {
 }
 
 // Node.js 환경에서 사용할 수 있도록 export
-module.exports = { SlotSystem };
+const slotSystem = new SlotSystem();
+module.exports = { SlotSystem, slotSystem };
