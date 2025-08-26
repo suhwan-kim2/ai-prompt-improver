@@ -1,352 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎯 AI 프롬프트 개선기 - 95점 달성 시스템</title>
-    <meta name="description" content="의도 파악 95점 + 프롬프트 품질 95점 달성하는 대화형 AI 프롬프트 개선기">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <title>프롬프트 개선기 MVP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-    <div class="container">
-        <!-- 메인 헤더 -->
-        <header class="main-header">
-            <div class="header-content">
-                <h1 class="main-title">🎯 AI 프롬프트 개선기</h1>
-                <p class="main-subtitle">의도 파악 95점 + 프롬프트 품질 95점 달성 시스템</p>
-                <div class="header-stats">
-                    <span class="stat-item">✨ 대화형 AI</span>
-                    <span class="stat-item">📊 실시간 점수</span>
-                    <span class="stat-item">🎯 95점 자동 달성</span>
-                </div>
-            </div>
-        </header>
+  <main>
+    <h1>프롬프트 개선기 (MVP)</h1>
 
-        <!-- 메인 카드 -->
-        <main class="main-card">
-            <!-- 1. 입력 섹션 -->
-            <section class="input-section">
-                <div class="input-header">
-                    <h2 class="section-title">💬 프롬프트 입력</h2>
-                    <p class="section-desc">개선하고 싶은 프롬프트를 입력하면, AI가 대화를 통해 완벽하게 개선해드립니다.</p>
-                </div>
-                
-                <div class="input-container">
-                    <div class="input-wrapper">
-                        <textarea 
-                            id="userPrompt" 
-                            class="prompt-input"
-                            placeholder="예시:&#10;• 강아지 이미지 만들어줘&#10;• 회사 홈페이지 디자인해줘&#10;• 마케팅 영상 스크립트 작성해줘&#10;&#10;간단히 입력하시면 AI가 자세히 물어보며 완벽하게 만들어드립니다!"
-                            rows="6"
-                        ></textarea>
-                        <div class="input-footer">
-                            <div class="input-tips">
-                                <span class="tip">💡 Tip: 간단히 입력해도 AI가 질문하며 완성해드립니다</span>
-                            </div>
-                            <button id="startBtn" class="start-button">
-                                <span class="btn-icon">🚀</span>
-                                <span class="btn-text">개선하기</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
+    <section class="panel">
+      <label>도메인:
+        <select id="domain">
+          <option value="dev">개발(Claude)</option>
+          <option value="image">이미지(Nanobanana)</option>
+          <option value="video">영상(Pika)</option>
+        </select>
+      </label>
+      <textarea id="userInput" placeholder="여기에 초기 프롬프트를 적어주세요" rows="5"></textarea>
+      <button id="startBtn">시작</button>
+    </section>
 
-            <!-- 2. 점수 시스템 (숨김 상태로 시작) -->
-            <section id="scoreSystem" class="score-system" style="display: none;">
-                <div class="score-header">
-                    <h3 class="score-title">📊 실시간 품질 평가</h3>
-                    <p class="score-subtitle">목표: 의도 파악 95점 + 프롬프트 품질 95점 달성</p>
-                </div>
-                
-                <div class="score-cards">
-                    <div class="score-card intent-card">
-                        <div class="score-icon">🎯</div>
-                        <div class="score-info">
-                            <div class="score-value" id="intentScore">0</div>
-                            <div class="score-label">의도 파악</div>
-                            <div class="progress-bar">
-                                <div class="progress-fill intent"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="score-card quality-card">
-                        <div class="score-icon">⭐</div>
-                        <div class="score-info">
-                            <div class="score-value" id="qualityScore">0</div>
-                            <div class="score-label">프롬프트 품질</div>
-                            <div class="progress-bar">
-                                <div class="progress-fill quality"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="score-status">
-                    <div class="status-indicator" id="statusIndicator">
-                        <span class="status-icon">🚀</span>
-                        <span class="status-text">분석 중...</span>
-                    </div>
-                </div>
-            </section>
+    <section id="chat"></section>
 
-            <!-- 3. 대화 영역 (숨김 상태로 시작) -->
-            <section id="conversationArea" class="conversation-area" style="display: none;">
-                <div class="conversation-header">
-                    <h3 class="conversation-title">
-                        💬 AI와의 대화
-                        <span class="step-indicator" id="stepIndicator">1단계</span>
-                    </h3>
-                </div>
-                
-                <!-- 대화 기록 -->
-                <div id="conversation" class="conversation-history">
-                    <!-- 동적으로 생성되는 대화 메시지들 -->
-                </div>
-                
-                <!-- 질문 영역 -->
-                <div id="questionsArea" class="questions-area" style="display: none;">
-                    <!-- 동적으로 생성되는 질문들 -->
-                </div>
-                
-                <!-- 로딩 메시지 -->
-                <div class="loading-message" style="display: none;">
-                    <div class="loading-content">
-                        <div class="loading-spinner"></div>
-                        <span class="loading-text">AI가 분석하고 있습니다...</span>
-                    </div>
-                </div>
-            </section>
+    <section class="scores">
+      <div>의도 점수: <span id="intentScore">0</span></div>
+      <div>프롬프트 점수: <span id="promptScore">0</span></div>
+    </section>
 
-            <!-- 4. 최종 결과 (숨김 상태로 시작) -->
-            <section id="resultSection" class="result-section" style="display: none;">
-                <div class="result-header">
-                    <h3 class="result-title">🎉 프롬프트 개선 완료!</h3>
-                    <p class="result-subtitle">95점 달성으로 최고 품질이 보장됩니다</p>
-                </div>
-                
-                <div class="result-comparison">
-                    <div class="result-card original-card">
-                        <div class="card-header">
-                            <h4 class="card-title">📝 원본 프롬프트</h4>
-                            <div class="card-badge original">입력</div>
-                        </div>
-                        <div class="card-content">
-                            <div id="originalPrompt" class="prompt-text">
-                                <!-- 원본 프롬프트가 여기에 표시됩니다 -->
-                            </div>
-                        </div>
-                    </div>
+    <section id="questions" class="panel hidden"></section>
 
-                    <div class="result-card improved-card">
-                        <div class="card-header">
-                            <h4 class="card-title">🚀 개선된 프롬프트</h4>
-                            <div class="card-badge improved">95점+</div>
-                        </div>
-                        <div class="card-content">
-                            <div id="improvedPrompt" class="prompt-text">
-                                <!-- 개선된 프롬프트가 여기에 표시됩니다 -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <section id="final" class="panel hidden">
+      <h2>최종 프롬프트</h2>
+      <pre id="finalText"></pre>
+      <h3>MCP JSON (샘플)</h3>
+      <pre id="finalJson"></pre>
+      <button id="sendMcp">MCP로 전달</button>
+      <div id="mcpResult"></div>
+    </section>
+  </main>
 
-                <!-- 결과 액션 버튼 -->
-                <div class="result-actions">
-                    <button class="action-btn copy-btn" onclick="copyResult()">
-                        <span class="btn-icon">📋</span>
-                        <span class="btn-text">복사하기</span>
-                    </button>
-                    
-                    <button class="action-btn restart-btn" onclick="restartProcess()">
-                        <span class="btn-icon">🔄</span>
-                        <span class="btn-text">다시 시작</span>
-                    </button>
-                    
-                    <button class="action-btn share-btn" onclick="shareResult()">
-                        <span class="btn-icon">📤</span>
-                        <span class="btn-text">공유하기</span>
-                    </button>
-                </div>
-
-                <!-- 추가 정보 -->
-                <div class="result-info">
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <span class="info-label">🎯 의도 파악</span>
-                            <span class="info-value">95점+ 달성</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">⭐ 프롬프트 품질</span>
-                            <span class="info-value">95점+ 달성</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">🚀 처리 단계</span>
-                            <span class="info-value" id="totalSteps">-</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">⏱️ 소요 시간</span>
-                            <span class="info-value" id="processingTime">-</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <!-- 설명 섹션 -->
-        <section class="info-section">
-            <div class="info-content">
-                <h3 class="info-title">🎯 어떻게 작동하나요?</h3>
-                <div class="info-steps">
-                    <div class="step-item">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h4 class="step-title">간단한 입력</h4>
-                            <p class="step-desc">"강아지 이미지 만들어줘" 같은 간단한 요청만 입력하세요</p>
-                        </div>
-                    </div>
-                    
-                    <div class="step-item">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h4 class="step-title">AI와 대화</h4>
-                            <p class="step-desc">AI가 질문하면 선택지를 골라주세요. 의도 파악 95점까지 자동 진행</p>
-                        </div>
-                    </div>
-                    
-                    <div class="step-item">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h4 class="step-title">95점 달성</h4>
-                            <p class="step-desc">의도 파악 + 프롬프트 품질 둘 다 95점 달성까지 자동으로 완성</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 예시 섹션 -->
-        <section class="examples-section">
-            <div class="examples-content">
-                <h3 class="examples-title">💡 예시로 보는 개선 과정</h3>
-                <div class="example-cards">
-                    <div class="example-card">
-                        <div class="example-header">
-                            <span class="example-type">🎨 이미지</span>
-                        </div>
-                        <div class="example-before">
-                            <strong>입력:</strong> "강아지 이미지 만들어줘"
-                        </div>
-                        <div class="example-after">
-                            <strong>결과:</strong> "Adorable golden retriever puppy, sitting pose, curious expression with bright eyes, outdoor natural lighting, photorealistic style, 4K resolution, 16:9 aspect ratio --no blurry, low quality"
-                        </div>
-                        <div class="example-improvement">
-                            <span class="improvement-badge">95점 달성</span>
-                        </div>
-                    </div>
-
-                    <div class="example-card">
-                        <div class="example-header">
-                            <span class="example-type">🎬 영상</span>
-                        </div>
-                        <div class="example-before">
-                            <strong>입력:</strong> "회사 소개 영상 만들어줘"
-                        </div>
-                        <div class="example-after">
-                            <strong>결과:</strong> "Professional corporate introduction video, 2-3 minutes duration, modern clean style, corporate background music, Korean subtitles, 4K resolution, smooth transitions, company logo integration"
-                        </div>
-                        <div class="example-improvement">
-                            <span class="improvement-badge">95점 달성</span>
-                        </div>
-                    </div>
-
-                    <div class="example-card">
-                        <div class="example-header">
-                            <span class="example-type">💻 개발</span>
-                        </div>
-                        <div class="example-before">
-                            <strong>입력:</strong> "쇼핑몰 웹사이트 만들어줘"
-                        </div>
-                        <div class="example-after">
-                            <strong>결과:</strong> "E-commerce website using React.js, responsive design, payment integration, product catalog, user authentication, admin dashboard, mobile-optimized, PostgreSQL database, AWS deployment"
-                        </div>
-                        <div class="example-improvement">
-                            <span class="improvement-badge">95점 달성</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </div>
-
-    <!-- 푸터 -->
-    <footer class="main-footer">
-        <div class="footer-content">
-            <div class="footer-info">
-                <p class="footer-text">🚀 AI 프롬프트 개선기 v2.0</p>
-                <p class="footer-desc">95점 달성 보장 • 대화형 AI • 실시간 점수 • 무제한 사용</p>
-            </div>
-            <div class="footer-stats">
-                <div class="stat">
-                    <strong>95점+</strong>
-                    <span>품질 보장</span>
-                </div>
-                <div class="stat">
-                    <strong>실시간</strong>
-                    <span>점수 표시</span>
-                </div>
-                <div class="stat">
-                    <strong>무제한</strong>
-                    <span>사용 가능</span>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <!-- 스크립트 로드 -->
-    <script src="script.js"></script>
-
-    <!-- 추가 공유 함수 -->
-    <script>
-        function shareResult() {
-            try {
-                const improvedPrompt = document.getElementById('improvedPrompt').textContent;
-                
-                if (navigator.share) {
-                    navigator.share({
-                        title: 'AI 프롬프트 개선 결과',
-                        text: improvedPrompt,
-                        url: window.location.href
-                    });
-                } else {
-                    copyResult();
-                }
-            } catch (error) {
-                console.error('공유 오류:', error);
-                copyResult();
-            }
-        }
-        
-        // 페이지 로드 시 처리 시간 기록 시작
-        let startTime = Date.now();
-        
-        function updateProcessingTime() {
-            try {
-                const endTime = Date.now();
-                const duration = Math.round((endTime - startTime) / 1000);
-                const timeEl = document.getElementById('processingTime');
-                if (timeEl) {
-                    timeEl.textContent = duration + '초';
-                }
-            } catch (error) {
-                console.error('처리 시간 업데이트 오류:', error);
-            }
-        }
-
-        // 전역 함수로 노출
-        window.updateProcessingTime = updateProcessingTime;
-        window.shareResult = shareResult;
-    </script>
+  <script src="./script.js"></script>
 </body>
 </html>
