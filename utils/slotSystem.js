@@ -400,35 +400,63 @@ class SlotSystem {
     return this.domainSlots[domain] || this.domainSlots.visual_design;
   }
   
-  // 슬롯 우선순위 계산
-  calculateSlotPriority(domain, mentionedInfo = {}) {
+  // 11-20단계: 고급 질문 생성
+  generateAdvancedQuestions(domainInfo, mentionedInfo = {}, currentStep = 11) {
+    console.log('🔍 SlotSystem: 고급 질문 생성', { domain: domainInfo.primary, step: currentStep });
+    
     try {
-      const slots = this.getSlots(domain);
-      const priorities = [];
+      const domain = domainInfo.primary || 'visual_design';
       
-      Object.entries(slots).forEach(([key, slot]) => {
-        if (!mentionedInfo[key]) {
-          priorities.push({
-            key: key,
-            weight: slot.weight,
-            required: slot.required,
+      // 아직 안 물어본 모든 슬롯들
+      const allSlots = this.domainSlots[domain] || this.domainSlots.visual_design;
+      const remainingSlots = Object.entries(allSlots)
+        .filter(([key, slot]) => !mentionedInfo[key])
+        .sort(([,a], [,b]) => b.weight - a.weight);
+      
+      const advancedQuestions = [];
+      
+      // 남은 슬롯이 있으면 활용
+      if (remainingSlots.length > 0) {
+        remainingSlots.slice(0, 2).forEach(([key, slot]) => {
+          advancedQuestions.push({
             question: slot.question,
+            options: slot.options || ["네", "아니오", "모르겠음", "기타"],
             type: slot.type,
-            options: slot.options || null,
-            step: slot.step1 ? 1 : slot.step2 ? 2 : 3
+            slotKey: key
           });
-        }
-      });
+        });
+      }
       
-      return priorities.sort((a, b) => {
-        if (a.required !== b.required) {
-          return b.required - a.required;
+      // 고급 메타 질문들 추가
+      const metaQuestions = [
+        {
+          question: "현재까지의 설정에서 더 강조하고 싶은 부분이 있나요?",
+          options: ["주요 주제", "스타일/분위기", "기술적 품질", "사용자 경험", "독창성", "기타"],
+          type: "enum"
+        },
+        {
+          question: "완성도와 디테일 수준은 어느 정도로 할까요?",
+          options: ["최고급/완벽", "고급/세밀", "일반/적당", "빠른 제작", "기타"],
+          type: "enum"
+        },
+        {
+          question: "참고하거나 피하고 싶은 스타일이 있나요?",
+          options: ["특정 브랜드 스타일", "유명 작품 스타일", "트렌드 스타일", "피하고 싶은 것", "없음", "기타"],
+          type: "enum"
         }
-        return b.weight - a.weight;
-      });
+      ];
+      
+      // 부족하면 메타 질문 추가
+      while (advancedQuestions.length < 3 && metaQuestions.length > 0) {
+        advancedQuestions.push(metaQuestions.shift());
+      }
+      
+      console.log(`✅ 고급 질문 ${advancedQuestions.length}개 생성`);
+      return advancedQuestions;
+      
     } catch (error) {
-      console.error('슬롯 우선순위 계산 오류:', error);
-      return [];
+      console.error('❌ 고급 질문 생성 오류:', error);
+      return this.generateFallbackQuestions();
     }
   }
 }
