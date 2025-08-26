@@ -1,37 +1,9 @@
 {
-  "version": 2,
-  "functions": {
-    "api/improve-prompt.js": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/improve-prompt",
-      "dest": "/api/improve-prompt.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/public/$1"
-    }
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/public/index.html" }
   ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin", 
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers", 
-          "value": "Content-Type"
-        }
-      ]
-    }
-  ]
+  "functions": {
+    "api/**/*": { "runtime": "nodejs18.x" }
+  }
 }
