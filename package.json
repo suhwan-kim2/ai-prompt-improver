@@ -1,30 +1,47 @@
 {
   "name": "ai-prompt-improver",
-  "version": "1.0.0",
-  "description": "AI 프롬프트 개선기 - 한글 입력을 고품질 프롬프트로 변환",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "95점 달성 보장 AI 프롬프트 개선기 - 대화형 의도 파악 시스템",
+  "main": "api/improve-prompt.js",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo 'Static files ready'",
     "start": "vercel dev",
-    "deploy": "vercel --prod"
+    "build": "echo 'Build completed'",
+    "deploy": "vercel --prod",
+    "test": "node test/test-utils.js"
+  },
+  "dependencies": {
+    "openai": "^4.28.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "vercel": "^33.5.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/ai-prompt-improver.git"
+  },
   "keywords": [
     "ai",
     "prompt",
-    "korean",
     "improvement",
-    "vercel"
+    "openai",
+    "korean",
+    "95-score",
+    "conversation",
+    "intent-analysis"
   ],
-  "author": "Your Name",
+  "author": "Swan",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/suhwan-kim2/ai-prompt-improver"
+  "vercel": {
+    "functions": {
+      "api/improve-prompt.js": {
+        "maxDuration": 30
+      }
+    }
   }
 }
