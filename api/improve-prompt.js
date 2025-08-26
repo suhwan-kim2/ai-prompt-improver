@@ -121,27 +121,29 @@ async function handleAdditionalQuestions(userInput, answers, currentStep, mode, 
         
         // 95점 이상이면 질문 종료
          // 목표 점수 이상이면 질문 종료
-        if (currentScore >= targetScore) {
+          if (currentScore >= targetScore) {
             console.log(`🎉 ${targetScore}점 달성! 질문 종료`);
             return res.json({
                 questions: [],
                 completed: true,
                 currentStep: currentStep,
                 intentScore: currentScore,
+                shouldProceedToFinal: true, // ⭐ 이 한 줄 추가!
                 message: `🎉 완벽합니다! ${targetScore}점 달성으로 바로 개선하겠습니다.`
             });
         }
         
         // 최대 단계 도달 체크
-        if (currentStep >= 20) {
-            console.log('⚠️ 최대 20단계 도달');
-            return res.json({
-                questions: [],
-                completed: true,
-                currentStep: 20,
-                intentScore: currentScore,
-                message: `최대 20단계 완료. 현재 정보로 최선의 개선을 진행합니다. (${currentScore}점)`
-            });
+            if (currentStep >= 20) {
+                console.log('⚠️ 최대 20단계 도달');
+                return res.json({
+                    questions: [],
+                    completed: true,
+                    currentStep: 20,
+                    intentScore: currentScore,
+                    shouldProceedToFinal: true, // ⭐ 이 한 줄 추가!
+                    message: `최대 20단계 완료. 현재 정보로 최선의 개선을 진행합니다. (${currentScore}점)`
+                });
         }
         
         // 단계별 질문 생성
