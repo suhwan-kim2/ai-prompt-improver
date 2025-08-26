@@ -1,40 +1,76 @@
+// utils/questionOptimizer.js  (ESM 버전)
+
 class QuestionOptimizer {
-  pick(missingKeys = [], domain = "dev", max = 2){
-    const priority = missingKeys.map(k => ({ key:k, p:this.weight(k,domain) }))
-                                .sort((a,b)=>b.p-a.p)
-                                .slice(0, max)
-                                .map(x => this.toQuestion(x.key));
-    return priority;
+  constructor() {}
+
+  // 메인 최적화: 중복 제거 → 우선순위 정렬 → 상위 N개
+  optimize(questions = [], mentionedInfo = {}, domainInfo = {}, maxCount = 8) {
+    try {
+      if (!Array.isArray(questions) || questions.length === 0) {
+        return this.generateFallbackQuestions().slice(0, maxCount);
+      }
+      const unique = this.removeDuplicates(questions);
+      const prioritized = this.prioritize(unique, mentionedInfo, domainInfo);
+      return prioritized.slice(0, maxCount);
+    } catch (e) {
+      console.error("QuestionOptimizer.optimize error:", e);
+      return this.generateFallbackQuestions().slice(0, maxCount);
+    }
   }
-  weight(k,domain){
-    const map = {
-      image: { subject:9, style:8, ratio_size:8, lighting_camera:7, use_rights:6, negatives:5 },
-      video: { purpose:9, length:8, style:7, platform:6, audio_caption:6, rights:6 },
-      dev:   { type:9, core_features:9, target_users:7, tech_pref_constraints:8, priority:6, security_auth:6 }
-    };
-    return (map[domain]||{})[k] || 5;
+
+  // 호환을 위해 별칭 제공
+  pick(missingKeys = [], domain = "general", maxCount = 2) {
+    const qs = (missingKeys || []).map(k => ({ key: k, question: `${k}에 대해 알려주세요.` }));
+    return this.optimize(qs, {}, { primary: domain }, maxCount);
   }
-  toQuestion(key){
-    const map = {
-      subject:"정확한 주제는 무엇인가요?",
-      style:"어떤 스타일을 원하시나요?",
-      ratio_size:"출력 비율/크기를 정해주세요(예: 16:9, 9:16, 1:1).",
-      lighting_camera:"조명/구도 선호가 있나요?",
-      use_rights:"용도/권리(상업/비상업)를 알려주세요.",
-      negatives:"피하고 싶은 요소 1가지만 적어주세요.",
-      purpose:"영상의 목적은 무엇인가요?",
-      length:"길이는 어느 정도인가요? (~1분/1-5분/5-10분/10분+)",
-      platform:"플랫폼은 어디인가요?(유튜브/틱톡/인스타 등)",
-      audio_caption:"배경음/내레이션/자막 중 필요한 것은?",
-      rights:"저작권/사용권 제약이 있나요?",
-      type:"어떤 유형의 프로그램인가요?(웹/모바일/데스크톱/API)",
-      core_features:"핵심 기능 1~3가지를 적어주세요.",
-      target_users:"주요 사용자는 누구인가요?",
-      tech_pref_constraints:"희망 스택/제약이 있나요?",
-      priority:"우선순위는 무엇인가요?(정확성/속도/확장성 등)",
-      security_auth:"보안/인증 요구가 있나요?"
-    };
-    return { key, question: map[key] || `${key}에 대해 알려주세요.` };
+
+  removeDuplicates(questions) {
+    const seen = new Set();
+    return questions.filter(q => {
+      const key = (q.key || "") + "|" + (q.question || "").slice(0, 24);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  prioritize(questions, mentionedInfo, domainInfo) {
+    const domain = (domainInfo && domainInfo.primary) || "general";
+    const must = {
+      image: ["subject","style","ratio_size","lighting_camera"],
+      video: ["purpose","length","style","platform"],
+      development: ["type","core_features","target_users","tech_pref_constraints"],
+      general: ["목표","대상","제약","스타일"]
+    }[domain] || [];
+
+    const mentionedFlat = new Set(
+      Object.values(mentionedInfo || {})
+        .flat()
+        .map(s => String(s || "").toLowerCase())
+    );
+
+    return questions
+      .map(q => {
+        const key = String(q.key || "").toLowerCase();
+        let p = 5;
+        if (must.includes(q.key)) p += 4;
+        if (/스타일|크기|목적|길이|플랫폼/.test(q.question || "")) p += 2;
+        if (mentionedFlat.has(key)) p -= 3; // 이미 언급된 건 후순위
+        return { ...q, priority: p };
+      })
+      .sort((a,b) => b.priority - a.priority);
+  }
+
+  generateFallbackQuestions() {
+    return [
+      { key: "목표", question: "구체적으로 어떤 결과물을 원하시나요?" },
+      { key: "대상", question: "누가 사용하거나 볼 예정인가요?" },
+      { key: "품질", question: "완성도/품질 수준은 어느 정도가 좋나요?" }
+    ];
   }
 }
+
+// ESM export
 export { QuestionOptimizer };
+// 편의용 인스턴스도 함께 내보내기
+export const questionOptimizer = new QuestionOptimizer();
