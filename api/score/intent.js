@@ -1,7 +1,7 @@
 import { IntentAnalyzer } from "../../utils/intentAnalyzer.js";
 import { MentionExtractor } from "../../utils/mentionExtractor.js";
 import { SlotSystem } from "../../utils/slotSystem.js";
-import { readJson } from "../api/helpers.js";
+import { readJson } from"../helpers.js";
 
 const analyzer = new IntentAnalyzer(new SlotSystem(), new MentionExtractor());
 
