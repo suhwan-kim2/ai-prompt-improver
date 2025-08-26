@@ -68,4 +68,78 @@ class MentionExtractor {
       const extracted = {};
       
       Object.entries(this.patterns).forEach(([category, pattern]) => {
-        extracted[category] = this
+        extracted[category] = this.extractByPattern(text, pattern);
+      });
+      
+      console.log('✅ 추출 완료:', extracted);
+      return extracted;
+      
+    } catch (error) {
+      console.error('❌ 추출 오류:', error);
+      return {};
+    }
+  }
+  
+  // 패턴별 추출
+  extractByPattern(text, pattern) {
+    const matches = [];
+    
+    // 키워드 매칭
+    if (pattern.keywords) {
+      pattern.keywords.forEach(keyword => {
+        if (text.toLowerCase().includes(keyword)) {
+          matches.push(keyword);
+        }
+      });
+    }
+    
+    // 정규식 매칭
+    if (pattern.regex) {
+      const regexMatches = text.match(pattern.regex) || [];
+      matches.push(...regexMatches);
+    }
+    
+    // 중복 제거
+    return [...new Set(matches)];
+  }
+  
+  // 언급 정보 통계
+  getStats(extracted) {
+    const stats = {
+      totalCategories: Object.keys(extracted).length,
+      filledCategories: 0,
+      totalMentions: 0,
+      mostMentioned: null
+    };
+    
+    let maxMentions = 0;
+    
+    Object.entries(extracted).forEach(([category, mentions]) => {
+      if (mentions && mentions.length > 0) {
+        stats.filledCategories++;
+        stats.totalMentions += mentions.length;
+        
+        if (mentions.length > maxMentions) {
+          maxMentions = mentions.length;
+          stats.mostMentioned = category;
+        }
+      }
+    });
+    
+    return stats;
+  }
+}
+
+// ⭐ 핵심: 제대로 export
+const mentionExtractor = new MentionExtractor();
+
+module.exports = {
+  mentionExtractor,
+  MentionExtractor
+};
+
+// ES6 방식도 지원
+if (typeof module === 'undefined') {
+  window.MentionExtractor = MentionExtractor;
+  window.mentionExtractor = mentionExtractor;
+}
