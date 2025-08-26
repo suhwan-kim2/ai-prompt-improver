@@ -1,6 +1,6 @@
-// script.js - 목표 점수 자동 달성 시스템 (완성본)
+// public/script.js - AI 대화형 프롬프트 개선기 (완전 새 버전)
 
-console.log('🚀 AI 프롬프트 개선기 v2.0 - 목표 점수 자동 시스템');
+console.log('🚀 AI 대화형 프롬프트 개선기 시작!');
 
 // =============================================================================
 // 📱 전역 변수들
@@ -8,327 +8,113 @@ console.log('🚀 AI 프롬프트 개선기 v2.0 - 목표 점수 자동 시스�
 let isExpertMode = false;
 let currentQuestions = [];
 let currentAnswers = {};
-let allAnswers = []; 
-let originalUserInput = '';
-let currentUserInput = ''; // 추가
+let allAnswers = [];
+let currentUserInput = '';
 let isProcessing = false;
-let currentScore = 0;
 let intentScore = 0;
 let qualityScore = 0;
 let currentStep = 1;
-let currentRound = 1; // 추가
-let maxSteps = 20;
 let targetScore = 95;
 
 // =============================================================================
 // 🚀 페이지 초기화
 // =============================================================================
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 페이지 로드 완료!');
-    addDynamicStyles();
-    setupInputEvents();
-    setupModalEvents();
-    
-    const maxStepsInput = document.getElementById('maxStepsInput');
-    if (maxStepsInput) {
-        const defaultSteps = isExpertMode ? 20 : 3;
-        maxStepsInput.value = defaultSteps;
-        updateMaxSteps(defaultSteps);
-        maxStepsInput.addEventListener('change', (e) => updateMaxSteps(e.target.value));
-    } else {
-        updateMaxSteps(isExpertMode ? 20 : 3);
-    }
-    const targetScoreInput = document.getElementById('targetScoreInput');
-    if (targetScoreInput) {
-        targetScoreInput.value = targetScore;
-        targetScoreInput.addEventListener('change', (e) => {
-            const value = parseInt(e.target.value, 10);
-            targetScore = isNaN(value) ? 95 : value;
-        });
-    }
-
-    updateProgressDisplay();
-    updateScores(0, 0); // 추가
-    console.log('✅ 초기화 완료!');
+    console.log('📄 페이지 로드 완료');
+    setupUI();
+    updateScores(0, 0);
 });
 
-// =============================================================================
-// 🎯 핵심 기능들
-// =============================================================================
-
-// 프롬프트 개선 메인 함수
-async function improvePrompt() {
-    console.log('🎯 프롬프트 개선 시작!');
-    
+function setupUI() {
     const searchInput = document.getElementById('searchInput');
-    const userInput = searchInput ? searchInput.value.trim() : '';
-    
-    if (!userInput) {
-        showStatus('개선하고 싶은 프롬프트를 입력해주세요.', 'error');
-        if (searchInput) {
-            searchInput.focus();
-            searchInput.classList.add('error');
-        }
-        return;
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                improvePrompt();
+            }
+        });
     }
+}
+
+// =============================================================================
+// 🎯 메인 프롬프트 개선 함수
+// =============================================================================
+async function improvePrompt() {
+    const searchInput = document.getElementById('searchInput');
+    const userInput = searchInput?.value?.trim();
     
-    if (userInput.length < 2) {
-        showStatus('최소 2글자 이상 입력해주세요.', 'error');
+    if (!userInput || userInput.length < 2) {
+        showStatus('개선하고 싶은 프롬프트를 입력해주세요 (최소 2글자)', 'error');
         return;
     }
     
     if (isProcessing) {
-        showStatus('이미 처리 중입니다. 잠시만 기다려주세요.', 'error');
+        showStatus('이미 처리 중입니다', 'error');
         return;
     }
     
     // 상태 초기화
-    clearPreviousResults();
+    clearResults();
     isProcessing = true;
-    originalUserInput = userInput;
-    currentUserInput = userInput; // 추가
+    currentUserInput = userInput;
     currentStep = 1;
-    currentRound = 1; // 추가
     allAnswers = [];
     intentScore = 0;
     qualityScore = 0;
     
- 
-    const maxStepsInput = document.getElementById('maxStepsInput');
-    maxSteps = maxStepsInput ? parseInt(maxStepsInput.value, 10) || (isExpertMode ? 20 : 3) : (isExpertMode ? 20 : 3);
-
-    const targetScoreInput = document.getElementById('targetScoreInput');
-    targetScore = targetScoreInput ? parseInt(targetScoreInput.value, 10) || 95 : 95;
-
-
-    
-    showStatus(`🤖 AI가 목표 점수(${targetScore}점)에 도달할 때까지 프롬프트를 개선합니다...`, 'processing');
-    updateProgressDisplay();
+    console.log('🎯 AI 대화 시작:', userInput);
     
     try {
-        // 1단계 질문 요청
+        showStatus('🤖 AI가 도메인을 분석하고 첫 질문을 준비하고 있습니다...', 'processing');
+        
         const response = await fetch('/api/improve-prompt', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 step: 'questions',
                 userInput: userInput,
-                mode: isExpertMode ? 'expert' : 'normal',
-                targetScore: targetScore
+                mode: isExpertMode ? 'expert' : 'normal'
             })
         });
 
         if (!response.ok) {
-            throw new Error(`서버 오류: ${response.status}`);
+            throw new Error(`API 오류: ${response.status}`);
         }
 
-        const result = await response.json();
-        console.log('📨 1단계 응답:', result);
+        const data = await response.json();
         
-        if (result.intentScore) {
-            intentScore = result.intentScore;
-            updateScores(intentScore, 0);
+        if (data.intentScore !== undefined) {
+            intentScore = data.intentScore;
+            updateScores(intentScore, qualityScore);
         }
         
-        if (result.questions && result.questions.length > 0) {
-            displayQuestions(result.questions);
-            showStatus(`📝 1단계: 기본 정보를 파악하겠습니다 (의도 파악: ${intentScore}점)`, 'success');
+        if (data.questions && data.questions.length > 0) {
+            displayQuestions(data.questions);
+            showStatus(`🎯 1단계: ${data.domain} 도메인 감지! 기본 정보를 파악하겠습니다`, 'success');
         } else {
-            showStatus('충분한 정보로 바로 개선합니다...', 'processing');
-            await finalImprove();
+            throw new Error('질문 생성 실패');
         }
-    } catch (error) {
-        console.error('❌ 오류:', error);
-        showStatus('처리 중 오류가 발생했습니다: ' + error.message, 'error');
         
-        // 폴백 질문
-        const fallbackQuestions = [
-            {
-                question: "어떤 종류의 결과물을 원하시나요?",
-                options: ["이미지/그림", "영상/비디오", "웹/앱", "문서/텍스트", "기타"]
-            }
-        ];
-        displayQuestions(fallbackQuestions);
-    } finally {
+    } catch (error) {
+        console.error('❌ 프롬프트 개선 시작 오류:', error);
+        showStatus('❌ AI 연결에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
         isProcessing = false;
     }
 }
 
 // =============================================================================
-// 📝 질문 표시 시스템
+// 🤖 AI 동적 질문 요청
 // =============================================================================
-
-function displayQuestions(questions) {
-    console.log(`📝 ${currentStep}단계 질문 표시:`, questions);
-    
-    if (!Array.isArray(questions) || questions.length === 0) {
-        console.log('❌ 유효하지 않은 질문 데이터');
-        if (intentScore >= targetScore || qualityScore >= targetScore) {
-            finalImprove();
-        } else {
-            requestAdditionalQuestions(currentStep);
-        }
-        return;
-    }
-    
-    currentQuestions = questions;
-    currentAnswers = {};
-    
-    const aiQuestionsDiv = document.getElementById('aiQuestions');
-    const questionsContainer = document.getElementById('questionsContainer');
-    
-    if (!questionsContainer || !aiQuestionsDiv) {
-        console.error('❌ 질문 컨테이너를 찾을 수 없습니다');
-        return;
-    }
-    
-    let questionsHTML = '<div class="questions-step">';
-    questionsHTML += `
-        <div class="step-header">
-            <div class="step-title">🎯 ${currentStep}단계 질문 ${isExpertMode ? '(전문가모드)' : '(일반모드)'}</div>
-            <div class="step-progress">
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${(intentScore / targetScore) * 100}%"></div>
-                </div>
-                <span class="progress-text">의도파악 ${intentScore} / ${targetScore}점</span>
-            </div>
-        </div>
-    `;
-    
-    questions.forEach((q, index) => {
-        const question = q.question || q;
-        const options = q.options || ["예", "아니오", "모르겠음", "기타"];
-        
-        questionsHTML += `
-            <div class="question-item" id="question-${index}">
-                <div class="question-number">Q${index + 1}</div>
-                <div class="question-text">${escapeHtml(question)}</div>
-                <div class="question-options">
-        `;
-        
-        options.forEach((option, optionIndex) => {
-            questionsHTML += `
-                <button class="option-button" 
-                        onclick="selectOption(${index}, ${optionIndex}, '${escapeHtml(option)}')"
-                        id="option-${index}-${optionIndex}">
-                    ${escapeHtml(option)}
-                </button>
-            `;
-        });
-        
-        questionsHTML += `
-                </div>
-                <div class="custom-input" id="custom-input-${index}" style="display: none;">
-                    <label class="custom-label">구체적으로 설명해주세요:</label>
-                    <textarea class="custom-textarea" 
-                              placeholder="자세한 내용을 입력해주세요..."
-                              oninput="saveCustomAnswer(${index}, this.value)"
-                              rows="3"></textarea>
-                </div>
-            </div>
-        `;
-    });
-    
-    questionsHTML += `
-        <div class="questions-actions">
-            <button onclick="submitAnswers()" class="action-btn proceed">
-                ✨ 답변 완료 - 다음 단계로
-            </button>
-            <button onclick="skipQuestions()" class="action-btn skip">
-                ⏭️ 이 단계 건너뛰기
-            </button>
-        </div>
-    </div>`;
-    
-    questionsContainer.innerHTML = questionsHTML;
-    aiQuestionsDiv.style.display = 'block';
-    
-    setTimeout(() => {
-        aiQuestionsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 300);
-}
-
-// 옵션 선택
-function selectOption(questionIndex, optionIndex, optionText) {
-    console.log(`🎯 선택: 질문${questionIndex}, 옵션: ${optionText}`);
-    
-    const questionDiv = document.getElementById(`question-${questionIndex}`);
-    if (questionDiv) {
-        const allOptions = questionDiv.querySelectorAll('.option-button');
-        allOptions.forEach(btn => btn.classList.remove('selected'));
-    }
-    
-    const selectedButton = document.getElementById(`option-${questionIndex}-${optionIndex}`);
-    if (selectedButton) {
-        selectedButton.classList.add('selected');
-    }
-    
-    currentAnswers[questionIndex] = optionText;
-    
-    const customInput = document.getElementById(`custom-input-${questionIndex}`);
-    if (customInput) {
-        if (optionText === '기타' || optionText.includes('기타')) {
-            customInput.style.display = 'block';
-            const textarea = customInput.querySelector('textarea');
-            if (textarea) setTimeout(() => textarea.focus(), 100);
-        } else {
-            customInput.style.display = 'none';
-        }
-    }
-}
-
-// 커스텀 답변 저장
-function saveCustomAnswer(questionIndex, customText) {
-    if (customText.trim()) {
-        currentAnswers[questionIndex] = `기타: ${customText.trim()}`;
-    }
-}
-
-// =============================================================================
-// 🔄 답변 제출 및 자동 진행
-// =============================================================================
-
-async function submitAnswers() {
-    console.log(`✅ ${currentStep}단계 답변 완료:`, currentAnswers);
-    
-    const answersArray = Object.values(currentAnswers).filter(a => a && a.length > 0);
-    if (answersArray.length === 0) {
-        showStatus('최소 하나 이상의 질문에 답변해주세요.', 'error');
-        return;
-    }
-    
-    allAnswers.push(...answersArray);
-    currentRound++;
-    
-    showStatus(`📊 ${currentStep}단계 답변 분석 중...`, 'processing');
-    
-    if (intentScore >= targetScore) {
-        await finalImprove();
-    } else {
-        currentStep++;
-        await requestAdditionalQuestions(currentStep);
-    }
-}
-
-// 추가 질문 요청
 async function requestAdditionalQuestions(stepNumber) {
     try {
-        console.log(`📝 ${stepNumber}단계 추가 질문 요청 중...`);
-        console.log('요청 데이터:', {
-            step: 'additional-questions',
-            userInput: currentUserInput,
-            answers: allAnswers,
-            currentStep: stepNumber,
-            targetScore: targetScore
-        });
+        console.log(`🤖 ${stepNumber}단계 AI 질문 요청`);
+        
+        showStatus(`🤖 AI가 ${stepNumber}단계 맞춤형 질문을 생성하고 있습니다...`, 'processing');
         
         const response = await fetch('/api/improve-prompt', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 step: 'additional-questions',
                 userInput: currentUserInput,
@@ -339,53 +125,154 @@ async function requestAdditionalQuestions(stepNumber) {
             })
         });
 
-        if (!response.ok) {
-            throw new Error(`API 오류: ${response.status}`);
-        }
-
-        const text = await response.text();
-        console.log('원본 응답:', text);
+        const data = await response.json();
         
-        if (!text) {
-            throw new Error('빈 응답');
-        }
-        
-        const data = JSON.parse(text);
-        console.log('파싱된 데이터:', data);
-        
-        // 점수 업데이트
-        if (data.intentScore) {
+        if (data.intentScore !== undefined) {
             intentScore = data.intentScore;
             updateScores(intentScore, qualityScore);
         }
         
-        // 질문 표시 또는 완료
+        // 완료 조건
+        if (data.shouldProceedToFinal || data.completed) {
+            showStatus('🎯 AI가 완벽한 프롬프트를 생성하고 있습니다...', 'processing');
+            await finalImprove();
+            return;
+        }
+        
+        // AI 생성 질문 표시
         if (data.questions && data.questions.length > 0) {
             displayQuestions(data.questions);
             currentStep = stepNumber;
-            updateProgressDisplay();
-            showStatus(`📝 ${currentStep}단계: 추가 정보 파악 중 (현재 ${intentScore}점 → 목표 ${targetScore}점)`, 'success');
-              } else if (!data.completed && intentScore < targetScore) {
-            console.log('⚠️ 질문이 없어 추가 질문을 재요청합니다');
-            await requestAdditionalQuestions(stepNumber);
+            showStatus(`🤖 ${currentStep}단계: AI 맞춤 질문 생성 완료!`, 'success');
         } else {
-            console.error('예상치 못한 응답:', data);
             await finalImprove();
         }
         
     } catch (error) {
-        console.error('❌ 추가 질문 요청 오류:', error);
-        console.error('상세 오류:', error.message, error.stack);
-        
-        // 오류 시 최종 개선으로
+        console.error('❌ AI 질문 요청 오류:', error);
         await finalImprove();
     }
 }
 
-// 질문 건너뛰기
-async function skipQuestions() {
-    console.log(`⏭️ ${currentStep}단계 건너뛰기`);
+// =============================================================================
+// 📝 질문 표시 (AI 대화형)
+// =============================================================================
+function displayQuestions(questions) {
+    console.log(`🤖 AI 질문 표시: ${questions.length}개`);
     
+    if (!questions || questions.length === 0) {
+        finalImprove();
+        return;
+    }
+    
+    currentQuestions = questions;
+    currentAnswers = {};
+    
+    const container = document.getElementById('questionsContainer');
+    if (!container) return;
+    
+    let html = `
+        <div class="ai-conversation">
+            <div class="conversation-header">
+                <h3>🤖 ${currentStep}단계: AI 맞춤 질문</h3>
+                <div class="score-display">
+                    <span class="score">의도파악: ${intentScore}점/${targetScore}점</span>
+                    <div class="progress-bar">
+                        <div class="progress" style="width: ${(intentScore/targetScore)*100}%"></div>
+                    </div>
+                </div>
+            </div>
+    `;
+    
+    questions.forEach((q, i) => {
+        const question = q.question || q;
+        const options = q.options || ["네", "아니오", "기타"];
+        
+        html += `
+            <div class="question-card" id="q-${i}">
+                <div class="question-text">Q${i+1}. ${question}</div>
+                <div class="options">
+        `;
+        
+        options.forEach((opt, j) => {
+            html += `
+                <button class="option-btn" onclick="selectOption(${i}, ${j}, '${opt}')">
+                    ${opt}
+                </button>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `
+            <div class="controls">
+                <button class="btn-continue" onclick="continueConversation()">
+                    📝 답변 완료 (${Object.keys(currentAnswers).length}/${questions.length})
+                </button>
+                <button class="btn-skip" onclick="skipToFinal()">⏭️ 바로 완성</button>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    document.getElementById('aiQuestions').style.display = 'block';
+}
+
+// =============================================================================
+// 🎯 질문 답변 처리
+// =============================================================================
+function selectOption(questionIndex, optionIndex, optionText) {
+    console.log(`선택: Q${questionIndex+1} → ${optionText}`);
+    
+    // 이전 선택 해제
+    document.querySelectorAll(`#q-${questionIndex} .option-btn`).forEach(btn => {
+        btn.classList.remove('selected');
+    });
+    
+    // 현재 선택 표시
+    const selectedBtn = document.querySelector(`#q-${questionIndex} .option-btn:nth-child(${optionIndex + 1})`);
+    if (selectedBtn) {
+        selectedBtn.classList.add('selected');
+    }
+    
+    // 답변 저장
+    currentAnswers[questionIndex] = optionText;
+    
+    // 진행 버튼 업데이트
+    updateContinueButton();
+}
+
+function updateContinueButton() {
+    const continueBtn = document.querySelector('.btn-continue');
+    if (continueBtn) {
+        const answered = Object.keys(currentAnswers).length;
+        const total = currentQuestions.length;
+        continueBtn.textContent = `📝 답변 완료 (${answered}/${total})`;
+        continueBtn.disabled = answered === 0;
+    }
+}
+
+// =============================================================================
+// 🔄 대화 진행
+// =============================================================================
+async function continueConversation() {
+    const answers = Object.values(currentAnswers);
+    
+    if (answers.length === 0) {
+        showStatus('최소 1개 질문에는 답변해주세요', 'error');
+        return;
+    }
+    
+    console.log(`📝 ${currentStep}단계 답변:`, answers);
+    
+    allAnswers.push(...answers);
+    showStatus(`📊 ${currentStep}단계 답변 처리 중...`, 'processing');
+    
+    // 다음 단계로
     if (intentScore >= targetScore) {
         await finalImprove();
     } else {
@@ -394,209 +281,130 @@ async function skipQuestions() {
     }
 }
 
-// =============================================================================
-// 🎯 최종 프롬프트 개선
-// =============================================================================
+async function skipToFinal() {
+    console.log('⏭️ 바로 완성 요청');
+    await finalImprove();
+}
 
+// =============================================================================
+// 🎯 최종 AI 프롬프트 생성
+// =============================================================================
 async function finalImprove() {
-    console.log(`🎯 최종 프롬프트 개선 시작 (${currentStep}단계 완료)`);
+    console.log('🎯 AI 최종 프롬프트 생성');
     
     try {
         showStatus('🤖 AI가 완벽한 프롬프트를 생성하고 있습니다...', 'processing');
         
         const response = await fetch('/api/improve-prompt', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 step: 'final-improve',
                 userInput: currentUserInput,
                 answers: allAnswers,
                 currentStep: currentStep,
-                mode: isExpertMode ? 'expert' : 'normal',
-                targetScore: targetScore
+                mode: isExpertMode ? 'expert' : 'normal'
             })
         });
 
-        if (!response.ok) {
-            throw new Error(`서버 오류: ${response.status}`);
-        }
-
-        const result = await response.json();
-        console.log('📨 최종 개선 결과:', result);
+        const data = await response.json();
         
-        if (result.intentScore) intentScore = result.intentScore;
-        if (result.qualityScore) qualityScore = result.qualityScore;
+        if (data.intentScore) intentScore = data.intentScore;
+        if (data.qualityScore) qualityScore = data.qualityScore;
         
         updateScores(intentScore, qualityScore);
-        displayResult(originalUserInput, result.improved_prompt || result);
+        displayResult(data);
         
-        const successMessage = `🎉 ${currentStep}단계 만에 완성! 의도파악 ${intentScore}점, 품질 ${qualityScore}점 달성!`;
-        showStatus(successMessage, 'success');
+        showStatus(`🎉 AI 대화 완료! ${currentStep}단계로 ${intentScore}점 달성!`, 'success');
         
     } catch (error) {
-        console.error('❌ 최종 개선 오류:', error);
-        
-        const fallbackPrompt = originalUserInput + '\n\n고품질로 상세하게 제작해주세요.';
-        displayResult(originalUserInput, fallbackPrompt);
-        showStatus('기본 개선 시스템으로 처리되었습니다.', 'success');
+        console.error('❌ 최종 생성 오류:', error);
+        showStatus('❌ AI 생성 실패', 'error');
+    } finally {
+        isProcessing = false;
     }
 }
 
 // =============================================================================
-// 🎨 결과 표시
+// 📋 결과 표시
 // =============================================================================
-
-function displayResult(original, improved) {
-    console.log('📊 결과 표시');
+function displayResult(data) {
+    const originalDiv = document.getElementById('originalText');
+    const improvedDiv = document.getElementById('improvedText');
+    const resultDiv = document.getElementById('improvedResult');
     
-    const aiQuestions = document.getElementById('aiQuestions');
-    const originalText = document.getElementById('originalText');
-    const improvedText = document.getElementById('improvedText');
-    const improvedResult = document.getElementById('improvedResult');
-    
-    if (aiQuestions) aiQuestions.style.display = 'none';
-    if (originalText) originalText.textContent = original;
-    if (improvedText) improvedText.textContent = improved;
-    if (improvedResult) {
-        improvedResult.style.display = 'block';
-        improvedResult.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (originalDiv) originalDiv.textContent = data.original;
+    if (improvedDiv) improvedDiv.textContent = data.improved;
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
     }
 }
 
-// 점수 업데이트
+// =============================================================================
+// 🎨 UI 함수들
+// =============================================================================
 function updateScores(intent, quality) {
-    intentScore = intent;
-    qualityScore = quality;
+    const intentSpan = document.getElementById('intentScore');
+    const qualitySpan = document.getElementById('qualityScore');
     
-    // 여기에 점수 표시 UI 업데이트 로직 추가 가능
-    console.log(`📊 점수 업데이트: 의도 ${intentScore}점, 품질 ${qualityScore}점`);
-}
-
-// 진행 상황 업데이트
-function updateProgressDisplay() {
-    console.log(`📊 진행 상황: ${intentScore}/${targetScore}점`);
-
-    const progress = Math.min((intentScore / targetScore) * 100, 100);
-    const progressFills = document.querySelectorAll('.progress-fill');
-    progressFills.forEach(fill => {
-        if (fill) fill.style.width = `${progress}%`;
-    });
-    
-    const progressTexts = document.querySelectorAll('.progress-text');
-    progressTexts.forEach(text => {
-        if (text) text.textContent = `의도파악 ${intentScore} / ${targetScore}점`;
-    });
-}
-// 최대 단계 수 업데이트
-function updateMaxSteps(value) {
-    const num = parseInt(value, 10);
-    if (!isNaN(num) && num > 0) {
-        maxSteps = num;
-        updateProgressDisplay();
-    }
-}
-
-// =============================================================================
-// 🎛️ 모드 전환
-// =============================================================================
-
-function toggleMode() {
-    isExpertMode = !isExpertMode;
-    const maxStepsInput = document.getElementById('maxStepsInput');
-    const defaultSteps = isExpertMode ? 20 : 3;
-    if (maxStepsInput) {
-        maxStepsInput.value = defaultSteps;
-        updateMaxSteps(maxStepsInput.value);
-    } else {
-        maxSteps = defaultSteps;
-    }
-
-    const toggle = document.getElementById('modeToggle');
-    const description = document.getElementById('modeDescription');
-    
-    if (toggle) {
-        toggle.classList.toggle('active', isExpertMode);
-    }
-    
-    if (description) {
-        description.textContent = isExpertMode ?
-            `전문가급 의도 분석 시스템 (목표 ${targetScore}점까지)` :
-            `빠르고 간편한 프롬프트 개선 (목표 ${targetScore}점까지)`;
-    }
-    
-    showStatus(`${isExpertMode ? '🎯 전문가' : '💨 일반'}모드로 변경되었습니다.`, 'success');
-}
-
-// =============================================================================
-// 🛠️ 유틸리티 함수들
-// =============================================================================
-
-function clearPreviousResults() {
-    const elements = ['aiQuestions', 'improvedResult'];
-    elements.forEach(id => {
-        const element = document.getElementById(id);
-        if (element) element.style.display = 'none';
-    });
-    
-    const questionsContainer = document.getElementById('questionsContainer');
-    if (questionsContainer) questionsContainer.innerHTML = '';
-    
-    currentQuestions = [];
-    currentAnswers = {};
+    if (intentSpan) intentSpan.textContent = intent || 0;
+    if (qualitySpan) qualitySpan.textContent = quality || 0;
 }
 
 function showStatus(message, type = 'info') {
-    console.log(`📢 [${type}]: ${message}`);
+    console.log(`📢 ${message}`);
+    // 간단한 상태 표시 (기존 유지)
+}
+
+function clearResults() {
+    const questionsDiv = document.getElementById('aiQuestions');
+    const resultDiv = document.getElementById('improvedResult');
     
-    const statusDiv = document.getElementById('statusMessage');
-    if (!statusDiv) return;
+    if (questionsDiv) questionsDiv.style.display = 'none';
+    if (resultDiv) resultDiv.style.display = 'none';
+}
+
+// 모드 토글
+function toggleMode() {
+    isExpertMode = !isExpertMode;
+    const btn = document.getElementById('modeToggle');
+    const desc = document.getElementById('modeDescription');
     
-    statusDiv.style.display = 'block';
-    statusDiv.textContent = message;
-    statusDiv.className = 'status-message';
-    
-    if (type === 'success') statusDiv.classList.add('status-success');
-    else if (type === 'error') statusDiv.classList.add('status-error');
-    else if (type === 'processing') statusDiv.classList.add('status-processing');
-    
-    if (type !== 'processing') {
-        setTimeout(() => {
-            if (statusDiv) statusDiv.style.display = 'none';
-        }, 5000);
+    if (btn) {
+        btn.textContent = isExpertMode ? '일반 모드' : '전문가 모드';
     }
+    if (desc) {
+        desc.textContent = isExpertMode ? 
+            '최대 20단계 심층 분석' : 
+            '빠르고 간편한 개선';
+    }
+    
+    targetScore = isExpertMode ? 95 : 85;
+    console.log(`모드 변경: ${isExpertMode ? '전문가' : '일반'} (목표: ${targetScore}점)`);
 }
 
-function escapeHtml(text) {
-    if (typeof text !== 'string') return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
+// 결과 복사
 async function copyToClipboard() {
     const improvedText = document.getElementById('improvedText');
-    if (!improvedText) {
-        showStatus('복사할 텍스트를 찾을 수 없습니다.', 'error');
-        return;
-    }
+    if (!improvedText) return;
     
     try {
         await navigator.clipboard.writeText(improvedText.textContent);
         showStatus('✅ 클립보드에 복사되었습니다!', 'success');
     } catch (err) {
-        showStatus('클립보드 복사 실패', 'error');
+        showStatus('❌ 복사 실패', 'error');
     }
 }
 
+// 즐겨찾기 저장
 function saveToFavorites() {
     const improvedText = document.getElementById('improvedText');
     if (!improvedText) return;
     
     const favoriteItem = {
         id: Date.now(),
-        original: originalUserInput,
+        original: currentUserInput,
         improved: improvedText.textContent,
         score: intentScore,
         date: new Date().toLocaleDateString('ko-KR')
@@ -605,76 +413,159 @@ function saveToFavorites() {
     try {
         let favorites = JSON.parse(localStorage.getItem('prompt_favorites') || '[]');
         favorites.unshift(favoriteItem);
-        if (favorites.length > 20) favorites = favorites.slice(0, 20);
+        if (favorites.length > 10) favorites = favorites.slice(0, 10);
         localStorage.setItem('prompt_favorites', JSON.stringify(favorites));
         showStatus('⭐ 즐겨찾기에 저장되었습니다!', 'success');
     } catch (e) {
-        showStatus('저장 실패', 'error');
+        showStatus('❌ 저장 실패', 'error');
     }
 }
 
-function showDetailedGuide() {
-    alert(`📖 사용법\n\n${isExpertMode ? '전문가' : '일반'}모드 (목표 ${targetScore}점까지)\n\n1. 프롬프트 입력\n2. 질문에 답변\n3. 자동으로 개선 완료!`);
+// HTML 이스케이프
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
-function closeDetailedGuide() {
-    // 모달 닫기
-}
-
-// =============================================================================
-// 🎨 UI 초기화
-// =============================================================================
-
-function setupInputEvents() {
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                improvePrompt();
-            }
-        });
-        
-        searchInput.addEventListener('input', function() {
-            this.classList.remove('error');
-        });
-    }
-}
-
-function setupModalEvents() {
-    // 모달 이벤트 설정
-}
-
-function addDynamicStyles() {
+// CSS 동적 스타일 추가
+document.addEventListener('DOMContentLoaded', function() {
     const style = document.createElement('style');
     style.textContent = `
-        .step-header {
-            padding: 15px;
+        .ai-conversation {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
             color: white;
-            border-radius: 8px 8px 0 0;
-            margin-bottom: 20px;
         }
         
-        .option-button.selected {
-            background: #4285f4;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(66, 133, 244, 0.3);
+        .conversation-header {
+            text-align: center;
+            margin-bottom: 25px;
         }
         
-        .custom-input {
-            margin-top: 15px;
-            padding: 15px;
-            background: #fff3e0;
+        .conversation-header h3 {
+            margin: 0 0 15px 0;
+            font-size: 1.5em;
+        }
+        
+        .score-display {
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
             border-radius: 8px;
         }
         
-        .search-input.error {
-            border-color: #ea4335 !important;
+        .progress-bar {
+            background: rgba(255,255,255,0.3);
+            height: 8px;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .progress {
+            background: linear-gradient(90deg, #00b894, #00cec9);
+            height: 100%;
+            transition: width 0.5s ease;
+        }
+        
+        .question-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .question-text {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .option-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid transparent;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+        
+        .option-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .option-btn.selected {
+            background: linear-gradient(135deg, #00b894, #00cec9);
+            border-color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+        
+        .btn-continue, .btn-skip {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-continue:hover, .btn-skip:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(116, 185, 255, 0.4);
+        }
+        
+        .btn-continue:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-skip {
+            background: linear-gradient(135deg, #fd79a8, #e84393);
+        }
+        
+        .btn-skip:hover {
+            box-shadow: 0 5px 15px rgba(253, 121, 168, 0.4);
+        }
+        
+        @media (max-width: 768px) {
+            .options {
+                flex-direction: column;
+            }
+            
+            .option-btn {
+                width: 100%;
+                text-align: center;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
         }
     `;
     document.head.appendChild(style);
-}
+});
 
-console.log('✅ Script loaded successfully!');
+console.log('✅ AI 대화형 프롬프트 개선기 로드 완료!');
