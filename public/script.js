@@ -1,3 +1,4 @@
+// public/script.js
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -5,7 +6,8 @@ const state = {
   userInput: "",
   turns: 0,
   answers: [],
-  askedKeys: [],        // ★ 누적
+  askedKeys: [],         // 이미 물어본 슬롯
+  activeKeys: [],        // 이번 턴 질문 슬롯
   intent: { intentScore: 0 },
   prompt: { total: 0 },
   draft: ""
@@ -17,8 +19,14 @@ $("domain").onchange = (e)=> state.domain = e.target.value;
 async function start(){
   state.userInput = $("userInput").value.trim();
   if(!state.userInput){ alert("프롬프트를 입력해 주세요."); return; }
-  state.turns = 0; state.answers = [];
-  $("chat").innerHTML = ""; $("final").classList.add("hidden");
+  // 세션 리셋
+  state.turns = 0; 
+  state.answers = [];
+  state.askedKeys = [];
+  state.activeKeys = [];
+  $("chat").innerHTML = "";
+  $("final").classList.add("hidden");
+
   addAI(`제가 이해한 의도: "${state.userInput.slice(0,80)}..." 맞나요? 부족한 핵심만 1~2개씩 여쭤볼게요.`);
   await nextLoop();
 }
@@ -35,15 +43,21 @@ async function nextLoop(){
 
 function renderQuestions(questions){
   const box = $("questions");
+  if (!questions.length) { // 질문 없으면 숨김
+    box.classList.add("hidden");
+    return;
+  }
   box.classList.remove("hidden");
-  state.activeKeys = questions.map(q => q.key);   // ★ 이번 턴 질문키 기억
+  state.activeKeys = questions.map(q => q.key);
+
   const inputs = questions.map(q=>`
     <div class="q-item">
       <div><b>${q.key}</b> — ${q.question}</div>
       <input data-key="${q.key}" placeholder="여기에 답변"/>
     </div>`).join("");
+
   box.innerHTML = `<h3>질문</h3>${inputs}<button id="submitAnswers">답변 제출</button>`;
-  $("submitAnswers").onclick = onSubmitAnswers; // 렌더마다 재바인딩
+  $("submitAnswers").onclick = onSubmitAnswers;
 }
 
 async function onSubmitAnswers(){
@@ -56,9 +70,10 @@ async function onSubmitAnswers(){
 
   addMe(line);
   state.answers.push(line);
-   // ★ 이번 턴 물어본 키들을 누적하여 다음 턴 제외
+
+  // 이번 턴 질문키들을 누적 기록(다음 턴 제외)
   if (Array.isArray(state.activeKeys)) {
-  state.askedKeys.push(...state.activeKeys);
+    state.askedKeys.push(...state.activeKeys);
   }
 
   // 1) 의도 점수
@@ -69,7 +84,7 @@ async function onSubmitAnswers(){
   });
   state.intent = intent;
 
-  // 2) 중간 프롬프트 생성 → 점수
+  // 2) 임시 프롬프트 → 점수
   state.draft = synthesizePrompt(state.userInput, state.answers, state.domain);
   const domainMap = state.domain === "image" ? "visual_design" : state.domain === "video" ? "video" : "development";
   const prompt = await post("/api/score/prompt", { prompt: state.draft, domain: domainMap });
@@ -79,7 +94,7 @@ async function onSubmitAnswers(){
   $("promptScore").textContent = prompt.total;
   addAI(`업데이트 ▶ 의도 ${intent.intentScore} / 프롬프트 ${prompt.total}`);
 
-  // 컷오프 체크
+  // 컷오프 완료
   if (intent.intentScore >= 95 && prompt.total >= 95) {
     finalize();
     return;
@@ -133,7 +148,8 @@ function addMe(t){ addMsg(t, "me"); }
 function addAI(t){ addMsg(t, "ai"); }
 function addMsg(t, who){
   const div = document.createElement("div");
-  div.className = `msg ${who}`; div.textContent = t;
+  div.className = `msg ${who}`; 
+  div.textContent = t;
   $("chat").appendChild(div);
 }
 
@@ -144,5 +160,13 @@ async function post(url, body){
     body: JSON.stringify(body ?? {})
   });
   const text = await r.text();
-  try { return JSON.parse(text || "{}"); } catch { return {}; }
+  if (!r.ok) {
+    console.error("POST failed:", url, r.status, text);
+    return { error: true, status: r.status, raw: text };
+  }
+  try { return JSON.parse(text || "{}"); } 
+  catch (e) {
+    console.error("JSON parse error:", url, e, text);
+    return { error: true, status: r.status, raw: text };
+  }
 }
