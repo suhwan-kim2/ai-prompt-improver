@@ -25,9 +25,18 @@ class SlotSystem {
       security_auth:"보안/인증 요구가 있나요?"
     };
   }
-  questionsFor(missing, domain){
-    const keys = (missing.length ? missing : this.domainSlots[domain] || []);
-    return keys.map(k=>({key:k, question:this.questionMap[k] || `${k}에 대해 알려주세요.`}));
+  // 이미 채운 슬롯은 다시 묻지 않도록 askedKeys로 제외하고,
+  // missing이 비면 질문 자체를 내지 않음
+    questionsFor(missing = [], domain, askedKeys = []){
+      if (!Array.isArray(missing)) missing = [];
+      if (missing.length === 0) return [];              // ★ 핵심: 반복 차단
+      const asked = new Set(Array.isArray(askedKeys) ? askedKeys : []);
+      const keys = missing.filter(k => !asked.has(k));
+      return keys.map(k => ({
+        key: k,
+        question: this.questionMap[k] || `${k}에 대해 알려주세요.`
+      }));
+  
   }
 }
 export { SlotSystem };
