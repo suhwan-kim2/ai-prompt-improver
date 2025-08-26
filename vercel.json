@@ -1,5 +1,10 @@
 {
   "version": 2,
   "cleanUrls": true,
-  "functions": { "api/**/*": { "runtime": "nodejs18.x" } }
+  "rewrites": [
+    { "source": "/", "destination": "/public/index.html" }
+  ],
+  "functions": {
+    "api/**": { "runtime": "nodejs18.x" }
+  }
 }
