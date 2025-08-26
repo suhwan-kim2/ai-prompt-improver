@@ -1,251 +1,352 @@
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 프롬프트 개선기 - 목표 점수 달성 시스템</title>
-    <meta name="description" content="한글 입력을 AI가 완벽하게 이해하는 고품질 프롬프트로 자동 개선. 목표 점수 달성까지 자동 진행">
-    
-    <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
-    
+    <title>🎯 AI 프롬프트 개선기 - 95점 달성 시스템</title>
+    <meta name="description" content="의도 파악 95점 + 프롬프트 품질 95점 달성하는 대화형 AI 프롬프트 개선기">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="google-container">
-        <!-- 헤더 영역 -->
-        <header class="header">
-            <div class="logo">
-                <h1>🤖 AI 프롬프트 개선기</h1>
-                <p class="tagline">목표 점수 달성까지 자동 분석으로 95점 완벽 프롬프트 생성</p>
+    <div class="container">
+        <!-- 메인 헤더 -->
+        <header class="main-header">
+            <div class="header-content">
+                <h1 class="main-title">🎯 AI 프롬프트 개선기</h1>
+                <p class="main-subtitle">의도 파악 95점 + 프롬프트 품질 95점 달성 시스템</p>
+                <div class="header-stats">
+                    <span class="stat-item">✨ 대화형 AI</span>
+                    <span class="stat-item">📊 실시간 점수</span>
+                    <span class="stat-item">🎯 95점 자동 달성</span>
+                </div>
             </div>
         </header>
-        
-        <!-- 메인 검색 영역 -->
-        <main class="main-search">
-            <!-- 모드 토글 -->
-            <div class="mode-selector">
-                <div class="toggle-container">
-                    <span class="mode-label" data-mode="normal">💨 일반모드</span>
-                    <div class="toggle-switch" id="modeToggle" onclick="toggleMode()">
-                        <div class="toggle-slider"></div>
-                    </div>
-                    <span class="mode-label" data-mode="expert">🎯 전문가모드</span>
+
+        <!-- 메인 카드 -->
+        <main class="main-card">
+            <!-- 1. 입력 섹션 -->
+            <section class="input-section">
+                <div class="input-header">
+                    <h2 class="section-title">💬 프롬프트 입력</h2>
+                    <p class="section-desc">개선하고 싶은 프롬프트를 입력하면, AI가 대화를 통해 완벽하게 개선해드립니다.</p>
                 </div>
-                <div class="mode-description" id="modeDescription">
-                   빠르고 간편한 프롬프트 개선 (초기 3단계, 목표 점수까지 자동 진행)
-                </div>
-                <div class="step-config">
-                    <label for="maxStepsInput">시작 단계 수:</label>
-                    <input type="number" id="maxStepsInput" min="1" value="3">
-                    <label for="targetScoreInput">목표 점수:</label>
-                    <input type="number" id="targetScoreInput" min="1" max="100" value="95">
-                    <div class="step-hint">필요하면 시작 단계 수를 조정하세요 (목표 점수까지 계속 진행)</div>
-                </div>
-            </div>
-            
-            <!-- 검색창 -->
-            <div class="search-box">
-                <div class="search-input-container">
-                    <textarea 
-                        id="searchInput"
-                        class="search-input" 
-                        placeholder="개선하고 싶은 프롬프트를 한글로 입력하세요...
-예: '웹사이트 만들어줘', '유튜브 썸네일 디자인', '사업 계획서 작성'"
-                        rows="3"
-                    ></textarea>
-                    <div class="search-actions">
-                        <button class="search-btn primary" onclick="improvePrompt()">
-                            ✨ AI 개선 시작
-                        </button>
-                        <button class="search-btn secondary" onclick="clearResults()">
-                            🗑️ 초기화
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 간단 가이드 -->
-            <div class="quick-guide">
-                <div class="guide-steps" id="guideSteps">
-                    <span class="step">1️⃣ 원하는 작업 입력</span>
-                    <span class="step">2️⃣ AI 질문에 답변</span>
-                    <span class="step">3️⃣ 자동 반복 개선</span>
-                    <span class="step">4️⃣ 95점 달성!</span>
-                </div>
-                <button class="guide-detail-btn" onclick="showDetailedGuide()">
-                    📖 자세한 사용법
-                </button>
-            </div>
-            
-            <!-- 점수 표시 바 -->
-            <div class="score-bars" style="display: none;" id="scoreBars">
-                <div class="score-bar-container">
-                    <div class="score-bar-label">의도 파악 점수</div>
-                    <div class="score-bar-track">
-                        <div class="intent-score-bar" style="width: 0%">
-                            <span class="score-bar-value intent-score-value">0</span>
+                
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="userPrompt" 
+                            class="prompt-input"
+                            placeholder="예시:&#10;• 강아지 이미지 만들어줘&#10;• 회사 홈페이지 디자인해줘&#10;• 마케팅 영상 스크립트 작성해줘&#10;&#10;간단히 입력하시면 AI가 자세히 물어보며 완벽하게 만들어드립니다!"
+                            rows="6"
+                        ></textarea>
+                        <div class="input-footer">
+                            <div class="input-tips">
+                                <span class="tip">💡 Tip: 간단히 입력해도 AI가 질문하며 완성해드립니다</span>
+                            </div>
+                            <button id="startBtn" class="start-button">
+                                <span class="btn-icon">🚀</span>
+                                <span class="btn-text">개선하기</span>
+                            </button>
                         </div>
                     </div>
                 </div>
-                <div class="score-bar-container">
-                    <div class="score-bar-label">품질 점수</div>
-                    <div class="score-bar-track">
-                        <div class="quality-score-bar" style="width: 0%">
-                            <span class="score-bar-value quality-score-value">0</span>
+            </section>
+
+            <!-- 2. 점수 시스템 (숨김 상태로 시작) -->
+            <section id="scoreSystem" class="score-system" style="display: none;">
+                <div class="score-header">
+                    <h3 class="score-title">📊 실시간 품질 평가</h3>
+                    <p class="score-subtitle">목표: 의도 파악 95점 + 프롬프트 품질 95점 달성</p>
+                </div>
+                
+                <div class="score-cards">
+                    <div class="score-card intent-card">
+                        <div class="score-icon">🎯</div>
+                        <div class="score-info">
+                            <div class="score-value" id="intentScore">0</div>
+                            <div class="score-label">의도 파악</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill intent"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="score-card quality-card">
+                        <div class="score-icon">⭐</div>
+                        <div class="score-info">
+                            <div class="score-value" id="qualityScore">0</div>
+                            <div class="score-label">프롬프트 품질</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill quality"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+                
+                <div class="score-status">
+                    <div class="status-indicator" id="statusIndicator">
+                        <span class="status-icon">🚀</span>
+                        <span class="status-text">분석 중...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 대화 영역 (숨김 상태로 시작) -->
+            <section id="conversationArea" class="conversation-area" style="display: none;">
+                <div class="conversation-header">
+                    <h3 class="conversation-title">
+                        💬 AI와의 대화
+                        <span class="step-indicator" id="stepIndicator">1단계</span>
+                    </h3>
+                </div>
+                
+                <!-- 대화 기록 -->
+                <div id="conversation" class="conversation-history">
+                    <!-- 동적으로 생성되는 대화 메시지들 -->
+                </div>
+                
+                <!-- 질문 영역 -->
+                <div id="questionsArea" class="questions-area" style="display: none;">
+                    <!-- 동적으로 생성되는 질문들 -->
+                </div>
+                
+                <!-- 로딩 메시지 -->
+                <div class="loading-message" style="display: none;">
+                    <div class="loading-content">
+                        <div class="loading-spinner"></div>
+                        <span class="loading-text">AI가 분석하고 있습니다...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. 최종 결과 (숨김 상태로 시작) -->
+            <section id="resultSection" class="result-section" style="display: none;">
+                <div class="result-header">
+                    <h3 class="result-title">🎉 프롬프트 개선 완료!</h3>
+                    <p class="result-subtitle">95점 달성으로 최고 품질이 보장됩니다</p>
+                </div>
+                
+                <div class="result-comparison">
+                    <div class="result-card original-card">
+                        <div class="card-header">
+                            <h4 class="card-title">📝 원본 프롬프트</h4>
+                            <div class="card-badge original">입력</div>
+                        </div>
+                        <div class="card-content">
+                            <div id="originalPrompt" class="prompt-text">
+                                <!-- 원본 프롬프트가 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="result-card improved-card">
+                        <div class="card-header">
+                            <h4 class="card-title">🚀 개선된 프롬프트</h4>
+                            <div class="card-badge improved">95점+</div>
+                        </div>
+                        <div class="card-content">
+                            <div id="improvedPrompt" class="prompt-text">
+                                <!-- 개선된 프롬프트가 여기에 표시됩니다 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 결과 액션 버튼 -->
+                <div class="result-actions">
+                    <button class="action-btn copy-btn" onclick="copyResult()">
+                        <span class="btn-icon">📋</span>
+                        <span class="btn-text">복사하기</span>
+                    </button>
+                    
+                    <button class="action-btn restart-btn" onclick="restartProcess()">
+                        <span class="btn-icon">🔄</span>
+                        <span class="btn-text">다시 시작</span>
+                    </button>
+                    
+                    <button class="action-btn share-btn" onclick="shareResult()">
+                        <span class="btn-icon">📤</span>
+                        <span class="btn-text">공유하기</span>
+                    </button>
+                </div>
+
+                <!-- 추가 정보 -->
+                <div class="result-info">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">🎯 의도 파악</span>
+                            <span class="info-value">95점+ 달성</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">⭐ 프롬프트 품질</span>
+                            <span class="info-value">95점+ 달성</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">🚀 처리 단계</span>
+                            <span class="info-value" id="totalSteps">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">⏱️ 소요 시간</span>
+                            <span class="info-value" id="processingTime">-</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
-        
-        <!-- AI 질문 섹션 -->
-        <section class="ai-questions" id="aiQuestions" style="display: none;">
-            <div class="questions-header">
-                <h3>🤖 AI 자동 질문 시스템</h3>
-                <p>95점 달성까지 자동으로 진행됩니다</p>
-            </div>
-            
-            <div class="questions-content">
-                <div id="questionsContainer">
-                    <!-- 동적으로 생성되는 단계별 질문들 -->
-                </div>
-            </div>
-        </section>
-        
-        <!-- 결과 섹션 -->
-        <section class="result-section" id="improvedResult" style="display: none;">
-            <div class="result-header">
-                <h3>✨ 개선 완료!</h3>
-                <p>AI가 완벽하게 분석하고 개선한 결과입니다</p>
-            </div>
-            
-            <div class="result-content">
-                <div class="result-card original">
-                    <div class="card-header">
-                        <h4>📝 원본 입력</h4>
-                    </div>
-                    <div class="card-content">
-                        <div id="originalText"></div>
-                    </div>
-                </div>
-                
-                <div class="result-arrow">→</div>
-                
-                <div class="result-card improved">
-                    <div class="card-header">
-                        <h4>🚀 AI가 개선한 프롬프트</h4>
-                        <div class="score-badge" id="scoreBadge" style="display: none;">
-                            <span id="currentScore">--</span>점
+
+        <!-- 설명 섹션 -->
+        <section class="info-section">
+            <div class="info-content">
+                <h3 class="info-title">🎯 어떻게 작동하나요?</h3>
+                <div class="info-steps">
+                    <div class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4 class="step-title">간단한 입력</h4>
+                            <p class="step-desc">"강아지 이미지 만들어줘" 같은 간단한 요청만 입력하세요</p>
                         </div>
                     </div>
-                    <div class="card-content">
-                        <div id="improvedText"></div>
+                    
+                    <div class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4 class="step-title">AI와 대화</h4>
+                            <p class="step-desc">AI가 질문하면 선택지를 골라주세요. 의도 파악 95점까지 자동 진행</p>
+                        </div>
                     </div>
-                </div>
-            </div>
-            
-            <div class="result-actions">
-                <button class="result-btn copy" onclick="copyToClipboard()">
-                    📋 개선된 프롬프트 복사
-                </button>
-                <button class="result-btn save" onclick="saveToFavorites()">
-                    ⭐ 즐겨찾기 저장
-                </button>
-                <button class="result-btn retry" onclick="clearResults(); improvePrompt();">
-                    🔄 다시 개선하기
-                </button>
-            </div>
-        </section>
-        
-        <!-- 점수 개선 섹션 (필요시 표시) -->
-        <section class="score-improvement" id="scoreImprovement" style="display: none;">
-            <div class="score-content">
-                <h4>🎯 품질 평가 진행 중</h4>
-                <div class="score-display">
-                    현재 점수: <span class="score-number" id="currentScoreDisplay">--</span>/100점
-                </div>
-                <p class="score-message">목표 점수 95점 달성까지 자동으로 진행됩니다!</p>
-                
-                <div class="score-progress">
-                    <div class="progress-bar">
-                        <div class="progress-fill"></div>
+                    
+                    <div class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4 class="step-title">95점 달성</h4>
+                            <p class="step-desc">의도 파악 + 프롬프트 품질 둘 다 95점 달성까지 자동으로 완성</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
-        
-        <!-- 상태 메시지 -->
-        <div class="status-message" id="statusMessage" style="display: none;"></div>
-        
-        <!-- 푸터 -->
-        <footer class="footer">
-            <div class="footer-content">
-                <p>🚀 AI 프롬프트 개선기 v2.0 - 목표 점수 달성 시스템</p>
-                <p class="footer-sub">
-                    일반모드(3단계 시작) · 전문가모드(20단계 시작) · 95점 목표 달성 · Made with ❤️
-                </p>
+
+        <!-- 예시 섹션 -->
+        <section class="examples-section">
+            <div class="examples-content">
+                <h3 class="examples-title">💡 예시로 보는 개선 과정</h3>
+                <div class="example-cards">
+                    <div class="example-card">
+                        <div class="example-header">
+                            <span class="example-type">🎨 이미지</span>
+                        </div>
+                        <div class="example-before">
+                            <strong>입력:</strong> "강아지 이미지 만들어줘"
+                        </div>
+                        <div class="example-after">
+                            <strong>결과:</strong> "Adorable golden retriever puppy, sitting pose, curious expression with bright eyes, outdoor natural lighting, photorealistic style, 4K resolution, 16:9 aspect ratio --no blurry, low quality"
+                        </div>
+                        <div class="example-improvement">
+                            <span class="improvement-badge">95점 달성</span>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-header">
+                            <span class="example-type">🎬 영상</span>
+                        </div>
+                        <div class="example-before">
+                            <strong>입력:</strong> "회사 소개 영상 만들어줘"
+                        </div>
+                        <div class="example-after">
+                            <strong>결과:</strong> "Professional corporate introduction video, 2-3 minutes duration, modern clean style, corporate background music, Korean subtitles, 4K resolution, smooth transitions, company logo integration"
+                        </div>
+                        <div class="example-improvement">
+                            <span class="improvement-badge">95점 달성</span>
+                        </div>
+                    </div>
+
+                    <div class="example-card">
+                        <div class="example-header">
+                            <span class="example-type">💻 개발</span>
+                        </div>
+                        <div class="example-before">
+                            <strong>입력:</strong> "쇼핑몰 웹사이트 만들어줘"
+                        </div>
+                        <div class="example-after">
+                            <strong>결과:</strong> "E-commerce website using React.js, responsive design, payment integration, product catalog, user authentication, admin dashboard, mobile-optimized, PostgreSQL database, AWS deployment"
+                        </div>
+                        <div class="example-improvement">
+                            <span class="improvement-badge">95점 달성</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </footer>
+        </section>
     </div>
 
-    <!-- 자세한 사용법 모달 -->
-    <div id="guideModal" class="modal" style="display: none;">
-        <div class="modal-overlay" onclick="closeDetailedGuide()"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modalTitle">📖 AI 프롬프트 개선기 사용법</h2>
-                <button class="modal-close" onclick="closeDetailedGuide()">×</button>
+    <!-- 푸터 -->
+    <footer class="main-footer">
+        <div class="footer-content">
+            <div class="footer-info">
+                <p class="footer-text">🚀 AI 프롬프트 개선기 v2.0</p>
+                <p class="footer-desc">95점 달성 보장 • 대화형 AI • 실시간 점수 • 무제한 사용</p>
             </div>
-            <div class="modal-body" id="modalBody">
-                <div class="guide-section">
-                    <h3>🎯 자동 단계 시스템</h3>
-                    <ul>
-                        <li><strong>일반모드:</strong> 3단계에서 시작해 빠른 완성</li>
-                        <li><strong>전문가모드:</strong> 20단계에서 시작해 더 정밀하게 진행</li>
-                        <li><strong>목표:</strong> 의도 파악 95점 달성</li>
-                        <li><strong>단계 설정:</strong> 시작 단계 수를 입력 칸에서 직접 조정</li>
-                        <li><strong>특징:</strong> 답변만 하면 자동으로 다음 단계 진행</li>
-                    </ul>
+            <div class="footer-stats">
+                <div class="stat">
+                    <strong>95점+</strong>
+                    <span>품질 보장</span>
                 </div>
-                
-                <div class="guide-section">
-                    <h3>🔄 단계별 진행 과정</h3>
-                    <ol>
-                        <li><strong>1-3단계:</strong> 기본 정보 파악 (40-60점)</li>
-                        <li><strong>4-10단계:</strong> 세부 디테일 확인 (60-85점)</li>
-                        <li><strong>11단계 이상:</strong> 초정밀 분석 (85-95점+)</li>
-                        <li><strong>완료:</strong> 95점 달성 시 자동 완성</li>
-                    </ol>
+                <div class="stat">
+                    <strong>실시간</strong>
+                    <span>점수 표시</span>
                 </div>
-                
-                <div class="guide-section">
-                    <h3>💡 사용 팁</h3>
-                    <ul>
-                        <li>질문에 최대한 구체적으로 답변하세요</li>
-                        <li>"기타" 선택시 자세한 설명을 추가하세요</li>
-                        <li>전문가모드는 시간이 걸리지만 최고 품질 보장</li>
-                        <li>일반모드는 빠르게 괜찮은 결과 제공</li>
-                    </ul>
+                <div class="stat">
+                    <strong>무제한</strong>
+                    <span>사용 가능</span>
                 </div>
-                
-                <div class="guide-section">
-                    <h3>📊 점수 시스템</h3>
-                    <ul>
-                        <li><strong>의도 파악 점수:</strong> 사용자의 진짜 의도를 얼마나 파악했는지</li>
-                        <li><strong>품질 점수:</strong> 생성된 프롬프트의 품질과 완성도</li>
-                        <li><strong>최종 점수:</strong> 두 점수의 평균</li>
-                        <li><strong>목표:</strong> 95점 이상 달성시 최고 품질 보장</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="modal-btn" onclick="closeDetailedGuide()">시작하기</button>
             </div>
         </div>
-    </div>
+    </footer>
 
+    <!-- 스크립트 로드 -->
     <script src="script.js"></script>
+
+    <!-- 추가 공유 함수 -->
+    <script>
+        function shareResult() {
+            try {
+                const improvedPrompt = document.getElementById('improvedPrompt').textContent;
+                
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'AI 프롬프트 개선 결과',
+                        text: improvedPrompt,
+                        url: window.location.href
+                    });
+                } else {
+                    copyResult();
+                }
+            } catch (error) {
+                console.error('공유 오류:', error);
+                copyResult();
+            }
+        }
+        
+        // 페이지 로드 시 처리 시간 기록 시작
+        let startTime = Date.now();
+        
+        function updateProcessingTime() {
+            try {
+                const endTime = Date.now();
+                const duration = Math.round((endTime - startTime) / 1000);
+                const timeEl = document.getElementById('processingTime');
+                if (timeEl) {
+                    timeEl.textContent = duration + '초';
+                }
+            } catch (error) {
+                console.error('처리 시간 업데이트 오류:', error);
+            }
+        }
+
+        // 전역 함수로 노출
+        window.updateProcessingTime = updateProcessingTime;
+        window.shareResult = shareResult;
+    </script>
 </body>
 </html>
