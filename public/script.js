@@ -6,8 +6,8 @@ const state = {
   userInput: "",
   turns: 0,
   answers: [],
-  askedKeys: [],         // 이미 물어본 슬롯
-  activeKeys: [],        // 이번 턴 질문 슬롯
+  askedKeys: [],         
+  activeKeys: [],        
   intent: { intentScore: 0 },
   prompt: { total: 0 },
   draft: ""
@@ -19,7 +19,7 @@ $("domain").onchange = (e)=> state.domain = e.target.value;
 async function start(){
   state.userInput = $("userInput").value.trim();
   if(!state.userInput){ alert("프롬프트를 입력해 주세요."); return; }
-  // 세션 리셋
+  // 세션 초기화
   state.turns = 0; 
   state.answers = [];
   state.askedKeys = [];
@@ -36,14 +36,15 @@ async function nextLoop(){
     domain: state.domain,
     userInput: state.userInput,
     answers: state.answers,
-    askedKeys: state.askedKeys
+    askedKeys: state.askedKeys,
+    promptScore: state.prompt.total   // ★ 프롬프트 점수도 함께 전송
   });
   renderQuestions(r.questions || []);
 }
 
 function renderQuestions(questions){
   const box = $("questions");
-  if (!questions.length) { // 질문 없으면 숨김
+  if (!questions.length) { 
     box.classList.add("hidden");
     return;
   }
@@ -71,7 +72,6 @@ async function onSubmitAnswers(){
   addMe(line);
   state.answers.push(line);
 
-  // 이번 턴 질문키들을 누적 기록(다음 턴 제외)
   if (Array.isArray(state.activeKeys)) {
     state.askedKeys.push(...state.activeKeys);
   }
@@ -84,7 +84,7 @@ async function onSubmitAnswers(){
   });
   state.intent = intent;
 
-  // 2) 임시 프롬프트 → 점수
+  // 2) 임시 프롬프트 점수
   state.draft = synthesizePrompt(state.userInput, state.answers, state.domain);
   const domainMap = state.domain === "image" ? "visual_design" : state.domain === "video" ? "video" : "development";
   const prompt = await post("/api/score/prompt", { prompt: state.draft, domain: domainMap });
