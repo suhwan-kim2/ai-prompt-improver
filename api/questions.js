@@ -3,7 +3,7 @@
 import { SlotSystem } from "../utils/slotSystem.js";
 import { IntentAnalyzer } from "../utils/intentAnalyzer.js";
 import { MentionExtractor } from "../utils/mentionExtractor.js";
-import { readJson } from "./_helpers.js";
+import { readJson } from "../api/helpers.js";
 
 const slots = new SlotSystem();
 const analyzer = new IntentAnalyzer(slots, new MentionExtractor());
