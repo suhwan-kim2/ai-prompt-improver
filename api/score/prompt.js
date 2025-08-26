@@ -1,7 +1,7 @@
 
 //prompt.js
 import { EvaluationSystem } from "../../utils/evaluationSystem.js";
-import { readJson } from "../_helpers.js";
+import { readJson } from "../api/helpers.js";
 
 const evaluator = new EvaluationSystem();
 
