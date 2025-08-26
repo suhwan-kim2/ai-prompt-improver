@@ -83,6 +83,10 @@ async function handleQuestions(userInput, mode, res) {
         // utils에서 1단계 질문 생성
         const questions = slotSystem.generateStep1Questions(domainInfo, mentionedInfo);
         
+        console.log('🔑 OpenAI API 키 존재:', !!OPENAI_API_KEY);
+        console.log('🔑 API 키 앞 10글자:', OPENAI_API_KEY?.substring(0, 10));
+
+        
         return res.status(200).json({
             questions: questions,
             question_type: "multiple_choice",
