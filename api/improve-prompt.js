@@ -218,39 +218,45 @@ async function handleFinalImprove(userInput, answers, currentStep, mode, res) {
 }
 
 // =============================================================================
-// 🤖 AI 동적 질문 생성 (OpenAI API)
+// 🤖 AI 동적 질문 생성 (디버깅 버전)
 // =============================================================================
 async function generateAIDynamicQuestions(userInput, answers, currentStep, domainInfo, intentAnalysis) {
+    console.log('🤖 AI 질문 생성 시작 - 디버깅 모드');
+    console.log('🔑 API 키 존재:', !!OPENAI_API_KEY);
+    console.log('📝 입력 데이터:', { userInput, answers, currentStep });
+    
     try {
+        // 🔑 API 키 체크
         if (!OPENAI_API_KEY) {
-            console.log('⚠️ OpenAI API 키 없음');
-            return null;
+            console.log('⚠️ OpenAI API 키 없음 - 테스트 질문 반환');
+            return generateTestQuestions(userInput, answers, currentStep);
         }
+        
+        console.log('🔑 API 키 앞 10글자:', OPENAI_API_KEY.substring(0, 10));
         
         const domain = domainInfo.primary;
         const currentScore = intentAnalysis.intentScore;
         
-        // AI 프롬프트
+        console.log('🎯 AI 요청 준비:', { domain, currentScore });
+        
+        // 간단한 AI 프롬프트 (테스트용)
         const aiPrompt = `
-당신은 프롬프트 개선 전문가입니다. 사용자 의도를 95% 파악하는 것이 목표입니다.
+사용자가 "${userInput}"라고 요청했고, 지금까지 "${answers.join(', ')}"라고 답변했습니다.
 
-현재 상황:
-- 원본: "${userInput}"
-- 도메인: ${domain}  
-- 현재 점수: ${currentScore}점/95점
-- 답변들: ${answers.join(' | ')}
+현재 의도 파악 점수: ${currentScore}점 (목표: 95점)
 
-임무: 95점 달성을 위한 자연스럽고 구체적인 질문 3-5개를 만드세요.
+더 구체적인 정보를 얻기 위한 한국어 질문 3개를 JSON 형식으로 만들어주세요:
 
-JSON 형식:
 [
   {
-    "question": "구체적이고 대화형 질문",
-    "options": ["선택지1", "선택지2", "선택지3", "선택지4", "기타"]
+    "question": "질문 내용",
+    "options": ["선택지1", "선택지2", "선택지3", "기타"]
   }
 ]
 `;
 
+        console.log('🤖 OpenAI API 호출 중...');
+        
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -258,32 +264,110 @@ JSON 형식:
                 'Authorization': `Bearer ${OPENAI_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'gpt-4',
+                model: 'gpt-3.5-turbo', // 더 안정적인 모델
                 messages: [
-                    { role: 'system', content: '프롬프트 개선 전문가로서 창의적인 질문을 생성합니다.' },
                     { role: 'user', content: aiPrompt }
                 ],
-                temperature: 0.8,
-                max_tokens: 1000
+                temperature: 0.7,
+                max_tokens: 800
             })
         });
 
+        console.log('📡 OpenAI 응답 상태:', response.status);
+
         if (!response.ok) {
-            throw new Error(`OpenAI 오류: ${response.status}`);
+            const errorText = await response.text();
+            console.error('❌ OpenAI API 오류:', response.status, errorText);
+            throw new Error(`OpenAI API 오류: ${response.status}`);
         }
 
         const data = await response.json();
-        const questions = JSON.parse(data.choices[0].message.content);
+        console.log('📨 OpenAI 원본 응답:', data);
+
+        let generatedQuestions;
+        try {
+            generatedQuestions = JSON.parse(data.choices[0].message.content);
+            console.log('✅ JSON 파싱 성공:', generatedQuestions);
+        } catch (parseError) {
+            console.log('⚠️ JSON 파싱 실패, 텍스트 파싱 시도');
+            generatedQuestions = parseTextToQuestions(data.choices[0].message.content);
+        }
         
-        console.log(`🤖 AI 질문 ${questions.length}개 생성`);
-        return questions;
+        return generatedQuestions;
         
     } catch (error) {
-        console.error('❌ AI 질문 생성 실패:', error);
-        return null;
+        console.error('❌ AI 질문 생성 완전 실패:', error);
+        console.error('❌ 오류 상세:', error.message);
+        
+        // 테스트 질문 반환
+        return generateTestQuestions(userInput, answers, currentStep);
     }
 }
 
+// =============================================================================
+// 🔧 테스트 및 폴백 함수들
+// =============================================================================
+
+// API 없이도 테스트할 수 있는 질문들
+function generateTestQuestions(userInput, answers, currentStep) {
+    console.log('🔧 테스트 질문 생성 중...');
+    
+    const testQuestions = [
+        {
+            question: "강아지의 구체적인 품종이나 특징이 있나요?",
+            options: ["골든리트리버", "포메라니안", "진돗개", "비글", "믹스견", "기타"]
+        },
+        {
+            question: "어떤 표정이나 감정을 표현하고 싶나요?",
+            options: ["행복한 미소", "호기심 가득", "차분하고 온순", "장난스러운", "졸린 표정", "기타"]
+        },
+        {
+            question: "강아지의 포즈나 자세는 어떻게 할까요?",
+            options: ["앉아있는 자세", "누워있는 자세", "서있는 자세", "뛰어가는 모습", "장난치는 모습", "기타"]
+        },
+        {
+            question: "배경이나 주변 환경을 더 자세히 설명해주세요",
+            options: ["거실 소파", "야외 정원", "스튜디오", "자연 풍경", "단색 배경", "기타"]
+        },
+        {
+            question: "조명이나 분위기는 어떻게 설정할까요?",
+            options: ["밝고 화사한", "부드럽고 따뜻한", "자연스러운", "드라마틱한", "스튜디오 조명", "기타"]
+        }
+    ];
+    
+    // 현재 단계에 맞는 질문 선택
+    const startIndex = Math.max(0, currentStep - 2);
+    const selectedQuestions = testQuestions.slice(startIndex, startIndex + 3);
+    
+    console.log(`✅ ${currentStep}단계 테스트 질문 ${selectedQuestions.length}개 생성`);
+    return selectedQuestions;
+}
+
+// 텍스트를 질문으로 파싱
+function parseTextToQuestions(text) {
+    console.log('🔧 텍스트 파싱 시도:', text);
+    
+    try {
+        const questions = [];
+        const lines = text.split('\n').filter(line => line.includes('?'));
+        
+        lines.slice(0, 3).forEach(line => {
+            const question = line.replace(/^\d+\.|\*|-/, '').trim();
+            if (question.length > 10) {
+                questions.push({
+                    question: question,
+                    options: ["네", "아니오", "조금", "많이", "상관없음", "기타"]
+                });
+            }
+        });
+        
+        return questions.length > 0 ? questions : generateTestQuestions('', [], 2);
+        
+    } catch (error) {
+        console.error('텍스트 파싱 실패:', error);
+        return generateTestQuestions('', [], 2);
+    }
+}
 // =============================================================================
 // 🤖 AI 완벽 프롬프트 생성 (OpenAI API)
 // =============================================================================
