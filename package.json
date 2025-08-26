@@ -1,47 +1,10 @@
 {
-  "name": "ai-prompt-improver",
-  "version": "2.0.0",
-  "description": "95점 달성 보장 AI 프롬프트 개선기 - 대화형 의도 파악 시스템",
-  "main": "api/improve-prompt.js",
+  "name": "prompt-improver-mvp",
+  "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "start": "vercel dev",
-    "build": "echo 'Build completed'",
-    "deploy": "vercel --prod",
-    "test": "node test/test-utils.js"
+    "start": "vercel dev"
   },
-  "dependencies": {
-    "openai": "^4.28.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5"
-  },
-  "devDependencies": {
-    "vercel": "^33.5.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/your-username/ai-prompt-improver.git"
-  },
-  "keywords": [
-    "ai",
-    "prompt",
-    "improvement",
-    "openai",
-    "korean",
-    "95-score",
-    "conversation",
-    "intent-analysis"
-  ],
-  "author": "Swan",
-  "license": "MIT",
-  "vercel": {
-    "functions": {
-      "api/improve-prompt.js": {
-        "maxDuration": 30
-      }
-    }
-  }
+  "dependencies": {}
 }
