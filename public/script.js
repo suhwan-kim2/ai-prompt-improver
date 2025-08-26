@@ -5,6 +5,7 @@ const state = {
   userInput: "",
   turns: 0,
   answers: [],
+  askedKeys: [],        // ★ 누적
   intent: { intentScore: 0 },
   prompt: { total: 0 },
   draft: ""
@@ -26,7 +27,8 @@ async function nextLoop(){
   const r = await post("/api/questions", {
     domain: state.domain,
     userInput: state.userInput,
-    answers: state.answers
+    answers: state.answers,
+    askedKeys: state.askedKeys
   });
   renderQuestions(r.questions || []);
 }
@@ -34,6 +36,7 @@ async function nextLoop(){
 function renderQuestions(questions){
   const box = $("questions");
   box.classList.remove("hidden");
+  state.activeKeys = questions.map(q => q.key);   // ★ 이번 턴 질문키 기억
   const inputs = questions.map(q=>`
     <div class="q-item">
       <div><b>${q.key}</b> — ${q.question}</div>
@@ -53,6 +56,10 @@ async function onSubmitAnswers(){
 
   addMe(line);
   state.answers.push(line);
+   // ★ 이번 턴 물어본 키들을 누적하여 다음 턴 제외
+  if (Array.isArray(state.activeKeys)) {
+  state.askedKeys.push(...state.activeKeys);
+  }
 
   // 1) 의도 점수
   const intent = await post("/api/score/intent", {
