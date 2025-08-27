@@ -1,7 +1,7 @@
-// 🎯 새로운 /api/improve-prompt.js - 폴백 없는 정직한 시스템
+// 🚀 배포용 완성된 /api/improve-prompt.js - 새 프론트엔드와 완벽 호환
 import { readJson } from "./helpers.js";
 
-// OpenAI API 키 체크
+// OpenAI API 키
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 export default async function handler(req, res) {
