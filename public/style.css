@@ -1,16 +1,541 @@
-*{box-sizing:border-box}
-body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b0f14;color:#e8eef7}
-main{max-width:900px;margin:40px auto;padding:0 16px}
-h1{font-weight:700}
-.panel{background:#121824;border:1px solid #1f2a3a;padding:16px;border-radius:10px;margin:16px 0}
-textarea, select, input{width:100%;padding:10px;border-radius:8px;border:1px solid #263247;background:#0f1520;color:#e8eef7}
-button{padding:10px 16px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer}
-button:disabled{opacity:.6;cursor:not-allowed}
-#chat{margin:16px 0}
-.msg{padding:12px 14px;border-radius:10px;margin:8px 0;white-space:pre-wrap}
-.me{background:#1f2937}
-.ai{background:#111827;border:1px solid #1f2937}
-.scores{display:flex;gap:24px;align-items:center;margin:10px 0}
-.hidden{display:none}
-pre{white-space:pre-wrap;background:#0f1520;border:1px solid #1f2a3a;padding:12px;border-radius:8px}
-.q-item{margin:10px 0}
+// 🎯 새로운 script.js - 단순하고 명확한 프론트엔드
+const $ = (id) => document.getElementById(id);
+
+// 전역 상태
+const state = {
+  domain: "image",
+  userInput: "",
+  answers: [],
+  currentQuestions: [],
+  isProcessing: false
+};
+
+// 🚀 초기화
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🎯 프롬프트 개선기 시작');
+  
+  // 이벤트 리스너 등록
+  $("startBtn").onclick = startImprovement;
+  $("domain").onchange = (e) => {
+    state.domain = e.target.value;
+    console.log('📂 도메인 변경:', state.domain);
+  };
+});
+
+// 🚀 메인: 프롬프트 개선 시작
+async function startImprovement() {
+  console.log('🚀 프롬프트 개선 시작');
+  
+  // 입력값 체크
+  state.userInput = $("userInput").value.trim();
+  if (!state.userInput) {
+    showError('프롬프트를 입력해주세요.');
+    return;
+  }
+  
+  // 상태 초기화
+  state.answers = [];
+  state.currentQuestions = [];
+  hideAllSections();
+  showLoading('AI가 프롬프트를 분석하고 있습니다...');
+  
+  // API 호출
+  await processImprovement();
+}
+
+// 🔄 프롬프트 개선 처리
+async function processImprovement() {
+  console.log('🔄 API 호출:', { 
+    userInput: state.userInput, 
+    answers: state.answers, 
+    domain: state.domain 
+  });
+  
+  if (state.isProcessing) {
+    console.log('⚠️ 이미 처리 중');
+    return;
+  }
+  
+  state.isProcessing = true;
+  
+  try {
+    const response = await fetch('/api/improve-prompt', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userInput: state.userInput,
+        answers: state.answers,
+        domain: state.domain
+      })
+    });
+    
+    console.log('📡 API 응답 상태:', response.status);
+    
+    const result = await response.json();
+    console.log('📨 API 응답 데이터:', result);
+    
+    if (result.success) {
+      // ✅ 성공 - 개선된 프롬프트 표시
+      showSuccess(result);
+    } else if (result.action === 'need_more_info') {
+      // ❓ 정보 부족 - 추가 질문 표시
+      showMoreQuestions(result);
+    } else if (result.error) {
+      // ❌ 오류 - 정직한 실패 안내
+      showFailure(result);
+    } else {
+      // 예상치 못한 응답
+      showError('예상치 못한 응답입니다.');
+    }
+    
+  } catch (error) {
+    console.error('❌ 네트워크 오류:', error);
+    showNetworkError();
+  } finally {
+    state.isProcessing = false;
+    hideLoading();
+  }
+}
+
+// ✅ 성공 - 개선된 프롬프트 표시
+function showSuccess(result) {
+  console.log('✅ 성공 결과 표시');
+  
+  const successHTML = `
+    <div class="success-container">
+      <div class="success-header">
+        <h2>🎉 완성!</h2>
+        <div class="score-badge">점수: ${result.score}점</div>
+      </div>
+      
+      <div class="original-prompt">
+        <h3>📝 원본 프롬프트</h3>
+        <p class="prompt-text original">${state.userInput}</p>
+        ${state.answers.length > 0 ? `
+          <div class="additional-info">
+            <strong>추가 정보:</strong> ${state.answers.join(', ')}
+          </div>
+        ` : ''}
+      </div>
+      
+      <div class="improved-prompt">
+        <h3>✨ AI가 개선한 프롬프트</h3>
+        <p class="prompt-text improved">${result.improved}</p>
+        <div class="improvement-stats">
+          <span class="stat">원본: ${result.originalLength || state.userInput.length}자</span>
+          <span class="stat">개선: ${result.improvedLength || result.improved.length}자</span>
+          <span class="stat">방법: ${result.method}</span>
+        </div>
+      </div>
+      
+      <div class="action-buttons">
+        <button class="btn btn-primary" onclick="copyToClipboard()">
+          📋 복사하기
+        </button>
+        <button class="btn btn-secondary" onclick="startNew()">
+          🔄 새로 만들기
+        </button>
+        <button class="btn btn-tertiary" onclick="showDetails()">
+          📊 상세보기
+        </button>
+      </div>
+    </div>
+  `;
+  
+  $("final").innerHTML = successHTML;
+  $("final").classList.remove("hidden");
+  
+  // 결과 저장 (복사 기능용)
+  window.lastImproved = result.improved;
+}
+
+// ❓ 추가 질문 표시
+function showMoreQuestions(result) {
+  console.log('❓ 추가 질문 표시:', result.questions);
+  
+  state.currentQuestions = result.questions;
+  
+  const questionsHTML = `
+    <div class="questions-container">
+      <div class="progress-section">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${result.completeness}%"></div>
+        </div>
+        <p class="progress-text">${result.message}</p>
+      </div>
+      
+      <div class="questions-list">
+        ${result.questions.map((q, index) => `
+          <div class="question-item" data-key="${q.key}">
+            <h4 class="question-title">${q.question}</h4>
+            <p class="question-hint">${q.placeholder}</p>
+            
+            <div class="quick-options">
+              ${q.options.map(option => `
+                <button class="option-btn" data-value="${option}" onclick="selectOption('${q.key}', '${option}')">
+                  ${option}
+                </button>
+              `).join('')}
+            </div>
+            
+            <div class="custom-input" id="custom-${q.key}" style="display: none;">
+              <input type="text" placeholder="${q.placeholder}" id="input-${q.key}" />
+              <button class="btn btn-small" onclick="submitCustomAnswer('${q.key}')">확인</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      
+      <div class="questions-footer">
+        <button class="btn btn-primary" onclick="submitAllAnswers()" disabled id="submitBtn">
+          답변 완료
+        </button>
+        <button class="btn btn-secondary" onclick="skipQuestions()">
+          현재 정보로 진행
+        </button>
+      </div>
+    </div>
+  `;
+  
+  $("questions").innerHTML = questionsHTML;
+  $("questions").classList.remove("hidden");
+}
+
+// 🎯 옵션 선택 처리
+function selectOption(questionKey, selectedValue) {
+  console.log('🎯 옵션 선택:', questionKey, selectedValue);
+  
+  if (selectedValue === '직접 입력') {
+    // 커스텀 입력 필드 표시
+    const customDiv = $(`custom-${questionKey}`);
+    customDiv.style.display = 'block';
+    $(`input-${questionKey}`).focus();
+    
+    // 다른 버튼들 비활성화
+    const questionDiv = document.querySelector(`[data-key="${questionKey}"]`);
+    const otherButtons = questionDiv.querySelectorAll('.option-btn');
+    otherButtons.forEach(btn => {
+      if (btn.dataset.value !== '직접 입력') {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+      }
+    });
+  } else {
+    // 바로 답변으로 설정
+    setAnswer(questionKey, selectedValue);
+  }
+}
+
+// ✍️ 커스텀 답변 제출
+function submitCustomAnswer(questionKey) {
+  const inputValue = $(`input-${questionKey}`).value.trim();
+  
+  if (!inputValue) {
+    alert('답변을 입력해주세요.');
+    return;
+  }
+  
+  console.log('✍️ 커스텀 답변:', questionKey, inputValue);
+  setAnswer(questionKey, inputValue);
+}
+
+// 📝 답변 설정 및 UI 업데이트
+function setAnswer(questionKey, answerValue) {
+  console.log('📝 답변 설정:', questionKey, '=', answerValue);
+  
+  // 답변 저장
+  const existingIndex = state.answers.findIndex(a => a.startsWith(`${questionKey}:`));
+  const newAnswer = `${questionKey}: ${answerValue}`;
+  
+  if (existingIndex >= 0) {
+    state.answers[existingIndex] = newAnswer;
+  } else {
+    state.answers.push(newAnswer);
+  }
+  
+  // UI 업데이트 - 해당 질문을 완료 상태로 표시
+  const questionDiv = document.querySelector(`[data-key="${questionKey}"]`);
+  if (questionDiv) {
+    questionDiv.classList.add('answered');
+    
+    // 선택된 답변 표시
+    const answerDisplay = document.createElement('div');
+    answerDisplay.className = 'selected-answer';
+    answerDisplay.innerHTML = `<strong>선택:</strong> ${answerValue} ✓`;
+    
+    // 기존 답변 표시 제거 후 새로 추가
+    const existingAnswer = questionDiv.querySelector('.selected-answer');
+    if (existingAnswer) {
+      existingAnswer.remove();
+    }
+    questionDiv.appendChild(answerDisplay);
+    
+    // 옵션 버튼들 비활성화
+    const optionButtons = questionDiv.querySelectorAll('.option-btn');
+    optionButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      if (btn.dataset.value === answerValue || (answerValue !== '직접 입력' && btn.dataset.value !== '직접 입력')) {
+        btn.style.opacity = '0.8';
+      }
+    });
+    
+    // 커스텀 입력 숨김
+    const customInput = questionDiv.querySelector('.custom-input');
+    if (customInput) {
+      customInput.style.display = 'none';
+    }
+  }
+  
+  // 제출 버튼 활성화 체크
+  updateSubmitButton();
+}
+
+// 🔄 제출 버튼 상태 업데이트
+function updateSubmitButton() {
+  const totalQuestions = state.currentQuestions.length;
+  const answeredQuestions = state.answers.length;
+  
+  const submitBtn = $("submitBtn");
+  if (submitBtn) {
+    if (answeredQuestions > 0) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = `답변 완료 (${answeredQuestions}/${totalQuestions})`;
+    } else {
+      submitBtn.disabled = true;
+      submitBtn.textContent = '답변 완료';
+    }
+  }
+}
+
+// 📤 모든 답변 제출
+async function submitAllAnswers() {
+  console.log('📤 답변 제출:', state.answers);
+  
+  if (state.answers.length === 0) {
+    alert('최소 1개 이상의 질문에 답변해주세요.');
+    return;
+  }
+  
+  hideAllSections();
+  showLoading('답변을 바탕으로 프롬프트를 개선하고 있습니다...');
+  
+  // 다시 API 호출
+  await processImprovement();
+}
+
+// ⏭️ 질문 건너뛰기 (현재 정보로 진행)
+async function skipQuestions() {
+  console.log('⏭️ 질문 건너뛰기');
+  
+  const confirmSkip = confirm('현재 정보만으로 프롬프트를 만드시겠습니까?\n완성도가 낮을 수 있습니다.');
+  if (!confirmSkip) {
+    return;
+  }
+  
+  hideAllSections();
+  showLoading('현재 정보로 프롬프트를 생성하고 있습니다...');
+  
+  // 강제로 API 호출 (answers는 현재까지 입력된 것만)
+  await processImprovement();
+}
+
+// ❌ 실패 안내 표시
+function showFailure(result) {
+  console.log('❌ 실패 결과 표시:', result);
+  
+  const failureHTML = `
+    <div class="failure-container">
+      <div class="failure-icon">😞</div>
+      <h2 class="failure-title">${result.title}</h2>
+      <p class="failure-message">${result.message}</p>
+      <p class="failure-suggestion">${result.suggestion}</p>
+      
+      ${result.canRetry ? `
+        <div class="failure-actions">
+          <button class="btn btn-primary" onclick="retryImprovement()">
+            🔄 다시 시도
+          </button>
+          <button class="btn btn-secondary" onclick="goBack()">
+            ← 돌아가기
+          </button>
+        </div>
+      ` : `
+        <div class="failure-actions">  
+          <button class="btn btn-secondary" onclick="goBack()">
+            ← 돌아가기
+          </button>
+          <div class="wait-notice">
+            <p>⏰ 보통 몇 시간 후에 다시 정상화됩니다</p>
+            <p class="timestamp">문제 발생 시각: ${new Date(result.timestamp).toLocaleString()}</p>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+  
+  $("final").innerHTML = failureHTML;
+  $("final").classList.remove("hidden");
+}
+
+// 🌐 네트워크 오류 표시
+function showNetworkError() {
+  console.log('🌐 네트워크 오류 표시');
+  
+  const networkErrorHTML = `
+    <div class="failure-container">
+      <div class="failure-icon">🌐</div>
+      <h2 class="failure-title">연결 오류</h2>
+      <p class="failure-message">인터넷 연결을 확인해주세요.</p>
+      <p class="failure-suggestion">네트워크 상태를 확인하고 다시 시도해주세요.</p>
+      
+      <div class="failure-actions">
+        <button class="btn btn-primary" onclick="retryImprovement()">
+          🔄 다시 시도
+        </button>
+        <button class="btn btn-secondary" onclick="goBack()">
+          ← 돌아가기
+        </button>
+      </div>
+    </div>
+  `;
+  
+  $("final").innerHTML = networkErrorHTML;
+  $("final").classList.remove("hidden");
+}
+
+// 🔄 재시도
+async function retryImprovement() {
+  console.log('🔄 재시도');
+  hideAllSections();
+  showLoading('다시 시도하고 있습니다...');
+  await processImprovement();
+}
+
+// ← 돌아가기
+function goBack() {
+  console.log('← 돌아가기');
+  hideAllSections();
+  $("userInput").focus();
+  
+  // 상태 부분 리셋 (사용자 입력은 유지)
+  state.answers = [];
+  state.currentQuestions = [];
+}
+
+// 🔄 새로 만들기
+function startNew() {
+  console.log('🔄 새로 만들기');
+  
+  // 전체 상태 리셋
+  state.userInput = "";
+  state.answers = [];
+  state.currentQuestions = [];
+  
+  // UI 리셋
+  $("userInput").value = "";
+  hideAllSections();
+  $("userInput").focus();
+  
+  // 저장된 결과 제거
+  window.lastImproved = null;
+}
+
+// 📋 클립보드에 복사
+async function copyToClipboard() {
+  if (!window.lastImproved) {
+    alert('복사할 내용이 없습니다.');
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(window.lastImproved);
+    
+    // 성공 피드백
+    const copyBtn = document.querySelector('.btn.btn-primary');
+    if (copyBtn) {
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✅ 복사됨!';
+      copyBtn.style.background = '#28a745';
+      
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.background = '';
+      }, 2000);
+    }
+    
+    console.log('📋 클립보드 복사 성공');
+  } catch (error) {
+    console.error('📋 클립보드 복사 실패:', error);
+    
+    // 폴백: 텍스트 선택
+    const textArea = document.createElement('textarea');
+    textArea.value = window.lastImproved;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    
+    alert('클립보드에 복사되었습니다!');
+  }
+}
+
+// 📊 상세보기
+function showDetails() {
+  const details = `
+원본 입력: ${state.userInput}
+추가 답변: ${state.answers.join(' | ')}
+도메인: ${state.domain}
+처리 시각: ${new Date().toLocaleString()}
+개선 길이: ${window.lastImproved ? window.lastImproved.length : 0}자
+  `;
+  
+  alert(details);
+}
+
+// 🎨 UI 유틸리티 함수들
+function hideAllSections() {
+  $("questions").classList.add("hidden");
+  $("final").classList.add("hidden");
+}
+
+function showLoading(message) {
+  // 간단한 로딩 표시
+  const loadingHTML = `
+    <div class="loading-container">
+      <div class="loading-spinner"></div>
+      <p class="loading-message">${message}</p>
+    </div>
+  `;
+  
+  $("questions").innerHTML = loadingHTML;
+  $("questions").classList.remove("hidden");
+}
+
+function hideLoading() {
+  // 로딩 상태는 다른 함수에서 처리하므로 별도 작업 없음
+}
+
+function showError(message) {
+  alert(message);
+  console.error('❌ 에러:', message);
+}
+
+// 🎯 전역 상태 디버깅 (개발용)
+function debugState() {
+  console.log('🎯 현재 상태:', {
+    domain: state.domain,
+    userInput: state.userInput,
+    answers: state.answers,
+    questionsCount: state.currentQuestions.length,
+    isProcessing: state.isProcessing
+  });
+}
+
+// 개발 모드에서 디버깅 함수 노출
+if (typeof window !== 'undefined') {
+  window.debugState = debugState;
+  window.state = state; // 상태 직접 접근 (디버깅용)
+}
