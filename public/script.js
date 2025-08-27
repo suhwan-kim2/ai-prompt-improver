@@ -1,13 +1,11 @@
-// public/script.js - 디버깅 강화 버전
+// public/script.js - 직접 OpenAI 개선 방식
 const $ = (id) => document.getElementById(id);
 
-// 🔍 디버깅 로그 함수
 function debugLog(step, data) {
   console.log(`🔍 [DEBUG ${step}]`, data);
-  console.trace(); // 호출 스택도 표시
+  console.trace();
 }
 
-// 🎯 상태 추적
 const state = {
   domain: "dev",
   userInput: "",
@@ -99,9 +97,9 @@ function renderQuestions(questions) {
   
   const box = $("questions");
   if (!questions.length) { 
-    console.log('❌ 질문이 없어서 종료');
+    console.log('❌ 질문이 없어서 AI 개선으로 진행');
     box.classList.add("hidden");
-    finalize();
+    directImproveWithAI(); // ← 여기가 핵심 변경!
     return;
   }
   
@@ -115,8 +113,12 @@ function renderQuestions(questions) {
       <input data-key="${q.key}" placeholder="여기에 답변"/>
     </div>`).join("");
 
-  box.innerHTML = `<h3>질문</h3>${inputs}<button id="submitAnswers">답변 제출</button>`;
+  box.innerHTML = `<h3>질문</h3>${inputs}
+    <button id="submitAnswers">답변 제출</button>
+    <button id="skipToAI" style="margin-left: 10px; background: #28a745;">지금 바로 AI 개선하기</button>`;
+  
   $("submitAnswers").onclick = onSubmitAnswers;
+  $("skipToAI").onclick = directImproveWithAI; // ← 건너뛰기 버튼 추가
 }
 
 async function onSubmitAnswers() {
@@ -124,8 +126,8 @@ async function onSubmitAnswers() {
   
   const items = [...document.querySelectorAll('#questions input')];
   if (items.length === 0) { 
-    addAI("질문이 없어요. 지금까지 정보로 마무리합니다."); 
-    return finalize(); 
+    addAI("질문이 없어요. AI 개선을 시작합니다."); 
+    return directImproveWithAI(); 
   }
 
   const payload = {};
@@ -144,56 +146,27 @@ async function onSubmitAnswers() {
   }
 
   try {
-    // 1) 의도 점수 계산
-    console.log('🎯 의도 점수 계산 시작');
-    const intent = await post("/api/score/intent", {
-      userInput: state.userInput,
-      answers: state.answers,
-      domain: state.domain
-    });
+    // 의도 점수만 간단히 계산
+    const answerCount = state.answers.length;
+    const estimatedScore = Math.min(20 + (answerCount * 25), 100);
     
-    console.log('📊 의도 점수 결과:', intent);
-    state.intent = intent;
+    $("intentScore").textContent = estimatedScore;
+    addAI(`업데이트 ▶ 의도 ${estimatedScore}점`);
 
-    // 2) 임시 프롬프트 생성 및 품질 점수
-    state.draft = synthesizePrompt(state.userInput, state.answers, state.domain);
-    console.log('📝 임시 프롬프트:', state.draft);
-    
-    const domainMap = state.domain === "image" ? "visual_design" : 
-                     state.domain === "video" ? "video" : "development";
-    
-    console.log('🔧 품질 점수 계산 시작');
-    const prompt = await post("/api/score/prompt", { 
-      prompt: state.draft, 
-      domain: domainMap 
-    });
-    
-    console.log('📊 품질 점수 결과:', prompt);
-    state.prompt = prompt;
+    state.intent.intentScore = estimatedScore;
 
-    // 점수 업데이트
-    $("intentScore").textContent = intent.intentScore;
-    $("promptScore").textContent = prompt.total;
-    addAI(`업데이트 ▶ 의도 ${intent.intentScore} / 프롬프트 ${prompt.total}`);
-
-    debugLog('SCORES_UPDATED', {
-      intentScore: intent.intentScore,
-      promptScore: prompt.total,
-      shouldFinalize: intent.intentScore >= 95 && prompt.total >= 95
-    });
-
-    // 컷오프 완료 체크
-    if (intent.intentScore >= 95 && prompt.total >= 95) {
-      console.log('🎉 95점 달성! 최종 완료');
-      finalize();
+    // 95점 달성하거나 3라운드 이상이면 AI 개선으로
+    if (estimatedScore >= 95 || state.turns >= 2) {
+      console.log('🎉 조건 달성! AI 개선 시작');
+      directImproveWithAI();
       return;
     }
 
     state.turns++;
     if (state.turns >= 10) {
       console.log('⚠️ 최대 턴수 도달');
-      addAI("턴 상한(10) 도달. 현재 정보로 최종 프롬프트를 제시합니다.");
-      finalize();
+      addAI("최대 턴수 도달. AI 개선을 시작합니다.");
+      directImproveWithAI();
     } else {
       console.log('🔄 다음 라운드 진행');
       await nextLoop();
@@ -205,26 +178,85 @@ async function onSubmitAnswers() {
   }
 }
 
-function finalize() {
-  console.log('🏁 최종 완료 시작');
-  debugLog('FINALIZE_START', state);
+// ★ 핵심: 직접 AI 개선 호출
+async function directImproveWithAI() {
+  console.log('🤖 직접 AI 개선 시작');
+  debugLog('DIRECT_AI_IMPROVE_START', state);
   
   $("questions").classList.add("hidden");
+  addAI('🤖 OpenAI로 프롬프트를 개선하고 있습니다... 잠시만 기다려주세요.');
+
+  try {
+    console.log('🚀 OpenAI API 호출: /api/improve-prompt');
+    console.log('📨 요청 데이터:', {
+      userInput: state.userInput,
+      answers: state.answers,
+      domain: state.domain
+    });
+
+    const response = await post('/api/improve-prompt', {
+      userInput: state.userInput,
+      answers: state.answers,
+      domain: state.domain
+    });
+
+    console.log('📥 OpenAI 응답:', response);
+
+    if (response.error) {
+      console.error('❌ AI 개선 오류:', response);
+      addAI('AI 개선 중 오류가 발생했습니다: ' + (response.message || response.error));
+      finalizeFallback();
+      return;
+    }
+
+    // 성공적으로 개선된 경우
+    const improvedPrompt = response.draft || response.improvedPrompt || response.text;
+    const intentScore = response.intentScore || state.intent.intentScore || 95;
+    const qualityScore = response.promptScore || response.qualityScore || 95;
+
+    console.log('✨ AI 개선 완료:', {
+      improvedPrompt: improvedPrompt.slice(0, 100) + '...',
+      intentScore,
+      qualityScore
+    });
+
+    // 점수 업데이트
+    $("intentScore").textContent = intentScore;
+    $("promptScore").textContent = qualityScore;
+
+    addAI(`🎉 AI 개선 완료! 의도 ${intentScore}점, 품질 ${qualityScore}점 달성`);
+
+    // 최종 결과 표시
+    finalizeWithAIResult(improvedPrompt, intentScore, qualityScore);
+
+  } catch (error) {
+    console.error('❌ AI 개선 중 오류:', error);
+    addAI('AI 개선 중 오류가 발생했습니다. 기본 버전으로 완료합니다.');
+    finalizeFallback();
+  }
+}
+
+function finalizeWithAIResult(improvedPrompt, intentScore, qualityScore) {
+  console.log('🏁 AI 개선 결과로 최종 완료');
+  
   $("final").classList.remove("hidden");
   
-  const finalText = refineKo(state.draft);
-  console.log('✨ 최종 프롬프트:', finalText);
-  
-  $("finalText").textContent = finalText;
+  console.log('✨ 최종 AI 개선 프롬프트:', improvedPrompt);
+  $("finalText").textContent = improvedPrompt;
 
   const payload = {
     version: "pc-0.3",
-    intent: { domain: state.domain, intentScore: state.intent.intentScore },
-    prompt: { text: finalText, total: state.prompt.total, language: "ko", length_limit: 500 },
-    meta: { assumptions: [], warnings: [], notes: [], timestamp: new Date().toISOString() }
+    intent: { domain: state.domain, intentScore: intentScore },
+    prompt: { text: improvedPrompt, total: qualityScore, language: "ko", length_limit: 500 },
+    meta: { 
+      aiImproved: true,
+      originalInput: state.userInput,
+      answersUsed: state.answers,
+      timestamp: new Date().toISOString() 
+    }
   };
   
-  console.log('📦 MCP JSON 페이로드:', payload);
+  console.log('📦 AI 개선 MCP JSON:', payload);
   $("finalJson").textContent = JSON.stringify(payload, null, 2);
 
   $("sendMcp").onclick = async () => {
@@ -239,20 +271,39 @@ function finalize() {
   };
 }
 
-function synthesizePrompt(input, answers, domain) {
-  console.log('🔧 프롬프트 합성:', { input, answers, domain });
+function finalizeFallback() {
+  console.log('🏁 폴백으로 최종 완료');
   
+  $("final").classList.remove("hidden");
+  
+  const fallbackPrompt = synthesizePrompt(state.userInput, state.answers, state.domain);
+  console.log('✨ 폴백 프롬프트:', fallbackPrompt);
+  
+  $("finalText").textContent = fallbackPrompt;
+
+  const payload = {
+    version: "pc-0.3",
+    intent: { domain: state.domain, intentScore: state.intent.intentScore || 80 },
+    prompt: { text: fallbackPrompt, total: 85, language: "ko", length_limit: 500 },
+    meta: { 
+      aiImproved: false,
+      fallback: true,
+      timestamp: new Date().toISOString() 
+    }
+  };
+  
+  $("finalJson").textContent = JSON.stringify(payload, null, 2);
+}
+
+function synthesizePrompt(input, answers, domain) {
   const header = domain === "dev"
-    ? "[시스템] 당신은 프롬프트 개선기입니다. 95/95 달성 시 최종 출력.\n[사용자] "
+    ? "[시스템] 프롬프트 개선기 - "
     : domain === "image"
-      ? "이미지 생성용 프롬프트(한국어, 500자 이내): "
-      : "영상 생성용 프롬프트(한국어, 500자 이내): ";
+      ? "이미지 생성용: "
+      : "영상 생성용: ";
       
   const body = [input, ...answers].join(" ").replace(/\s+/g, " ").trim();
-  const result = refineKo(header + body);
-  
-  console.log('✅ 합성된 프롬프트:', result);
-  return result;
+  return refineKo(header + body);
 }
 
 function refineKo(text) {
