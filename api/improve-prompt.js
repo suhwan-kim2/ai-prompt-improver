@@ -1,4 +1,4 @@
-// 독립형 API - helpers.js 의존성 완전 제거
+// 🔥 독립형 API - helpers.js 의존성 완전 제거 및 오류 수정
 // OpenAI API 키
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -35,7 +35,6 @@ async function readJson(req) {
 export default async function handler(req, res) {
   console.log('🚀 독립형 프롬프트 개선 API 시작');
   console.log('요청 메소드:', req.method);
-  console.log('요청 헤더:', req.headers);
   
   // CORS 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
