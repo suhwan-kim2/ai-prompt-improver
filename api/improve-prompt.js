@@ -1,4 +1,4 @@
-// api/improve-prompt.js - 진짜 AI 프롬프트 개선기
+// api/improve-prompt.js - 서버 디버깅 강화 버전
 import { readJson } from "./helpers.js";
 import { IntentAnalyzer } from "../utils/intentAnalyzer.js";
 import { MentionExtractor } from "../utils/mentionExtractor.js";
@@ -10,10 +10,12 @@ const analyzer = new IntentAnalyzer(slots, new MentionExtractor());
 const evaluator = new EvaluationSystem();
 
 // OpenAI API 키
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "your-api-key-here";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+console.log('🔧 API 시작시 OpenAI 키 체크:', OPENAI_API_KEY ? `설정됨 (${OPENAI_API_KEY.slice(0, 10)}...)` : '없음');
 
 function synthesizePrompt(input = "", answers = [], domain = "dev") {
-  console.log('🔧 기본 프롬프트 합성:', { input, answers, domain });
+  console.log('🔧 폴백 프롬프트 합성:', { input, answers, domain });
   
   const header = domain === "dev"
     ? "[시스템] 당신은 프롬프트 개선기입니다. 의도/프롬프트 95/95 달성 시 최종 출력.\n[사용자] "
@@ -22,16 +24,22 @@ function synthesizePrompt(input = "", answers = [], domain = "dev") {
     : "영상 생성 프롬프트(한국어, 500자): ";
     
   const body = [input, ...(answers || [])].join(" ").replace(/\s+/g, " ").trim();
-  return (header + body).slice(0, 500);
+  const result = (header + body).slice(0, 500);
+  
+  console.log('✅ 폴백 합성 결과:', result);
+  return result;
 }
 
-// 🤖 진짜 AI 프롬프트 개선 함수
+// 진짜 AI 프롬프트 개선 함수
 async function improvePromptWithAI(userInput, answers, domain) {
-  console.log('🤖 OpenAI API로 진짜 프롬프트 개선 시작');
+  console.log('🤖 [OPENAI] 진짜 AI 프롬프트 개선 시작');
+  console.log('🤖 [OPENAI] 입력 데이터:', { userInput, answersCount: answers.length, domain });
   
-  // API 키 확인
+  // API 키 체크
+  console.log('🔑 [OPENAI] API 키 체크:', OPENAI_API_KEY ? '있음' : '없음');
+  
   if (!OPENAI_API_KEY || OPENAI_API_KEY === "your-api-key-here") {
-    console.log('⚠️ OpenAI API 키 없음 - 폴백 사용');
+    console.log('❌ [OPENAI] API 키 없음 - 폴백 사용');
     return synthesizePrompt(userInput, answers, domain);
   }
 
@@ -76,6 +84,7 @@ async function improvePromptWithAI(userInput, answers, domain) {
     };
 
     const systemPrompt = systemPrompts[domain] || systemPrompts.dev;
+    console.log('📝 [OPENAI] 선택된 시스템 프롬프트:', systemPrompt.slice(0, 100) + '...');
     
     // 사용자 답변 정리
     const answerText = answers.length > 0 
@@ -88,11 +97,20 @@ async function improvePromptWithAI(userInput, answers, domain) {
 
 위 정보를 바탕으로 전문가가 만족할 만한 완벽한 프롬프트를 생성해주세요.`;
 
-    console.log('🚀 OpenAI API 호출 중...', {
-      domain,
-      userInputLength: userInput.length,
-      answersCount: answers.length
-    });
+    console.log('📤 [OPENAI] 사용자 프롬프트:', userPrompt);
+    console.log('🚀 [OPENAI] API 호출 시작...');
+
+    const requestBody = {
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 800
+    };
+
+    console.log('📨 [OPENAI] 요청 바디:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -100,45 +118,48 @@ async function improvePromptWithAI(userInput, answers, domain) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 800
-      })
+      body: JSON.stringify(requestBody)
     });
 
+    console.log('📡 [OPENAI] HTTP 응답 상태:', response.status, response.statusText);
+
     if (!response.ok) {
-      console.error('❌ OpenAI API 오류:', response.status, response.statusText);
-      throw new Error(`OpenAI API 오류: ${response.status}`);
+      const errorText = await response.text();
+      console.error('❌ [OPENAI] API 오류:', response.status, response.statusText);
+      console.error('❌ [OPENAI] 오류 내용:', errorText);
+      throw new Error(`OpenAI API 오류: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('📥 [OPENAI] 원본 응답:', JSON.stringify(data, null, 2));
+
     const improvedPrompt = data.choices[0].message.content.trim();
     
-    console.log('✅ OpenAI API로 프롬프트 개선 완료:', improvedPrompt.slice(0, 100) + '...');
+    console.log('✅ [OPENAI] 개선 완료!');
+    console.log('✨ [OPENAI] 개선된 프롬프트:', improvedPrompt);
     return improvedPrompt;
 
   } catch (error) {
-    console.error('❌ AI 프롬프트 개선 실패:', error);
-    console.log('🔄 폴백: 기본 합성 사용');
+    console.error('❌ [OPENAI] AI 프롬프트 개선 실패:', error.message);
+    console.error('❌ [OPENAI] 전체 오류:', error);
+    console.log('🔄 [OPENAI] 폴백으로 전환');
     return synthesizePrompt(userInput, answers, domain);
   }
 }
 
 export default async function handler(req, res) {
-  console.log('🚀 [API/IMPROVE-PROMPT] 요청 시작');
+  console.log('🚀 [API] 프롬프트 개선 API 요청 시작');
+  console.log('📨 [API] 요청 메소드:', req.method);
   
   if (req.method !== "POST") {
+    console.log('❌ [API] POST가 아닌 요청');
     return res.status(405).end();
   }
 
   try {
+    console.log('📖 [API] JSON 읽기 시작');
     const requestData = await readJson(req);
-    console.log('📨 요청 데이터:', requestData);
+    console.log('📖 [API] 읽은 데이터:', requestData);
 
     const { 
       userInput = "", 
@@ -146,31 +167,38 @@ export default async function handler(req, res) {
       domain = "dev" 
     } = requestData;
 
+    console.log('🔍 [API] 파라미터 추출:', {
+      userInput: userInput.slice(0, 50) + '...',
+      answersCount: answers.length,
+      domain
+    });
+
     // 1단계: 의도 분석
-    console.log('🎯 의도 분석 시작');
+    console.log('🎯 [API] 의도 분석 시작');
     const intent = analyzer.generateAnalysisReport(userInput, answers, { primary: domain });
-    console.log('📊 의도 분석 결과:', intent);
+    console.log('📊 [API] 의도 분석 결과:', intent);
 
     // 2단계: AI로 진짜 프롬프트 개선
-    console.log('🤖 AI 프롬프트 개선 시작');
+    console.log('🤖 [API] AI 프롬프트 개선 호출');
     const improvedPrompt = await improvePromptWithAI(userInput, answers, domain);
-    console.log('✨ 개선된 프롬프트:', improvedPrompt);
+    console.log('✨ [API] 개선 완료:', improvedPrompt.slice(0, 100) + '...');
 
     // 3단계: 품질 평가
-    console.log('📏 품질 평가 시작');
+    console.log('📏 [API] 품질 평가 시작');
     const mapped = domain === "image" ? "visual_design" : 
                   domain === "video" ? "video" : "development";
     const evaluation = evaluator.evaluatePromptQuality(improvedPrompt, mapped);
-    console.log('📊 품질 평가 결과:', evaluation);
+    console.log('📊 [API] 품질 평가 결과:', evaluation);
 
     // 최종 점수 계산 (AI로 개선했으니 보너스!)
     const finalQualityScore = Math.min(evaluation.total + 10, 100);
     const pass = intent.intentScore >= 95 && finalQualityScore >= 95;
 
-    console.log('🏁 최종 결과:', {
+    console.log('🏁 [API] 최종 결과:', {
       intentScore: intent.intentScore,
       qualityScore: finalQualityScore,
-      pass
+      pass,
+      improvedPromptLength: improvedPrompt.length
     });
 
     const response = {
@@ -188,15 +216,24 @@ export default async function handler(req, res) {
       answers: answers
     };
 
-    console.log('📤 응답 데이터:', response);
+    console.log('📤 [API] 최종 응답:', {
+      draftLength: response.draft.length,
+      intentScore: response.intentScore,
+      promptScore: response.promptScore,
+      pass: response.pass
+    });
+
     res.status(200).json(response);
 
   } catch (error) {
-    console.error('❌ [API/IMPROVE-PROMPT] 오류:', error);
+    console.error('❌ [API] 전체 오류:', error);
+    console.error('❌ [API] 오류 스택:', error.stack);
+    
     res.status(500).json({
       error: error.message,
       stack: error.stack,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      apiKeyPresent: !!OPENAI_API_KEY
     });
   }
 }
