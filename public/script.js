@@ -186,18 +186,27 @@ function handleQuestionsResponse(result) {
 // 🎯 5단계: 생성 응답 처리
 function handleGenerateResponse(result) {
   console.log('📍 5단계: 프롬프트 생성 진행');
-  state.intentScore = result.intentScore || 95;
-  showLoading('🤖 AI가 전문급 프롬프트를 생성하고 있습니다...');
 
-  // 서버 generate를 바로 호출(폴링/대기 불필요)
+  // 서버가 준 점수만 반영 (임의로 95로 덮어쓰지 않음)
+  if (typeof result.intentScore === 'number') {
+    state.intentScore = result.intentScore;
+  }
+
+  showLoading('🤖 AI가 전문급 프롬프트를 생성하고 있습니다...');
   goGenerate();
 }
 
 // 🎉 최종 완료
 function handleCompletedResponse(result) {
   console.log('📍 7-8단계: 완성!');
-  state.intentScore = result.intentScore || 95;
-  state.qualityScore = result.qualityScore || 95;
+
+  if (typeof result.intentScore === 'number') {
+    state.intentScore = result.intentScore;
+  }
+  if (typeof result.qualityScore === 'number') {
+    state.qualityScore = result.qualityScore;
+  }
+
   updateScoreDisplay();
   showFinalResult(result);
 }
