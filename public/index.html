@@ -1,46 +1,48 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>프롬프트 개선기 MVP</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="./style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 AI 프롬프트 개선기 - 8단계 플로우</title>
+    <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main>
-    <h1>프롬프트 개선기 (MVP)</h1>
+    <main class="main-container">
+        <!-- 🎯 헤더 섹션 -->
+        <header class="header-section">
+            <h1 class="main-title">🤖 AI 프롬프트 개선기</h1>
+            <p class="subtitle">8단계 플로우로 완벽한 프롬프트 생성</p>
+        </header>
 
-    <section class="panel">
-      <label>도메인:
-        <select id="domain">
-          <option value="dev">개발(Claude)</option>
-          <option value="image">이미지(Nanobanana)</option>
-          <option value="video">영상(Pika)</option>
-        </select>
-      </label>
-      <textarea id="userInput" placeholder="여기에 초기 프롬프트를 적어주세요" rows="5"></textarea>
-      <button id="startBtn">시작</button>
-    </section>
+        <!-- 📊 실시간 점수 표시 -->
+        <div class="score-dashboard">
+            <div class="score-item intent">
+                <span class="score-label">의도 파악</span>
+                <span class="score-value" id="intentScore">0</span>
+                <span class="score-max">/95점</span>
+            </div>
+            <div class="score-item quality">
+                <span class="score-label">프롬프트 품질</span>
+                <span class="score-value" id="qualityScore">0</span>
+                <span class="score-max">/95점</span>
+            </div>
+        </div>
 
-    <section id="chat"></section>
+        <!-- 🎨 도메인 선택 & 입력 -->
+        <section class="input-section panel">
+            <div class="domain-selector">
+                <label for="domain">📂 도메인 선택:</label>
+                <select id="domain" class="domain-select">
+                    <option value="video">🎬 영상 제작</option>
+                    <option value="image">🎨 이미지 생성</option>
+                    <option value="dev">💻 개발 프로젝트</option>
+                </select>
+                <p class="domain-description" id="domainDescription">
+                    📹 영상 제작: 유튜브, 광고, 교육 영상 등
+                </p>
+            </div>
 
-    <section class="scores">
-      <div>의도 점수: <span id="intentScore">0</span></div>
-      <div>프롬프트 점수: <span id="promptScore">0</span></div>
-    </section>
-
-    <section id="questions" class="panel hidden"></section>
-
-    <section id="final" class="panel hidden">
-      <h2>최종 프롬프트</h2>
-      <pre id="finalText"></pre>
-      <h3>MCP JSON (샘플)</h3>
-      <pre id="finalJson"></pre>
-      <button id="sendMcp">MCP로 전달</button>
-      <div id="mcpResult"></div>
-    </section>
-  </main>
-
-  <script src="./script.js"></script>
-</body>
-</html>
+            <div class="prompt-input-area">
+                <label for="userInput">✍️ 초기 프롬프트 입력:</label>
+                <textarea 
+                    id="user
