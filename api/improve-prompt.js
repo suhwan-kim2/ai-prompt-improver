@@ -437,31 +437,53 @@ Requirements:
   return await callOpenAI(prompt, 0.8);
 }
 
-// 🤖 OpenAI API 호출
+// 🤖 OpenAI API 호출 (호환성 강화 버전)
 async function callOpenAI(prompt, temperature = 0.7) {
-  const ctrl = AbortSignal.timeout(60000);
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature,
-      max_tokens: 1000
-    }),
-    signal: ctrl
-  });
+  // 안전 타임아웃(초 단위)
+  const TIMEOUT_MS = 60000; // 필요시 30000으로 줄여도 OK
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(new Error("RequestTimeout")), TIMEOUT_MS);
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API 오류: ${response.status} - ${errorData.error?.message || 'Unknown'}`);
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        // 허용 모델 중 하나로 설정 (변경 가능)
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature,
+        max_tokens: 1000
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      // OpenAI 표준 에러 포맷을 최대한 살려서 리턴
+      let errText = '';
+      try { errText = await response.text(); } catch {}
+      let errJson;
+      try { errJson = JSON.parse(errText); } catch {}
+      const apiMsg = errJson?.error?.message || errText || `status ${response.status}`;
+      throw new Error(`OpenAI API 오류: ${apiMsg}`);
+    }
+
+    const data = await response.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new Error('OpenAI 응답 파싱 실패(빈 content)');
+    return text;
+  } catch (e) {
+    // 타임아웃/권한/네트워크 등 모든 에러를 명확히 올려보냄
+    if (e?.name === 'AbortError' || String(e?.message).includes('RequestTimeout')) {
+      throw new Error('OpenAI 호출 타임아웃(네트워크 지연 또는 모델 응답 지연)');
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
   }
-
-  const data = await response.json();
-  return data.choices[0]?.message?.content?.trim();
 }
 
 // 📊 항목 커버리지 체크
