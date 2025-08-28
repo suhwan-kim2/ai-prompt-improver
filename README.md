@@ -27,3 +27,8 @@ MCP_DEV=...
 - req.body undefined 문제 → /api/_helpers.js 의 readJson 사용으로 해결.
 
 <!-- 재배포 트리거 -->
+
+
+git add .
+git commit -m "환경변수 재설정 후 재배포"
+git push
