@@ -1,4 +1,4 @@
-// 🔥 api/improve-prompt.js - 8단계 플로우 메인 API (no-fallback, robust JSON)
+// 🔥 api/improve-prompt.js - 8단계 플로우 메인 API (no-fallback, anti-dup, coverage-gated)
 
 import { readJson } from "./helpers.js";
 import { MentionExtractor } from "../utils/mentionExtractor.js";
@@ -75,6 +75,25 @@ function checkItemCoverage(item, text, mentions) {
     if (haystackText.includes(kw) || mentionText.includes(kw)) matches++;
   }
   return Math.min(1, matches / keywords.length);
+}
+
+// 사용자의 '이전 답변'에서 키워드 뽑아 중복 질문 방지 키워드로 사용
+function buildAnsweredKeywords(answers = []) {
+  const txt = (Array.isArray(answers) ? answers.join(" ") : String(answers || "")).toLowerCase();
+  const tokens = txt.split(/[^가-힣a-z0-9+#:/.-]+/i).filter(w => w && w.length >= 2);
+  return Array.from(new Set(tokens)).slice(0, 50); // 최대 50개만
+}
+
+// 체크리스트 대비 현재 커버리지(충족률) 계산
+function getCoverageRatio(checklist, allText, mentions) {
+  const items = Object.values(checklist).flat();
+  if (!items.length) return 0;
+  let covered = 0;
+  for (const it of items) {
+    const cov = checkItemCoverage(it, allText, mentions);
+    if (cov >= 0.7) covered++;
+  }
+  return covered / items.length; // 0 ~ 1
 }
 
 /* ====================== OpenAI 호출 ====================== */
@@ -242,33 +261,54 @@ async function handleStart(res, userInput, domain) {
   }
 }
 
-// 3~6단계: 답변 분석 → 추가 질문/생성 단계 분기
+// 3~6단계: 답변 분석 → 다음 질문/생성 단계 분기
 async function handleQuestions(res, userInput, answers, domain, round) {
   console.log("📍 3-6단계: 답변 분석 및 의도 파악");
   try {
-    const intentScore = intentAnalyzer.calculateIntentScore(userInput, answers, domain);
-    console.log("📊 의도 파악 점수:", intentScore);
+    const allText = [userInput, ...answers].join(" ");
+    const mentions = mentionExtractor.extract(allText);
 
-    if (intentScore >= 95) {
+    const intentScore = intentAnalyzer.calculateIntentScore(userInput, answers, domain);
+
+    // ✅ 체크리스트 커버리지 기반 '진전도' 추가 평가
+    const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
+    const coverage = getCoverageRatio(checklist, allText.toLowerCase(), mentions);
+    const coveragePct = Math.round(coverage * 100);
+
+    console.log(`📈 커버리지: ${coveragePct}% / intentScore: ${intentScore}`);
+
+    // ✅ 진전도/라운드 기반으로 생성 단계로 진입 (중복질문 루프 차단)
+    // - 커버리지 65% 이상이거나
+    // - round >= 3 이면서 커버리지 55% 이상이면 프롬프트 생성으로 전환
+    if (coverage >= 0.65 || (round >= 3 && coverage >= 0.55) || intentScore >= 95) {
       return res.status(200).json({
         success: true,
         step: "generate",
         intentScore,
-        message: "의도 파악 완료! 프롬프트를 생성합니다."
+        coverage: coveragePct,
+        message: `충분한 정보가 수집되었습니다. (coverage ${coveragePct}%) 프롬프트를 생성합니다.`
       });
     }
 
-    const mentions = mentionExtractor.extract([userInput, ...answers].join(" "));
-    const questions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1);
+    // 아직 부족 → 다음 질문 생성
+    const nextQuestions = await generateAIQuestions(
+      userInput,
+      answers,
+      domain,
+      mentions,
+      round + 1
+    );
 
     return res.status(200).json({
       success: true,
       step: "questions",
-      questions,
+      questions: nextQuestions,
       round: round + 1,
       intentScore,
-      message: `의도 파악 ${intentScore}점. 95점 달성을 위한 추가 질문입니다.`
+      coverage: coveragePct,
+      message: `현재 coverage ${coveragePct}%. 더 보완이 필요합니다.`
     });
+
   } catch (e) {
     throw new Error(`INTENT_ANALYSIS_FAILED: ${e.message}`);
   }
@@ -326,21 +366,27 @@ async function handleGenerate(res, userInput, answers, domain) {
 
 /* ====================== 질문/프롬프트 생성 로직 ====================== */
 
-// 질문 생성 (폴백 없음, 실패 시 throw)
+// 질문 생성 (이전 답변 반영 + 중복 제거 + JSON 강제, 폴백 없음)
 async function generateAIQuestions(userInput, answers, domain, mentions, round) {
   const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
   const allText = [userInput, ...answers].join(" ").toLowerCase();
 
-  const missing = [];
+  // 1) 현재 부족 항목 계산
+  const missingItems = [];
   Object.entries(checklist).forEach(([category, items]) => {
     items.forEach(item => {
-      const cov = checkItemCoverage(item, allText, mentions);
-      if (cov < 0.7) missing.push({ category, item, cov });
+      const coverage = checkItemCoverage(item, allText, mentions);
+      if (coverage < 0.7) missingItems.push({ category, item, coverage });
     });
   });
 
+  // 2) 이전 답변에서 키워드 추출 → 중복질문 금지 키워드
+  const answeredKW = buildAnsweredKeywords(answers); // ['성인','유튜브','1-3분', ...]
+  const answeredLine = answeredKW.join(", ");
   const safeMentions = (stringifyMentions(mentions) || "").slice(0, 800);
-  const schema = `
+
+  // 3) 프롬프트: "이전에 답한 내용은 절대 묻지 말 것" 강하게 명시
+  const baseSchema = `
 {
   "questions": [
     {
@@ -353,23 +399,27 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round) 
   ]
 }`;
 
-  const basePrompt = `너는 ${domain} 분야 어시스턴트야.
+  const prompt = `너는 ${domain} 분야 어시스턴트야.
 아래 정보를 바탕으로 "가장 부족한 정보 3~5개"에 대한 객관식 질문을 생성해.
-반드시 '단 하나의 유효한 JSON 객체'로만 답해. 코드펜스 사용 금지. 설명/문장 금지.
+💥 중요: 아래 '이미 답변됨/확정됨 키워드'에 해당하는 내용은 절대 다시 묻지 마. (동의어/유사표현 포함 금지)
+반드시 '단 하나의 유효한 JSON 객체'로만 답해. 코드펜스 금지. 설명문 금지.
 
 입력: ${userInput.slice(0, 400)}
 이전답변: ${(answers.join(" | ") || "없음").slice(0, 400)}
 추출키워드:
 ${safeMentions || "(없음)"}
 
+이미 답변됨/확정됨 키워드(질문 금지):
+${answeredLine || "(없음)"}
+
 부족정보(상위 8):
-${missing.slice(0, 8).map(x => `- ${typeof x.item === "string" ? x.item : String(x.item)}`).join("\n")}
+${missingItems.slice(0, 8).map(x => `- ${typeof x.item === "string" ? x.item : String(x.item)}`).join("\n")}
 
 반환 스키마 예시(형식 참고, 내용은 생성):
-${schema}
+${baseSchema}
 `;
 
-  // 최대 3회 재시도(폴백 없음)
+  // 4) 재시도 3회(타임아웃/파싱 실패 시 throw) — 폴백 없음
   let lastErr = null;
   const tries = [
     { timeoutMs: 60000, temp: 0.4 },
@@ -379,14 +429,27 @@ ${schema}
 
   for (let i = 0; i < tries.length; i++) {
     try {
-      const text = await callOpenAI(basePrompt, tries[i].temp, { timeoutMs: tries[i].timeoutMs, model: "gpt-4o-mini" });
+      const text = await callOpenAI(prompt, tries[i].temp, { timeoutMs: tries[i].timeoutMs, model: "gpt-4o-mini" });
+      // JSON만 추출
       let s = text.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
       const first = s.indexOf("{"), last = s.lastIndexOf("}");
       if (first !== -1 && last !== -1 && last > first) s = s.slice(first, last + 1);
 
       const parsed = JSON.parse(s);
-      const qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
+      let qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
       if (!qs.length) throw new Error("빈 questions");
+
+      // 5) 안전 필터링: '이미 답변됨 키워드'가 question/option에 등장하면 제거
+      const ban = new Set(answeredKW);
+      qs = qs.filter(q => {
+        const bucket = [q.question, ...(q.options || [])].join(" ").toLowerCase();
+        for (const k of ban) { if (k && bucket.includes(k)) return false; }
+        return true;
+      });
+
+      // 6) 라운드 다양화(약간의 랜덤 셔플)로 반복감 최소화
+      if (qs.length > 1) qs = qs.sort(() => Math.random() - 0.5);
+
       return qs.slice(0, 5);
     } catch (e) {
       lastErr = e;
