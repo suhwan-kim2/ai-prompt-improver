@@ -26,3 +26,4 @@ MCP_DEV=...
 - 클라이언트/서버 모두 fetch 사용.
 - req.body undefined 문제 → /api/_helpers.js 의 readJson 사용으로 해결.
 
+<!-- 재배포 트리거 -->
