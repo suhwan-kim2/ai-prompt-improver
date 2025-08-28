@@ -1,67 +1,48 @@
-// 현재 구조를 유지하면서 제안된 개선사항 적용
+// ⚡ public/script.js - 8단계 플로우 프론트엔드
+
 const $ = (id) => document.getElementById(id);
 
-// 전역 상태
+// 🎯 전역 상태 관리
 const state = {
-  domain: "image",
+  domain: "video",
   userInput: "",
   answers: [],
   currentQuestions: [],
-  isProcessing: false
+  currentStep: "start",
+  round: 1,
+  intentScore: 0,
+  qualityScore: 0,
+  isProcessing: false,
+  maxRounds: 10
 };
 
-// 🔥 제안된 공통 POST 유틸 (핵심)
-async function postJSON(url, data, timeoutMs = 20000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",                         // ★ 반드시 POST
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-      signal: controller.signal
-    });
-    
-    if (!res.ok) {
-      // 서버가 JSON 에러를 주는 경우 파싱
-      let err;
-      try { 
-        err = await res.json(); 
-      } catch (_) {
-        err = { message: `HTTP ${res.status}` };
-      }
-      throw new Error(err?.message || `HTTP ${res.status}`);
-    }
-    
-    return await res.json();
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-// 초기화
+// 🚀 앱 초기화
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('프롬프트 개선기 시작');
+  console.log('🎯 AI 프롬프트 개선기 시작');
   initializeApp();
 });
 
 function initializeApp() {
-  console.log('앱 초기화');
+  console.log('📱 앱 초기화');
   
+  // 시작 버튼 이벤트
   const startBtn = $("startBtn");
   if (startBtn) {
     startBtn.onclick = startImprovement;
+    console.log('✅ 시작 버튼 연결됨');
   }
   
+  // 도메인 선택 이벤트
   const domainSelect = $("domain");
   if (domainSelect) {
     domainSelect.onchange = (e) => {
       state.domain = e.target.value;
-      console.log('도메인 변경:', state.domain);
+      console.log('📂 도메인 변경:', state.domain);
+      updateDomainDescription();
     };
   }
   
+  // 엔터키 이벤트
   const userInputField = $("userInput");
   if (userInputField) {
     userInputField.addEventListener('keypress', function(e) {
@@ -71,12 +52,30 @@ function initializeApp() {
       }
     });
   }
+
+  // 초기 도메인 설명 업데이트
+  updateDomainDescription();
 }
 
-// 🚀 개선된 메인 함수 - 2단계 프로세스 지원
-async function startImprovement() {
-  console.log('프롬프트 개선 시작');
+// 🎨 도메인 설명 업데이트
+function updateDomainDescription() {
+  const descriptions = {
+    video: "📹 영상 제작: 유튜브, 광고, 교육 영상 등",
+    image: "🎨 이미지 생성: 포스터, 로고, 일러스트 등", 
+    dev: "💻 개발 프로젝트: 웹사이트, 앱, API 등"
+  };
   
+  const descElement = $("domainDescription");
+  if (descElement) {
+    descElement.textContent = descriptions[state.domain] || descriptions.video;
+  }
+}
+
+// 🚀 1단계: 프롬프트 개선 시작
+async function startImprovement() {
+  console.log('🚀 1단계: 사용자 입력 처리');
+  
+  // 입력값 검증
   const userInputField = $("userInput");
   if (!userInputField) {
     showError('입력 필드를 찾을 수 없습니다.');
@@ -90,281 +89,199 @@ async function startImprovement() {
     return;
   }
   
-  if (state.userInput.length < 2) {
-    showError('최소 2글자 이상 입력해주세요.');
+  if (state.userInput.length < 5) {
+    showError('최소 5글자 이상 입력해주세요.');
     return;
   }
   
   // 상태 초기화
-  state.answers = [];
-  state.currentQuestions = [];
+  resetState();
   hideAllSections();
   
-  console.log('입력 정보:', {
+  console.log('📊 시작 정보:', {
     input: state.userInput,
     domain: state.domain
   });
   
-  await processImprovement();
+  // 2단계: AI 체크리스트 질문 생성 요청
+  await requestAIQuestions('start');
 }
 
-// 🔄 개선된 프롬프트 처리 - 2단계 지원
-async function processImprovement() {
-  console.log('API 호출 시작');
-  
+// 🔄 상태 초기화
+function resetState() {
+  state.answers = [];
+  state.currentQuestions = [];
+  state.currentStep = "start";
+  state.round = 1;
+  state.intentScore = 0;
+  state.qualityScore = 0;
+  state.isProcessing = false;
+  updateScoreDisplay();
+}
+
+// 📡 API 요청 - AI 질문 생성
+async function requestAIQuestions(step) {
   if (state.isProcessing) {
-    console.log('이미 처리 중');
+    console.log('⚠️ 이미 처리 중');
     return;
   }
   
   state.isProcessing = true;
-  showLoading('AI가 프롬프트를 분석하고 있습니다...');
-  
-  try {
-    // API가 2단계를 지원하는지 확인 후 분기
-    const apiSupports2Steps = await checkAPICapability();
-    
-    if (apiSupports2Steps) {
-      await handle2StepProcess();
-    } else {
-      await handle1StepProcess();
-    }
-    
-  } catch (error) {
-    console.error('네트워크 오류:', error);
-    hideLoading();
-    
-    if (error.name === 'AbortError') {
-      showNetworkError('연결 시간 초과', '20초 이내에 응답을 받지 못했습니다.');
-    } else {
-      showNetworkError('연결 오류', error.message);
-    }
-  } finally {
-    state.isProcessing = false;
-  }
-}
-
-// API 지원 기능 확인
-async function checkAPICapability() {
-  // 간단한 테스트 호출로 API 버전 확인
-  try {
-    const testData = {
-      step: "questions",
-      domain: state.domain,
-      userInput: "test",
-      answers: []
-    };
-    
-    // 아주 짧은 타임아웃으로 테스트
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 1000);
-    
-    const response = await fetch('/api/improve-prompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testData),
-      signal: controller.signal
-    });
-    
-    // step 파라미터를 이해하면 2단계 지원
-    return response.status !== 400;
-    
-  } catch (error) {
-    // 에러가 나면 1단계만 지원한다고 가정
-    return false;
-  }
-}
-
-// 2단계 프로세스 처리
-async function handle2StepProcess() {
-  console.log('2단계 프로세스 시작');
-  
-  try {
-    // 1단계: 질문 생성
-    const questionData = {
-      step: "questions",
-      domain: state.domain,
-      userInput: state.userInput,
-      answers: state.answers,
-      askedKeys: []
-    };
-    
-    const qRes = await postJSON("/api/improve-prompt", questionData);
-    hideLoading();
-    
-    // 질문이 있으면 사용자 응답 대기
-    if (Array.isArray(qRes?.questions) && qRes.questions.length > 0) {
-      console.log('질문 단계:', qRes.questions.length + '개');
-      showMoreQuestions(qRes);
-      return;
-    }
-    
-    // 질문이 없으면 바로 최종 단계
-    if (qRes?.shouldProceedToFinal) {
-      console.log('질문 생략하고 최종 단계로');
-      await generateFinalPrompt();
-      return;
-    }
-    
-    // 예상치 못한 응답
-    showError('예상치 못한 응답 형식입니다.');
-    
-  } catch (error) {
-    hideLoading();
-    handleAPIError(error);
-  }
-}
-
-// 1단계 프로세스 처리 (기존 방식)
-async function handle1StepProcess() {
-  console.log('1단계 프로세스 시작');
+  showLoading(`🤖 AI가 ${state.domain} 전문 질문을 생성하고 있습니다...`);
   
   try {
     const requestData = {
       userInput: state.userInput,
       answers: state.answers,
-      domain: state.domain
+      domain: state.domain,
+      step: step,
+      round: state.round
     };
     
-    const result = await postJSON('/api/improve-prompt', requestData);
+    console.log('📤 API 요청:', requestData);
+    
+    const response = await fetch('/api/improve-prompt', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestData)
+    });
+    
+    console.log('📡 API 응답 상태:', response.status);
+    
+    const result = await response.json();
+    console.log('📨 API 응답 데이터:', result);
+    
     hideLoading();
     
     if (result.success) {
-      showSuccess(result);
-    } else if (result.action === 'need_more_info') {
-      showMoreQuestions(result);
+      handleAPIResponse(result);
     } else if (result.error) {
-      showFailure(result);
+      handleAPIError(result);
     } else {
       showError('예상치 못한 응답 형식입니다.');
     }
     
   } catch (error) {
+    console.error('❌ 네트워크 오류:', error);
     hideLoading();
-    handleAPIError(error);
+    handleNetworkError(error);
+  } finally {
+    state.isProcessing = false;
   }
 }
 
-// 최종 프롬프트 생성 (2단계용)
-async function generateFinalPrompt() {
-  console.log('최종 프롬프트 생성');
+// 🎯 API 응답 처리
+function handleAPIResponse(result) {
+  state.currentStep = result.step;
   
-  showLoading('최종 프롬프트를 생성하고 있습니다...');
-  
-  try {
-    const finalData = {
-      step: "final",
-      domain: state.domain,
-      userInput: state.userInput,
-      answers: state.answers
-    };
-    
-    const finalRes = await postJSON("/api/improve-prompt", finalData);
-    hideLoading();
-    
-    if (finalRes.success) {
-      showSuccess(finalRes);
-    } else {
-      showFailure(finalRes);
-    }
-    
-  } catch (error) {
-    hideLoading();
-    handleAPIError(error);
+  switch (result.step) {
+    case 'questions':
+      // 3-6단계: 질문 표시
+      handleQuestionsResponse(result);
+      break;
+      
+    case 'generate':
+      // 5단계: 프롬프트 생성 진행
+      handleGenerateResponse(result);
+      break;
+      
+    case 'completed':
+      // 8단계: 완성!
+      handleCompletedResponse(result);
+      break;
+      
+    default:
+      showError(`알 수 없는 단계: ${result.step}`);
   }
 }
 
-// 답변 제출 처리 (2단계용)
-async function submitAllAnswers() {
-  console.log('답변 제출:', state.answers);
+// ❓ 질문 응답 처리 (2단계, 6단계)
+function handleQuestionsResponse(result) {
+  console.log(`📍 ${state.round}라운드 질문 표시`);
   
-  if (state.answers.length === 0) {
-    alert('최소 1개 이상의 질문에 답변해주세요.');
+  state.currentQuestions = result.questions || [];
+  state.round = result.round || state.round;
+  state.intentScore = result.intentScore || 0;
+  
+  updateScoreDisplay();
+  
+  if (state.currentQuestions.length === 0) {
+    showError('AI가 질문을 생성하지 못했습니다.');
     return;
   }
   
-  hideAllSections();
-  await generateFinalPrompt();
+  showQuestions(result);
 }
 
-// 🎨 기존 UI 함수들 유지
-function showSuccess(result) {
-  console.log('성공 결과 표시');
+// 🎯 5단계: 생성 응답 처리
+function handleGenerateResponse(result) {
+  console.log('📍 5단계: 프롬프트 생성 진행');
   
-  const successHTML = `
-    <div class="success-container">
-      <div class="success-header">
-        <h2>🎉 완성!</h2>
-        <div class="score-badge">점수: ${result.score || result.promptScore || 95}점</div>
-      </div>
-      
-      <div class="original-prompt">
-        <h3>📝 원본 프롬프트</h3>
-        <div class="prompt-text original">${escapeHtml(state.userInput)}</div>
-        ${state.answers.length > 0 ? `
-          <div class="additional-info">
-            <strong>추가 정보:</strong> ${escapeHtml(state.answers.join(', '))}
-          </div>
-        ` : ''}
-      </div>
-      
-      <div class="improved-prompt">
-        <h3>✨ AI가 개선한 프롬프트</h3>
-        <div class="prompt-text improved">${escapeHtml(result.improved)}</div>
-        <div class="improvement-stats">
-          <span class="stat">원본: ${state.userInput.length}자</span>
-          <span class="stat">개선: ${result.improved.length}자</span>
-          <span class="stat">${result.method || 'AI 개선'}</span>
-        </div>
-      </div>
-      
-      <div class="action-buttons">
-        <button class="btn btn-primary" onclick="copyToClipboard()">
-          📋 복사하기
-        </button>
-        <button class="btn btn-secondary" onclick="startNew()">
-          🔄 새로 만들기
-        </button>
-      </div>
-    </div>
-  `;
+  state.intentScore = result.intentScore || 95;
+  showLoading('🤖 AI가 전문급 프롬프트를 생성하고 있습니다...');
   
-  const finalSection = $("final");
-  if (finalSection) {
-    finalSection.innerHTML = successHTML;
-    finalSection.classList.remove("hidden");
-    finalSection.scrollIntoView({ behavior: 'smooth' });
-  }
-  
-  window.lastImproved = result.improved;
+  // 실제 생성은 서버에서 진행 중이므로 잠시 대기 후 완료 확인
+  setTimeout(() => {
+    requestAIQuestions('generate');
+  }, 2000);
 }
 
-function showMoreQuestions(result) {
-  console.log('추가 질문 표시:', result.questions);
+// 🎉 완성 응답 처리 (7-8단계)
+function handleCompletedResponse(result) {
+  console.log('📍 7-8단계: 완성!');
   
-  if (!result.questions || result.questions.length === 0) {
-    showError('질문을 생성할 수 없습니다.');
-    return;
-  }
+  state.intentScore = result.intentScore || 95;
+  state.qualityScore = result.qualityScore || 95;
   
-  state.currentQuestions = result.questions;
-  
+  updateScoreDisplay();
+  showFinalResult(result);
+}
+
+// ❓ 질문 표시
+function showQuestions(result) {
   const questionsHTML = `
     <div class="questions-container">
       <div class="progress-section">
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${result.completeness || result.intentScore || 50}%"></div>
+        <div class="round-info">
+          <span class="round-badge">라운드 ${state.round}</span>
+          <span class="score-info">의도 파악: ${state.intentScore}점/95점</span>
         </div>
-        <p class="progress-text">${result.message || '추가 정보가 필요합니다'}</p>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${Math.round((state.intentScore / 95) * 100)}%"></div>
+        </div>
+        <p class="progress-text">${result.message || 'AI가 전문 질문을 생성했습니다.'}</p>
       </div>
       
       <div class="questions-list">
-        ${result.questions.map((q, index) => `
+        ${state.currentQuestions.map((q, index) => `
           <div class="question-item" data-key="${q.key || index}">
-            <h4 class="question-title">${escapeHtml(q.question)}</h4>
+            <div class="question-header">
+              <h4 class="question-title">${escapeHtml(q.question)}</h4>
+              <span class="question-priority ${q.priority || 'medium'}">${getPriorityText(q.priority)}</span>
+            </div>
             
-            <div class="custom-input">
-              <input type="text" placeholder="답변을 입력하세요" id="input-${q.key || index}" />
+            ${q.options && q.options.length > 0 ? `
+              <div class="quick-options">
+                ${q.options.map(option => `
+                  <button class="option-btn" data-value="${escapeHtml(option)}" 
+                          onclick="selectOption('${q.key || index}', '${escapeHtml(option)}')">
+                    ${escapeHtml(option)}
+                  </button>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="text-input-area">
+                <textarea placeholder="답변을 입력해주세요..." 
+                         id="answer-${q.key || index}" 
+                         rows="3"></textarea>
+                <button class="btn btn-small" onclick="submitTextAnswer('${q.key || index}')">확인</button>
+              </div>
+            `}
+            
+            <div class="custom-input" id="custom-${q.key || index}" style="display: none;">
+              <input type="text" placeholder="직접 입력..." id="input-${q.key || index}" />
               <button class="btn btn-small" onclick="submitCustomAnswer('${q.key || index}')">확인</button>
             </div>
           </div>
@@ -373,7 +290,7 @@ function showMoreQuestions(result) {
       
       <div class="questions-footer">
         <button class="btn btn-primary" onclick="submitAllAnswers()" disabled id="submitBtn">
-          답변 완료
+          답변 완료 (0/${state.currentQuestions.length})
         </button>
         <button class="btn btn-secondary" onclick="skipQuestions()">
           현재 정보로 진행
@@ -390,6 +307,43 @@ function showMoreQuestions(result) {
   }
 }
 
+// 🎯 옵션 선택 처리
+function selectOption(questionKey, selectedValue) {
+  console.log('🎯 옵션 선택:', questionKey, selectedValue);
+  
+  if (selectedValue === '직접 입력') {
+    // 커스텀 입력 필드 표시
+    const customDiv = $(`custom-${questionKey}`);
+    if (customDiv) {
+      customDiv.style.display = 'block';
+      const inputField = $(`input-${questionKey}`);
+      if (inputField) {
+        inputField.focus();
+      }
+    }
+  } else {
+    // 바로 답변 설정
+    setAnswer(questionKey, selectedValue);
+  }
+}
+
+// ✍️ 텍스트 답변 제출
+function submitTextAnswer(questionKey) {
+  const textarea = $(`answer-${questionKey}`);
+  if (!textarea) return;
+  
+  const answer = textarea.value.trim();
+  if (!answer) {
+    alert('답변을 입력해주세요.');
+    textarea.focus();
+    return;
+  }
+  
+  console.log('✍️ 텍스트 답변:', questionKey, answer);
+  setAnswer(questionKey, answer);
+}
+
+// ✍️ 커스텀 답변 제출
 function submitCustomAnswer(questionKey) {
   const inputField = $(`input-${questionKey}`);
   if (!inputField) return;
@@ -401,32 +355,61 @@ function submitCustomAnswer(questionKey) {
     return;
   }
   
-  console.log('커스텀 답변:', questionKey, inputValue);
+  console.log('✍️ 커스텀 답변:', questionKey, inputValue);
+  setAnswer(questionKey, inputValue);
+}
+
+// 📝 답변 설정
+function setAnswer(questionKey, answerValue) {
+  console.log('📝 답변 설정:', questionKey, '=', answerValue);
   
   // 기존 답변 제거 후 새 답변 추가
   state.answers = state.answers.filter(a => !a.startsWith(`${questionKey}:`));
-  state.answers.push(`${questionKey}: ${inputValue}`);
+  state.answers.push(`${questionKey}: ${answerValue}`);
   
-  // UI 업데이트
+  // UI 업데이트 - 해당 질문을 완료 상태로 표시
   const questionDiv = document.querySelector(`[data-key="${questionKey}"]`);
   if (questionDiv) {
     questionDiv.classList.add('answered');
     
+    // 기존 답변 표시 제거
     const existingAnswer = questionDiv.querySelector('.selected-answer');
-    if (existingAnswer) existingAnswer.remove();
+    if (existingAnswer) {
+      existingAnswer.remove();
+    }
     
+    // 새 답변 표시 추가
     const answerDisplay = document.createElement('div');
     answerDisplay.className = 'selected-answer';
-    answerDisplay.innerHTML = `<strong>답변:</strong> ${escapeHtml(inputValue)} ✓`;
+    answerDisplay.innerHTML = `<strong>선택:</strong> ${escapeHtml(answerValue)} ✅`;
     questionDiv.appendChild(answerDisplay);
     
+    // 옵션 버튼들 비활성화
+    const optionButtons = questionDiv.querySelectorAll('.option-btn');
+    optionButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+    });
+    
+    // 텍스트 영역 비활성화
+    const textArea = questionDiv.querySelector('textarea');
+    if (textArea) {
+      textArea.disabled = true;
+      textArea.style.opacity = '0.5';
+    }
+    
+    // 커스텀 입력 숨김
     const customInput = questionDiv.querySelector('.custom-input');
-    if (customInput) customInput.style.display = 'none';
+    if (customInput) {
+      customInput.style.display = 'none';
+    }
   }
   
+  // 제출 버튼 상태 업데이트
   updateSubmitButton();
 }
 
+// 🔄 제출 버튼 상태 업데이트
 function updateSubmitButton() {
   const submitBtn = $("submitBtn");
   if (!submitBtn) return;
@@ -443,128 +426,183 @@ function updateSubmitButton() {
   }
 }
 
-async function skipQuestions() {
-  console.log('질문 건너뛰기');
+// 📤 모든 답변 제출 (3→4→5단계 진행)
+async function submitAllAnswers() {
+  console.log('📤 답변 제출:', state.answers);
   
-  const confirmSkip = confirm('현재 정보만으로 프롬프트를 만드시겠습니까?');
+  if (state.answers.length === 0) {
+    alert('최소 1개 이상의 질문에 답변해주세요.');
+    return;
+  }
+  
+  hideAllSections();
+  
+  // 4단계: 의도 분석 → 5단계: 프롬프트 생성 or 6단계: 추가 질문
+  await requestAIQuestions('questions');
+}
+
+// ⏭️ 질문 건너뛰기
+async function skipQuestions() {
+  console.log('⏭️ 질문 건너뛰기');
+  
+  const confirmSkip = confirm(`현재 ${state.answers.length}개 답변으로 프롬프트를 생성하시겠습니까?\n더 많은 답변이 있으면 품질이 향상됩니다.`);
   if (!confirmSkip) return;
   
   hideAllSections();
-  await generateFinalPrompt();
+  await requestAIQuestions('generate');
 }
 
-// 에러 처리 개선
-function handleAPIError(error) {
-  console.error('API 오류:', error);
+// 🎉 최종 결과 표시
+function showFinalResult(result) {
+  console.log('🎉 최종 결과 표시');
   
-  let errorResult;
-  
-  if (error.name === 'AbortError') {
-    errorResult = {
-      title: '⏰ 연결 시간 초과',
-      message: '20초 이내에 응답을 받지 못했습니다.',
-      suggestion: '네트워크 상태를 확인하고 다시 시도해주세요.',
-      canRetry: true
-    };
-  } else if (error.message.includes('401')) {
-    errorResult = {
-      title: '🔐 인증 오류',
-      message: 'API 키에 문제가 있습니다.',
-      suggestion: '관리자에게 문의해주세요.',
-      canRetry: false
-    };
-  } else if (error.message.includes('429')) {
-    errorResult = {
-      title: '🚫 사용량 초과',
-      message: 'API 사용량이 초과되었습니다.',
-      suggestion: '잠시 후 다시 시도해주세요.',
-      canRetry: true
-    };
-  } else {
-    errorResult = {
-      title: '🌐 연결 오류',
-      message: error.message || '알 수 없는 오류가 발생했습니다.',
-      suggestion: '네트워크 상태를 확인하고 다시 시도해주세요.',
-      canRetry: true
-    };
-  }
-  
-  showFailure(errorResult);
-}
-
-// 기존 함수들 유지
-function showFailure(result) {
-  console.log('실패 결과 표시:', result);
-  
-  const failureHTML = `
-    <div class="failure-container">
-      <div class="failure-icon">😞</div>
-      <h2 class="failure-title">${result.title || '오류 발생'}</h2>
-      <p class="failure-message">${result.message || '문제가 발생했습니다.'}</p>
-      <p class="failure-suggestion">${result.suggestion || '잠시 후 다시 시도해주세요.'}</p>
+  const finalHTML = `
+    <div class="final-container">
+      <div class="final-header">
+        <h2>🎉 AI 프롬프트 개선 완료!</h2>
+        <div class="final-scores">
+          <div class="score-badge intent">의도 파악: ${state.intentScore}점</div>
+          <div class="score-badge quality">품질 점수: ${state.qualityScore}점</div>
+        </div>
+      </div>
       
-      <div class="failure-actions">
-        ${result.canRetry !== false ? `
-          <button class="btn btn-primary" onclick="retryImprovement()">
-            🔄 다시 시도
-          </button>
-        ` : ''}
-        <button class="btn btn-secondary" onclick="goBack()">
-          ← 돌아가기
+      <div class="result-comparison">
+        <div class="original-section">
+          <h3>📝 원본 프롬프트</h3>
+          <div class="prompt-text original">${escapeHtml(state.userInput)}</div>
+          ${state.answers.length > 0 ? `
+            <div class="additional-info">
+              <h4>💬 추가된 정보 (${state.answers.length}개)</h4>
+              <div class="answers-list">
+                ${state.answers.map(answer => `
+                  <div class="answer-item">${escapeHtml(answer)}</div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+        
+        <div class="improved-section">
+          <h3>✨ AI가 개선한 전문급 프롬프트</h3>
+          <div class="prompt-text improved">${escapeHtml(result.improvedPrompt)}</div>
+          <div class="improvement-stats">
+            <span class="stat">원본: ${state.userInput.length}자</span>
+            <span class="stat">개선: ${result.improvedPrompt.length}자</span>
+            <span class="stat">개선 시도: ${result.attempts || 1}회</span>
+            <span class="stat">라운드: ${state.round}회</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="action-buttons">
+        <button class="btn btn-primary" onclick="copyToClipboard()">
+          📋 개선된 프롬프트 복사
+        </button>
+        <button class="btn btn-secondary" onclick="startNew()">
+          🔄 새 프롬프트 만들기
+        </button>
+        <button class="btn btn-tertiary" onclick="showDetails()">
+          📊 상세 분석 보기
         </button>
       </div>
       
-      ${result.canRetry === false ? `
-        <div class="wait-notice">
-          <p>⏰ 보통 몇 시간 후에 다시 정상화됩니다</p>
-        </div>
-      ` : ''}
+      <div class="success-message">
+        <p>${result.message || '완벽한 프롬프트가 완성되었습니다!'}</p>
+      </div>
     </div>
   `;
   
   const finalSection = $("final");
   if (finalSection) {
-    finalSection.innerHTML = failureHTML;
+    finalSection.innerHTML = finalHTML;
     finalSection.classList.remove("hidden");
+    finalSection.scrollIntoView({ behavior: 'smooth' });
+  }
+  
+  // 복사용 데이터 저장
+  window.lastImproved = result.improvedPrompt;
+}
+
+// 📊 점수 표시 업데이트
+function updateScoreDisplay() {
+  const intentScoreEl = $("intentScore");
+  const qualityScoreEl = $("qualityScore");
+  
+  if (intentScoreEl) {
+    intentScoreEl.textContent = state.intentScore;
+    intentScoreEl.className = getScoreClass(state.intentScore);
+  }
+  
+  if (qualityScoreEl) {
+    qualityScoreEl.textContent = state.qualityScore;
+    qualityScoreEl.className = getScoreClass(state.qualityScore);
   }
 }
 
-function showNetworkError(title, message) {
-  const errorResult = {
-    title: title || '🌐 연결 오류',
-    message: message || '네트워크 연결을 확인해주세요.',
-    suggestion: '네트워크 상태를 확인하고 다시 시도해주세요.',
-    canRetry: true
+// 🎨 점수별 CSS 클래스
+function getScoreClass(score) {
+  if (score >= 95) return 'score-excellent';
+  if (score >= 85) return 'score-good';
+  if (score >= 70) return 'score-average';
+  return 'score-low';
+}
+
+// 🎯 우선순위 텍스트
+function getPriorityText(priority) {
+  const priorities = {
+    high: '🔥 중요',
+    medium: '📋 보통',
+    low: '📝 선택'
   };
-  showFailure(errorResult);
+  return priorities[priority] || '📋 보통';
 }
 
-async function retryImprovement() {
-  console.log('재시도');
-  hideAllSections();
-  await processImprovement();
-}
-
-function goBack() {
-  console.log('돌아가기');
-  hideAllSections();
-  
-  const userInputField = $("userInput");
-  if (userInputField) {
-    userInputField.focus();
+// 📋 클립보드 복사
+async function copyToClipboard() {
+  if (!window.lastImproved) {
+    alert('복사할 내용이 없습니다.');
+    return;
   }
   
-  state.answers = [];
-  state.currentQuestions = [];
+  try {
+    await navigator.clipboard.writeText(window.lastImproved);
+    
+    // 성공 피드백
+    const copyBtn = document.querySelector('.btn.btn-primary');
+    if (copyBtn && copyBtn.textContent.includes('📋')) {
+      const originalText = copyBtn.textContent;
+      copyBtn.textContent = '✅ 복사 완료!';
+      copyBtn.style.background = '#10b981';
+      
+      setTimeout(() => {
+        copyBtn.textContent = originalText;
+        copyBtn.style.background = '';
+      }, 2000);
+    }
+    
+    console.log('📋 클립보드 복사 성공');
+  } catch (error) {
+    console.error('📋 클립보드 복사 실패:', error);
+    
+    // 폴백: 텍스트 영역 생성
+    const textArea = document.createElement('textarea');
+    textArea.value = window.lastImproved;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    alert('클립보드에 복사되었습니다!');
+  }
 }
 
+// 🔄 새 프롬프트 만들기
 function startNew() {
-  console.log('새로 만들기');
+  console.log('🔄 새 프롬프트 만들기');
   
-  state.userInput = "";
-  state.answers = [];
-  state.currentQuestions = [];
+  // 전체 상태 리셋
+  resetState();
   
+  // UI 리셋
   const userInputField = $("userInput");
   if (userInputField) {
     userInputField.value = "";
@@ -575,35 +613,61 @@ function startNew() {
   window.lastImproved = null;
 }
 
-async function copyToClipboard() {
-  if (!window.lastImproved) {
-    alert('복사할 내용이 없습니다.');
-    return;
-  }
+// 📊 상세 분석 보기
+function showDetails() {
+  const detailsHTML = `
+    <div class="details-modal">
+      <div class="details-content">
+        <h3>📊 프롬프트 개선 상세 분석</h3>
+        <div class="analysis-sections">
+          <div class="analysis-item">
+            <h4>🎯 의도 파악 분석</h4>
+            <p>점수: ${state.intentScore}/95점</p>
+            <p>라운드: ${state.round}회 질문</p>
+            <p>수집된 답변: ${state.answers.length}개</p>
+          </div>
+          <div class="analysis-item">
+            <h4>🏆 품질 평가 분석</h4>
+            <p>점수: ${state.qualityScore}/95점</p>
+            <p>도메인: ${state.domain}</p>
+            <p>등급: ${getQualityGrade(state.qualityScore)}</p>
+          </div>
+          <div class="analysis-item">
+            <h4>⚡ 성능 지표</h4>
+            <p>원본 길이: ${state.userInput.length}자</p>
+            <p>개선 후 길이: ${window.lastImproved ? window.lastImproved.length : 0}자</p>
+            <p>향상률: ${window.lastImproved ? Math.round(((window.lastImproved.length / state.userInput.length - 1) * 100)) : 0}%</p>
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="closeDetails()">닫기</button>
+      </div>
+    </div>
+  `;
   
-  try {
-    await navigator.clipboard.writeText(window.lastImproved);
-    
-    const copyBtn = document.querySelector('.btn.btn-primary');
-    if (copyBtn && copyBtn.textContent.includes('📋')) {
-      const originalText = copyBtn.textContent;
-      copyBtn.textContent = '✅ 복사됨!';
-      copyBtn.style.background = '#28a745';
-      
-      setTimeout(() => {
-        copyBtn.textContent = originalText;
-        copyBtn.style.background = '';
-      }, 2000);
-    }
-    
-    console.log('클립보드 복사 성공');
-  } catch (error) {
-    console.error('클립보드 복사 실패:', error);
-    alert('복사에 실패했습니다. 텍스트를 직접 선택해서 복사해주세요.');
+  const modalContainer = document.createElement('div');
+  modalContainer.id = 'detailsModal';
+  modalContainer.innerHTML = detailsHTML;
+  document.body.appendChild(modalContainer);
+}
+
+// 🏆 품질 등급
+function getQualityGrade(score) {
+  if (score >= 95) return 'S급 (완벽)';
+  if (score >= 85) return 'A급 (우수)';
+  if (score >= 75) return 'B급 (양호)';
+  if (score >= 65) return 'C급 (보통)';
+  return 'D급 (개선 필요)';
+}
+
+// ❌ 상세 모달 닫기
+function closeDetails() {
+  const modal = $("detailsModal");
+  if (modal) {
+    document.body.removeChild(modal);
   }
 }
 
-// 유틸리티 함수들
+// 🎨 UI 유틸리티 함수들
 function hideAllSections() {
   const sections = ['questions', 'final'];
   sections.forEach(sectionId => {
@@ -633,9 +697,68 @@ function hideLoading() {
   // 로딩은 다른 콘텐츠로 교체될 때 자동으로 숨겨짐
 }
 
+// ❌ 에러 처리
+function handleAPIError(errorResult) {
+  console.log('❌ API 에러:', errorResult);
+  
+  const errorHTML = `
+    <div class="error-container">
+      <div class="error-icon">🤖💔</div>
+      <h2 class="error-title">${errorResult.title || '🚫 AI 서비스 오류'}</h2>
+      <p class="error-message">${errorResult.message || 'AI 서비스에 문제가 발생했습니다.'}</p>
+      <p class="error-action">${errorResult.action || '잠시 후 다시 시도해주세요.'}</p>
+      
+      ${errorResult.canRetry !== false ? `
+        <div class="retry-section">
+          <button class="btn btn-primary" onclick="retryCurrentStep()">
+            🔄 다시 시도
+          </button>
+        </div>
+      ` : `
+        <div class="no-retry-section">
+          <p class="final-message">현재 AI 서비스를 이용할 수 없습니다.</p>
+          <button class="btn btn-secondary" onclick="window.location.reload()">
+            🔄 페이지 새로고침
+          </button>
+        </div>
+      `}
+      
+      <div class="error-details">
+        <small>발생 시각: ${new Date().toLocaleString()}</small>
+      </div>
+    </div>
+  `;
+  
+  const questionsSection = $("questions");
+  if (questionsSection) {
+    questionsSection.innerHTML = errorHTML;
+    questionsSection.classList.remove("hidden");
+  }
+}
+
+function handleNetworkError(error) {
+  console.log('🌐 네트워크 오류:', error);
+  
+  const networkError = {
+    title: '🌐 연결 오류',
+    message: '인터넷 연결을 확인해주세요.',
+    action: '네트워크 상태를 확인하고 다시 시도해주세요.',
+    canRetry: true
+  };
+  
+  handleAPIError(networkError);
+}
+
+// 🔄 현재 단계 재시도
+async function retryCurrentStep() {
+  console.log('🔄 현재 단계 재시도:', state.currentStep);
+  hideAllSections();
+  await requestAIQuestions(state.currentStep);
+}
+
 function showError(message) {
   alert(message);
-  console.error('에러:', message);
+  console.error('❌ 에러:', message);
 }
 
 function escapeHtml(text) {
@@ -645,10 +768,25 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// 디버깅용
+// 디버깅용 함수 (개발 모드에서만)
 if (typeof window !== 'undefined') {
-  window.debugState = () => console.log('현재 상태:', state);
+  window.debugState = () => {
+    console.log('🎯 현재 상태:', state);
+  };
   window.state = state;
 }
 
-console.log('Script 로드 완료!');
+console.log('✅ 8단계 플로우 Script 로드 완료!');
+
+// 🎯 전역 함수 exports (HTML에서 onclick 사용을 위해)
+window.startImprovement = startImprovement;
+window.selectOption = selectOption;
+window.submitTextAnswer = submitTextAnswer;
+window.submitCustomAnswer = submitCustomAnswer;
+window.submitAllAnswers = submitAllAnswers;
+window.skipQuestions = skipQuestions;
+window.copyToClipboard = copyToClipboard;
+window.startNew = startNew;
+window.showDetails = showDetails;
+window.closeDetails = closeDetails;
+window.retryCurrentStep = retryCurrentStep;
