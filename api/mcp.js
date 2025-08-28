@@ -1,6 +1,6 @@
 //mcp
 
-import { readJson } from "./_helpers.js";
+import { readJson } from "./helpers.js";
 
 // 컷오프 충족 시만 중계. 데모에선 echo.
 export default async function handler(req, res) {
