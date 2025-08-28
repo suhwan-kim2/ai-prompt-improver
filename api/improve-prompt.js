@@ -1,40 +1,53 @@
-// 🔥 독립형 API - helpers.js 의존성 완전 제거 및 오류 수정
-// OpenAI API 키
+// 🚨 강화된 디버깅 버전 - 모든 단계에서 로그 출력
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// JSON 파서 (helpers.js 대신 직접 구현)
+// 즉시 실행 로그 (파일 로드 확인)
+console.log('🚀 API 파일 로드됨 - 새 버전 확인:', new Date().toISOString());
+console.log('🔑 환경변수 체크:', {
+  hasKey: !!OPENAI_API_KEY,
+  keyStart: OPENAI_API_KEY ? OPENAI_API_KEY.slice(0, 7) + '...' : 'NONE',
+  keyLength: OPENAI_API_KEY ? OPENAI_API_KEY.length : 0
+});
+
 async function readJson(req) {
+  console.log('📖 JSON 읽기 시작');
   try {
-    // Vercel에서는 보통 req.body가 이미 파싱되어 있음
     if (req.body && typeof req.body === 'object') {
+      console.log('📖 body 객체로 읽음:', Object.keys(req.body));
       return req.body;
     }
     
-    // 문자열인 경우 JSON 파싱
     if (typeof req.body === 'string') {
+      console.log('📖 body 문자열로 읽음, 길이:', req.body.length);
       return JSON.parse(req.body);
     }
     
-    // 스트림인 경우 읽기
     if (req.readable) {
+      console.log('📖 스트림으로 읽기 시작');
       const chunks = [];
       for await (const chunk of req) {
         chunks.push(chunk);
       }
       const body = Buffer.concat(chunks).toString('utf-8');
+      console.log('📖 스트림 읽기 완료, 길이:', body.length);
       return body ? JSON.parse(body) : {};
     }
     
+    console.log('📖 빈 객체 반환');
     return {};
   } catch (error) {
-    console.error('JSON 파싱 오류:', error);
+    console.error('📖 JSON 파싱 실패:', error.message);
     return {};
   }
 }
 
 export default async function handler(req, res) {
-  console.log('🚀 독립형 프롬프트 개선 API 시작');
-  console.log('요청 메소드:', req.method);
+  const startTime = Date.now();
+  console.log('🌟 === API 핸들러 시작 ===');
+  console.log('🌟 요청 시간:', new Date().toISOString());
+  console.log('🌟 메소드:', req.method);
+  console.log('🌟 URL:', req.url);
+  console.log('🌟 헤더:', JSON.stringify(req.headers, null, 2));
   
   // CORS 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,322 +55,226 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
+    console.log('🌟 OPTIONS 요청 - CORS 응답');
     return res.status(200).end();
   }
   
-  if (req.method !== "POST") {
-    console.log('❌ POST가 아닌 요청:', req.method);
+  if (req.method !== 'POST') {
+    console.log('🌟 POST가 아닌 요청:', req.method);
     return res.status(405).json({ 
       error: true,
-      message: 'Method not allowed. Use POST.'
+      message: `Method ${req.method} not allowed. Use POST.`,
+      timestamp: new Date().toISOString()
     });
   }
 
   try {
-    // 요청 데이터 읽기
+    // 1. 요청 데이터 파싱
+    console.log('📝 1단계: 요청 데이터 파싱 시작');
     const requestData = await readJson(req);
-    console.log('📨 파싱된 요청 데이터:', requestData);
+    console.log('📝 파싱 결과:', JSON.stringify(requestData, null, 2));
 
-    const { 
-      userInput = "", 
-      answers = [], 
-      domain = "image" 
-    } = requestData;
-
-    console.log('🔍 추출된 파라미터:', { 
-      userInput: userInput.slice(0, 50) + '...', 
+    const { userInput = "", answers = [], domain = "image" } = requestData;
+    console.log('📝 추출된 데이터:', { 
+      userInput: `"${userInput}"`, 
       answersCount: answers.length, 
-      domain 
+      domain,
+      answers: answers 
     });
 
-    // 1단계: 입력 검증
+    // 2. 입력 검증
+    console.log('✅ 2단계: 입력 검증');
     if (!userInput || !userInput.trim()) {
-      console.log('❌ 빈 입력');
+      console.log('✅ 입력이 비어있음');
       return res.status(400).json({
         error: true,
         type: 'invalid_input',
-        message: '프롬프트를 입력해주세요.'
+        message: '프롬프트를 입력해주세요.',
+        received: { userInput, answers, domain }
       });
     }
+    console.log('✅ 입력 검증 통과');
 
-    // 2단계: OpenAI API 키 확인
-    console.log('🔑 API 키 확인:', !!OPENAI_API_KEY);
-    if (!OPENAI_API_KEY || OPENAI_API_KEY === 'your-api-key-here') {
-      console.error('❌ OpenAI API 키 없음');
+    // 3. API 키 검증 (상세히)
+    console.log('🔐 3단계: API 키 검증 시작');
+    console.log('🔐 환경변수들:', Object.keys(process.env).filter(k => k.includes('OPEN')));
+    console.log('🔐 OPENAI_API_KEY 존재:', !!OPENAI_API_KEY);
+    console.log('🔐 OPENAI_API_KEY 타입:', typeof OPENAI_API_KEY);
+    console.log('🔐 OPENAI_API_KEY 길이:', OPENAI_API_KEY ? OPENAI_API_KEY.length : 0);
+    console.log('🔐 OPENAI_API_KEY 시작:', OPENAI_API_KEY ? OPENAI_API_KEY.slice(0, 7) + '...' : 'null');
+    
+    if (!OPENAI_API_KEY) {
+      console.log('🔐 API 키가 없음!');
       return res.status(503).json({
         error: true,
-        type: 'service_unavailable',
-        title: '🚫 서비스 일시 중단',
-        message: 'AI 서비스 설정에 문제가 있습니다.',
-        suggestion: 'OpenAI API 키를 확인해주세요.',
-        canRetry: false
+        type: 'no_api_key',
+        title: '🚫 API 키 없음',
+        message: 'OpenAI API 키가 설정되지 않았습니다.',
+        debug: {
+          envKeys: Object.keys(process.env).filter(k => k.includes('OPEN')),
+          hasKey: !!OPENAI_API_KEY,
+          keyType: typeof OPENAI_API_KEY
+        }
       });
     }
 
-    // 3단계: 입력 충분성 검사
-    const sufficiency = checkInputSufficiency(userInput, answers, domain);
-    console.log('📊 입력 충분성 결과:', sufficiency);
+    if (OPENAI_API_KEY === 'your-api-key-here' || OPENAI_API_KEY.length < 20) {
+      console.log('🔐 API 키가 유효하지 않음!');
+      return res.status(503).json({
+        error: true,
+        type: 'invalid_api_key',
+        title: '🚫 잘못된 API 키',
+        message: 'OpenAI API 키가 올바르지 않습니다.',
+        debug: {
+          keyLength: OPENAI_API_KEY.length,
+          keyStart: OPENAI_API_KEY.slice(0, 10)
+        }
+      });
+    }
+    console.log('🔐 API 키 검증 통과!');
 
-    if (!sufficiency.sufficient) {
-      // 정보 부족 → 질문 생성
-      const questions = generateQuestions(sufficiency, domain);
-      
-      console.log('❓ 질문 생성됨:', questions.length, '개');
+    // 4. 입력 충분성 검사
+    console.log('📊 4단계: 입력 충분성 검사');
+    const allText = [userInput, ...answers].join(' ').toLowerCase();
+    console.log('📊 전체 텍스트:', allText);
+    
+    const wordCount = allText.split(/\s+/).length;
+    const hasKeywords = /강아지|고양이|사람|그림|이미지|영상|앱|웹/.test(allText);
+    console.log('📊 단어 수:', wordCount, '키워드 포함:', hasKeywords);
+
+    if (wordCount < 3 || !hasKeywords) {
+      console.log('📊 정보 부족 - 질문 생성');
       return res.status(200).json({
         success: false,
         action: 'need_more_info',
-        questions: questions,
-        completeness: sufficiency.completeness,
-        message: `${sufficiency.completeness}% 완성. AI가 완벽한 프롬프트를 만들기 위해 조금만 더 알려주세요!`
+        questions: [{
+          question: '구체적으로 어떤 것을 만들고 싶으신가요?',
+          options: ['이미지/그림', '영상', '웹사이트/앱', '직접 입력']
+        }],
+        debug: { wordCount, hasKeywords, allText }
       });
     }
+    console.log('📊 충분성 검사 통과');
 
-    // 4단계: OpenAI로 개선 시도
-    console.log('🤖 OpenAI 개선 시작');
-    const aiResult = await attemptOpenAIImprovement(userInput, answers, domain);
-
-    if (aiResult.success) {
-      console.log('✅ OpenAI 성공!');
-      return res.status(200).json({
-        success: true,
-        improved: aiResult.prompt,
-        score: 95,
-        message: '✨ AI가 프롬프트를 완벽하게 개선했습니다!',
-        method: 'openai_success',
-        originalLength: userInput.length,
-        improvedLength: aiResult.prompt.length
-      });
-    } else {
-      console.log('❌ OpenAI 실패:', aiResult.error.message);
-      const failureResponse = handleFailureHonestly(aiResult.error);
-      return res.status(503).json(failureResponse);
-    }
-
-  } catch (error) {
-    console.error('❌ 전체 시스템 오류:', error);
-    console.error('오류 스택:', error.stack);
+    // 5. OpenAI API 호출 시작
+    console.log('🤖 5단계: OpenAI API 호출 시작');
     
-    return res.status(500).json({
-      error: true,
-      type: 'system_error',
-      title: '❓ 시스템 오류',
-      message: '서버에서 오류가 발생했습니다.',
-      suggestion: '페이지를 새로고침하고 다시 시도해주세요.',
-      canRetry: true,
-      errorMessage: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-}
+    const prompt = `다음 한국어 요청을 구체적이고 상세한 프롬프트로 개선해주세요:
+"${allText}"
 
-// 📊 입력 충분성 검사
-function checkInputSufficiency(userInput, answers, domain) {
-  const allText = [userInput, ...answers].join(' ').toLowerCase();
-  
-  // 도메인별 키워드
-  const requirements = {
-    image: {
-      주체: ['강아지', '고양이', '사람', '여자', '남자', '제품', '로고', '풍경'],
-      스타일: ['사실적', '애니메이션', '3d', '일러스트', '사진', '그림'],
-      최소_단어: 4
-    },
-    video: {
-      목적: ['광고', '교육', '홍보', '설명', '튜토리얼'],
-      길이: ['초', '분', '짧게', '길게'],
-      최소_단어: 5  
-    },
-    dev: {
-      유형: ['웹', '앱', '프로그램', 'api', '사이트'],
-      기능: ['로그인', '검색', '결제', '관리'],
-      최소_단어: 6
-    }
-  };
+개선 요구사항:
+- 더 구체적이고 상세하게
+- 전문적인 용어 사용
+- 500자 이내
+- ${domain === 'image' ? '영어로' : '한국어로'} 작성`;
 
-  const reqs = requirements[domain] || requirements.image;
-  let filledCount = 0;
-  let missingAspects = [];
+    console.log('🤖 사용할 프롬프트:', prompt);
 
-  // 키워드 체크
-  Object.entries(reqs).forEach(([aspect, keywords]) => {
-    if (aspect === '최소_단어') return;
-    
-    const found = keywords.some(keyword => allText.includes(keyword));
-    if (found) {
-      filledCount++;
-    } else {
-      missingAspects.push(aspect);
-    }
-  });
-
-  // 길이 체크
-  const wordCount = allText.split(/\s+/).length;
-  const sufficient = (filledCount >= 2) && (wordCount >= reqs.최소_단어);
-  const totalCategories = Object.keys(reqs).length - 1;
-  const completeness = Math.round((filledCount / totalCategories) * 100);
-
-  return {
-    sufficient,
-    filledCount,
-    totalCategories,
-    missingAspects,
-    wordCount,
-    completeness
-  };
-}
-
-// ❓ 질문 생성
-function generateQuestions(sufficiency, domain) {
-  const questionSets = {
-    image: {
-      주체: {
-        question: '무엇을 그리고 싶으신가요?',
-        placeholder: '예: 골든리트리버 강아지, 젊은 여성',
-        options: ['사람', '동물', '제품/물건', '풍경', '직접 입력']
-      },
-      스타일: {
-        question: '어떤 스타일로 만드시겠어요?',
-        placeholder: '예: 사실적인 사진, 애니메이션',
-        options: ['사실적 사진', '애니메이션', '일러스트', '3D', '직접 입력']
-      }
-    },
-    video: {
-      목적: {
-        question: '영상의 목적이 무엇인가요?',
-        placeholder: '예: 제품 광고, 교육 콘텐츠',
-        options: ['광고', '교육', '홍보', '설명', '직접 입력']
-      },
-      길이: {
-        question: '영상 길이는?',
-        placeholder: '예: 30초, 2분',
-        options: ['30초', '1분', '3분', '5분+', '직접 입력']
-      }
-    },
-    dev: {
-      유형: {
-        question: '어떤 프로그램인가요?',
-        placeholder: '예: 쇼핑몰, 배달앱',
-        options: ['웹사이트', '모바일앱', 'API', '직접 입력']
-      },
-      기능: {
-        question: '주요 기능은?',
-        placeholder: '예: 로그인, 결제',
-        options: ['로그인', '결제', '검색', '관리', '직접 입력']
-      }
-    }
-  };
-
-  const questions = questionSets[domain] || questionSets.image;
-  return sufficiency.missingAspects
-    .map(aspect => questions[aspect])
-    .filter(q => q)
-    .slice(0, 2);
-}
-
-// 🤖 OpenAI 시도
-async function attemptOpenAIImprovement(userInput, answers, domain) {
-  const maxRetries = 2;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`🔄 OpenAI 시도 ${attempt}/${maxRetries}`);
-    
-    try {
-      const result = await callOpenAI(userInput, answers, domain);
-      
-      if (result && result.length > 20) {
-        console.log('✅ OpenAI 성공');
-        return { success: true, prompt: result };
-      } else {
-        console.log('⚠️ 응답 품질 부족');
-      }
-      
-    } catch (error) {
-      console.log(`❌ 시도 ${attempt} 실패:`, error.message);
-      
-      if (attempt === maxRetries) {
-        return { success: false, error };
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  
-  return { success: false, error: new Error('최대 재시도 횟수 초과') };
-}
-
-// 🤖 OpenAI API 호출
-async function callOpenAI(userInput, answers, domain) {
-  const allInput = [userInput, ...answers].join(' ');
-  
-  const prompts = {
-    image: `다음을 완벽한 영어 이미지 프롬프트로 개선하세요:
-"${allInput}"
-요구사항: 주체, 스타일, 구도, 조명 포함. 500자 이내.`,
-    
-    video: `다음을 영상 기획서로 개선하세요:
-"${allInput}"
-요구사항: 목적, 길이, 구성 포함. 한국어 500자 이내.`,
-    
-    dev: `다음을 개발 요구사항으로 개선하세요:
-"${allInput}"
-요구사항: 기능, 기술, 사용자 포함. 한국어 500자 이내.`
-  };
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
+    const requestBody = {
       model: 'gpt-3.5-turbo',
-      messages: [{
-        role: 'user',
-        content: prompts[domain] || prompts.image
-      }],
+      messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 500
-    }),
-    signal: AbortSignal.timeout(10000)
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API 오류: ${response.status} - ${errorData.error?.message || 'Unknown'}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0]?.message?.content?.trim();
-}
-
-// 💔 실패 처리
-function handleFailureHonestly(error) {
-  const msg = error.message.toLowerCase();
-  
-  if (msg.includes('timeout')) {
-    return {
-      error: true,
-      title: '⏰ 연결 시간 초과',
-      message: 'AI 서비스가 응답하지 않습니다.',
-      suggestion: '1-2분 후 다시 시도해주세요.',
-      canRetry: true
     };
-  }
-  
-  if (msg.includes('quota') || msg.includes('limit')) {
-    return {
-      error: true,
-      title: '🚫 사용량 초과',
-      message: 'AI 사용량이 초과되었습니다.',
-      suggestion: '몇 시간 후 다시 시도해주세요.',
-      canRetry: false
+    console.log('🤖 OpenAI 요청 바디:', JSON.stringify(requestBody, null, 2));
+
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    console.log('🤖 OpenAI 응답 상태:', openaiResponse.status);
+    console.log('🤖 OpenAI 응답 헤더:', Object.fromEntries(openaiResponse.headers));
+
+    if (!openaiResponse.ok) {
+      const errorData = await openaiResponse.json().catch(e => {
+        console.log('🤖 에러 데이터 파싱 실패:', e.message);
+        return {};
+      });
+      console.log('🤖 OpenAI 에러 응답:', JSON.stringify(errorData, null, 2));
+      
+      throw new Error(`OpenAI API 오류: ${openaiResponse.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    const openaiData = await openaiResponse.json();
+    console.log('🤖 OpenAI 성공 응답:', JSON.stringify(openaiData, null, 2));
+
+    const improvedPrompt = openaiData.choices[0]?.message?.content?.trim();
+    console.log('🤖 추출된 개선 프롬프트:', improvedPrompt);
+
+    if (!improvedPrompt || improvedPrompt.length < 10) {
+      throw new Error('OpenAI 응답이 비어있거나 너무 짧음');
+    }
+
+    // 6. 성공 응답
+    const processingTime = Date.now() - startTime;
+    console.log('✨ 6단계: 성공! 처리 시간:', processingTime, 'ms');
+    
+    return res.status(200).json({
+      success: true,
+      improved: improvedPrompt,
+      score: 95,
+      message: '✨ AI가 프롬프트를 완벽하게 개선했습니다!',
+      debug: {
+        processingTime: processingTime + 'ms',
+        originalLength: userInput.length,
+        improvedLength: improvedPrompt.length,
+        tokenUsage: openaiData.usage
+      }
+    });
+
+  } catch (error) {
+    const processingTime = Date.now() - startTime;
+    console.error('💥 === 치명적 오류 발생 ===');
+    console.error('💥 처리 시간:', processingTime, 'ms');
+    console.error('💥 오류 메시지:', error.message);
+    console.error('💥 오류 스택:', error.stack);
+    console.error('💥 오류 타입:', error.constructor.name);
+    
+    let errorResponse;
+    
+    if (error.message.includes('timeout')) {
+      errorResponse = {
+        error: true,
+        title: '⏰ 시간 초과',
+        message: 'AI 서비스 응답이 너무 오래 걸립니다.',
+        suggestion: '잠시 후 다시 시도해주세요.'
+      };
+    } else if (error.message.includes('401')) {
+      errorResponse = {
+        error: true,
+        title: '🔐 인증 오류',
+        message: 'OpenAI API 키가 유효하지 않습니다.',
+        suggestion: 'API 키를 확인해주세요.'
+      };
+    } else if (error.message.includes('429')) {
+      errorResponse = {
+        error: true,
+        title: '🚫 사용량 초과',
+        message: 'API 사용량이 한도를 초과했습니다.',
+        suggestion: '잠시 후 다시 시도해주세요.'
+      };
+    } else {
+      errorResponse = {
+        error: true,
+        title: '💥 시스템 오류',
+        message: '예상치 못한 오류가 발생했습니다.',
+        suggestion: '페이지를 새로고침하고 다시 시도해주세요.'
+      };
+    }
+    
+    errorResponse.debug = {
+      error: error.message,
+      stack: error.stack,
+      processingTime: processingTime + 'ms',
+      timestamp: new Date().toISOString()
     };
+    
+    return res.status(500).json(errorResponse);
   }
-  
-  return {
-    error: true,
-    title: '❓ 서비스 오류',
-    message: 'AI 서비스에 문제가 발생했습니다.',
-    suggestion: '잠시 후 다시 시도해주세요.',
-    canRetry: true
-  };
 }
