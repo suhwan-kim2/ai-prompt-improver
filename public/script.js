@@ -1,4 +1,4 @@
-// ⚡ public/script.js - 8단계 플로우 프론트엔드 (FULL, dedupe + draft + multi + other + undo)
+// ⚡ public/script.js - 8단계 플로우 프론트엔드 (FULL, dedupe + draft + multi + other + undo + status + text-input)
 
 const $ = (id) => document.getElementById(id);
 
@@ -153,9 +153,14 @@ async function requestAIQuestions(step) {
   }
 }
 
-// 🎯 API 응답 처리
+// 🎯 API 응답 처리 (상태 배지 + 점수 즉시 반영 포함)
 function handleAPIResponse(result) {
   state.currentStep = result.step;
+  
+  // ⭐ 진행 상황 표시
+  if (result.status) {
+    showProgressStatus(result.status, result.message || '');
+  }
 
   // 서버 힌트 수용
   if (result.ui) state.ui = { ...state.ui, ...result.ui };
@@ -166,9 +171,21 @@ function handleAPIResponse(result) {
     console.log(`✍️ 드래프트 v${state.round}:`, state.draftPrompt);
   }
 
-  // 진행도/점수 수용
-  if (typeof result.intentScore === 'number') state.intentScore = result.intentScore;
-  if (result.progress && typeof result.progress.intentScore === 'number') state.intentScore = result.progress.intentScore;
+  // ⭐ 실제 점수 사용 (하드코딩 제거)
+  if (typeof result.intentScore === 'number') {
+    state.intentScore = result.intentScore;
+    updateScoreDisplay();
+  }
+  if (typeof result.qualityScore === 'number') {
+    state.qualityScore = result.qualityScore;
+    updateScoreDisplay();
+  }
+
+  // 추가 진행도 수용(백엔드가 progress 객체로 줄 수 있음)
+  if (result.progress && typeof result.progress.intentScore === 'number') {
+    state.intentScore = result.progress.intentScore;
+    updateScoreDisplay();
+  }
 
   switch (result.step) {
     case 'questions':
@@ -183,6 +200,45 @@ function handleAPIResponse(result) {
     default:
       showError(`알 수 없는 단계: ${result.step}`);
   }
+}
+
+// ⭐ 새로운 함수: 진행 상황 표시 배지
+function showProgressStatus(status, message) {
+  const icon = status === 'improving' ? '🔄' : status === 'collecting' ? '📝' : '✅';
+  const statusHTML = `
+    <div class="status-indicator ${status}">
+      <div class="status-icon">${icon}</div>
+      <div class="status-text">${escapeHtml(message || '')}</div>
+      <div class="progress-details">
+        <div class="score-progress">
+          <span>의도 파악: ${state.intentScore}/95</span>
+          <div class="mini-progress"><div class="fill" style="width: ${(state.intentScore/95)*100}%"></div></div>
+        </div>
+        ${typeof state.qualityScore === 'number' && state.qualityScore > 0 ? `
+          <div class="score-progress">
+            <span>품질 점수: ${state.qualityScore}/95</span>
+            <div class="mini-progress"><div class="fill" style="width: ${(state.qualityScore/95)*100}%"></div></div>
+          </div>` : ''
+        }
+      </div>
+    </div>
+  `;
+  
+  const statusContainer = document.createElement('div');
+  statusContainer.className = 'status-overlay';
+  statusContainer.innerHTML = statusHTML;
+  
+  // 기존 상태 표시 제거
+  const existing = document.querySelector('.status-overlay');
+  if (existing) existing.remove();
+  
+  document.body.appendChild(statusContainer);
+  
+  // 3초 후 자동 제거(fade-out)
+  setTimeout(() => {
+    statusContainer.classList.add('fade-out');
+    setTimeout(() => statusContainer.remove(), 500);
+  }, 3000);
 }
 
 // ❓ 질문 응답 처리
@@ -241,7 +297,7 @@ function handleCompletedResponse(result) {
   showFinalResult(result);
 }
 
-// ❓ 질문 표시
+// ❓ 질문 표시 (텍스트 입력형 지원)
 function showQuestions(result) {
   // 이번 라운드 최소 답변 개수(질문 수 기반 1~3)
   state.minRequired = Math.min(Math.max(state.currentKeys.length, 1), 3);
@@ -267,6 +323,34 @@ function showQuestions(result) {
       <div class="questions-list">
         ${state.currentQuestions.map((q, index) => {
           const key = q.key || index;
+          const inputType = q.inputType || 'options';
+          const priority = q.priority || 'medium';
+          const scoreValue = q.scoreValue;
+
+          // ⭐ 텍스트 입력 타입 지원
+          if (inputType === 'text') {
+            return `
+            <div class="question-item" data-key="${key}">
+              <div class="question-header">
+                <h4 class="question-title">${escapeHtml(q.question)}</h4>
+                <span class="question-priority ${priority}">${getPriorityText(priority)}</span>
+                ${scoreValue ? `<span class="score-value">+${scoreValue}점</span>` : ''}
+              </div>
+              <div class="text-input-wrapper">
+                <textarea 
+                  id="answer-${key}" 
+                  placeholder="${escapeHtml(q.placeholder || '자유롭게 설명해주세요')}"
+                  rows="3"
+                ></textarea>
+                <button class="btn btn-small" onclick="submitTextAnswer('${key}')">
+                  입력 완료
+                </button>
+              </div>
+              <div class="selected-list" id="selected-${key}"></div>
+            </div>`;
+          }
+
+          // 기존 옵션 방식
           const opts = Array.isArray(q.options) ? q.options.slice() : [];
 
           // 서버가 includeOther true면 "직접 입력" 추가
@@ -276,7 +360,8 @@ function showQuestions(result) {
           <div class="question-item" data-key="${key}">
             <div class="question-header">
               <h4 class="question-title">${escapeHtml(q.question)}</h4>
-              <span class="question-priority ${q.priority || 'medium'}">${getPriorityText(q.priority)}</span>
+              <span class="question-priority ${priority}">${getPriorityText(priority)}</span>
+              ${scoreValue ? `<span class="score-value">+${scoreValue}점</span>` : ''}
             </div>
 
             ${opts.length > 0 ? `
