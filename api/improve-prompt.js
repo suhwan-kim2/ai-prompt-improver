@@ -1,7 +1,7 @@
 // api/improve-prompt.js
 // Next.js API Route — self-contained drop-in version
 // NOTE: If your project already has utils (mentionExtractor, intentAnalyzer, evaluationSystem, callOpenAI, DOMAIN_CHECKLISTS),
-// you can remove the inline shims below and import your own. The logic reflects your diff changes.
+// you can remove the inline shims below and import your own. The logic reflects diff + 중복질문 방지 + 한국어 질문 + 라운드별 드래프트 개선 반영.
 
 export default async function handler(req, res) {
   try {
@@ -12,6 +12,7 @@ export default async function handler(req, res) {
       domain = 'video', // 'video' | 'image'
       round = 1,
       mode = 'single', // 'single' | 'bulk'
+      asked = [],       // 👈 프론트에서 지금까지 물어본 질문 텍스트 배열
       debug = false,
     } = (req.method === 'POST' ? req.body : req.query) || {};
 
@@ -19,12 +20,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'USER_INPUT_REQUIRED' });
     }
 
-    if (step === 'start') return handleStart(res, userInput, domain, debug);
-    if (step === 'questions') return handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], domain, Number(round) || 1, mode, debug);
-    if (step === 'generate') return handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], domain, debug);
+    if (step === 'start') return handleStart(res, userInput, domain, asked, debug);
+    if (step === 'questions') return handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], domain, Number(round) || 1, mode, asked, debug);
+    if (step === 'generate') return handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], domain, asked, debug);
 
     // default: begin flow
-    return handleStart(res, userInput, domain, debug);
+    return handleStart(res, userInput, domain, asked, debug);
   } catch (e) {
     const wrapped = wrap(e, 'UNHANDLED_API_ERROR');
     if (process.env.NODE_ENV !== 'production') console.error(wrapped);
@@ -34,16 +35,20 @@ export default async function handler(req, res) {
 
 // ========== 단계 핸들러들 ==========
 
-async function handleStart(res, userInput, domain, debug) {
+async function handleStart(res, userInput, domain, asked, debug) {
   try {
     const mentions = mentionExtractor.extract(userInput);
-    const questions = await generateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: '', targetCount: 5, debug });
+    const questions = await generateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: '', targetCount: 5, asked, debug });
+    const draftPrompt = await generateDraftPrompt(userInput, [], domain, debug);
     return res.status(200).json({
       success: true,
       step: 'questions',
       questions,
       round: 1,
       mentions,
+      draftPrompt,
+      ui: { language: 'ko', allowMulti: true, includeOther: true },
+      progress: { intentScore: 0, coverage: 0 },
       message: 'AI가 체크리스트를 분석해서 질문을 생성했습니다.'
     });
   } catch (e) {
@@ -51,7 +56,7 @@ async function handleStart(res, userInput, domain, debug) {
   }
 }
 
-async function handleQuestions(res, userInput, answers, domain, round, mode, debug) {
+async function handleQuestions(res, userInput, answers, domain, round, mode, asked, debug) {
   try {
     const allText = [userInput, ...answers].join(' ');
     const mentions = mentionExtractor.extract(allText);
@@ -75,13 +80,15 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, deb
         intentScore,
         coverage: coveragePct,
         draftPrompt,
+        ui: { language: 'ko', allowMulti: true, includeOther: true },
+        progress: { intentScore, coverage: coveragePct },
         message: `충분한 정보가 수집되었습니다. (coverage ${coveragePct}%) 프롬프트를 생성합니다.`
       });
     }
 
     // 부족하면 정말 부족한 것만 소수 질문 (중복 방지)
     const targetCount = mode === 'bulk' ? 5 : 3;
-    const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, debug });
+    const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, asked, debug });
 
     if (!nextQuestions || nextQuestions.length === 0) {
       return res.status(200).json({
@@ -90,6 +97,8 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, deb
         intentScore,
         coverage: coveragePct,
         draftPrompt,
+        ui: { language: 'ko', allowMulti: true, includeOther: true },
+        progress: { intentScore, coverage: coveragePct },
         message: '더 물어볼 핵심 정보가 없어 최종 프롬프트를 생성합니다.'
       });
     }
@@ -102,6 +111,8 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, deb
       intentScore,
       coverage: coveragePct,
       draftPrompt,
+      ui: { language: 'ko', allowMulti: true, includeOther: true },
+      progress: { intentScore, coverage: coveragePct },
       message: `현재 coverage ${coveragePct}%. 부족 정보만 이어서 질문합니다.`
     });
   } catch (e) {
@@ -109,7 +120,7 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, deb
   }
 }
 
-async function handleGenerate(res, userInput, answers, domain, debug) {
+async function handleGenerate(res, userInput, answers, domain, asked, debug) {
   let attempts = 0;
   const maxAttempts = 4;
   let best = { text: '', score: -1 };
@@ -170,7 +181,7 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
         // 정말 아무 것도 없으면 최소 질문 1~2개만
         const mentions = mentionExtractor.extract([userInput, ...answers].join(' '));
         const fallbackQuestions = await generateAIQuestions(
-          userInput, answers, domain, mentions, 1, { draftPrompt: '', targetCount: 2, debug }
+          userInput, answers, domain, mentions, 1, { draftPrompt: '', targetCount: 2, asked, debug }
         );
         return res.status(200).json({
           success: true,
@@ -192,8 +203,18 @@ async function generateDraftPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const prompt =
     domain === 'image'
-      ? `Create an interim improved image prompt in English from the following facts.\nKeep it concise but structured.\n\n${allAnswers}\n\nReturn only the prompt text.`
-      : `Create an interim improved video prompt in English from the following facts.\nKeep it concise but structured.\n\n${allAnswers}\n\nReturn only the prompt text.`;
+      ? `Create an interim improved image prompt in English from the following facts.
+Keep it concise but structured.
+
+${allAnswers}
+
+Return only the prompt text.`
+      : `Create an interim improved video prompt in English from the following facts.
+Keep it concise but structured.
+
+${allAnswers}
+
+Return only the prompt text.`;
 
   const text = await callOpenAI(prompt, 0.2, debug);
   return (text || '').trim();
@@ -201,7 +222,7 @@ async function generateDraftPrompt(userInput, answers, domain, debug) {
 
 // 질문 생성기
 async function generateAIQuestions(userInput, answers, domain, mentions, round, opts = {}) {
-  const { draftPrompt = '', targetCount = 3, debug = false } = opts;
+  const { draftPrompt = '', targetCount = 3, asked = [], debug = false } = opts;
   const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
   const all = [userInput, ...answers, draftPrompt].join(' ').toLowerCase();
   const answeredKW = new Set();
@@ -217,6 +238,25 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
         answeredKW.add(String(k).toLowerCase());
       }
     }
+  }
+  // 이미 선택한 답변을 금지 목록에 추가하여 중복 질문 방지
+  for (const ans of answers) {
+    if (!ans) continue;
+    const parts = String(ans).split(':');
+    if (parts.length >= 2) {
+      const value = parts.slice(1).join(':').trim().toLowerCase();
+      if (value) {
+        answeredKW.add(value);
+        value.split(/[\s,]+/).forEach(tok => { if (tok) answeredKW.add(tok); });
+      }
+    }
+  }
+  // 과거에 물어봤던 질문 텍스트를 금지(동일·유사 질문 방지)
+  for (const q of Array.isArray(asked) ? asked : []) {
+    const ql = String(q || '').toLowerCase();
+    if (!ql) continue;
+    answeredKW.add(ql);
+    ql.split(/[\s,]+/).forEach(tok => { if (tok) answeredKW.add(tok); });
   }
 
   // 미싱 토픽 계산
@@ -243,7 +283,30 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
     2
   );
 
-  const prompt = `You are an expert prompt engineer.\nGoal: ask only the minimum decisive questions needed to complete a strong ${domain} prompt.\nAvoid duplicates and avoid anything already covered.\nLimit to ${targetCount} questions max.\n\nCurrent draft prompt (established facts):\n${draftPrompt ? draftPrompt.slice(0, 1200) : '(none)'}\n\nUser input: ${userInput.slice(0, 400)}\nAnswers so far: ${(answers.join(' | ') || 'none').slice(0, 400)}\nExtracted mentions:\n${safeMentions || '(none)'}\n\nBANNED keywords (already covered):\n${Array.from(answeredKW).join(', ') || '(none)'}\n\nMISSING topics (ask ONLY about these; merge if < ${targetCount}):\n${missingItems.map((x) => `- ${String(x.item)}`).join('\n')}\n\nReturn JSON matching this example shape:\n${baseSchema}\n`;
+  const prompt = `You are an expert prompt engineer.
+Goal: ask only the minimum decisive questions needed to complete a strong ${domain} prompt.
+Avoid duplicates and avoid anything already covered.
+Limit to ${targetCount} questions max.
+
+Return all questions and options in Korean. Use concise Korean wording.
+
+Current draft prompt (established facts):
+${draftPrompt ? draftPrompt.slice(0, 1200) : '(none)'}
+
+User input: ${userInput.slice(0, 400)}
+Answers so far: ${(answers.join(' | ') || 'none').slice(0, 400)}
+Extracted mentions:
+${safeMentions || '(none)'}
+
+BANNED keywords (already covered or previously asked):
+${Array.from(answeredKW).join(', ') || '(none)'}
+
+MISSING topics (ask ONLY about these; merge if < ${targetCount}):
+${missingItems.map((x) => `- ${String(x.item)}`).join('\n')}
+
+Return JSON matching this example shape:
+${baseSchema}
+`;
 
   const raw = await callOpenAI(prompt, 0.3, debug);
   let cleaned = (raw || '').trim().replace(/```(?:json)?/gi, '').replace(/```/g, '');
@@ -256,23 +319,17 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
   } catch (e) {
     if (debug) console.warn('JSON parse failed, returning fallback single question. Raw:', cleaned);
     return [
-      {
-        question: 'What is the primary goal and audience we must optimize for?',
-        options: ['Awareness', 'Engagement', 'Conversion', 'Education'],
-        rationale: 'Clarifies priority to shape structure and tone.'
-      }
+      { question: '최적화해야 하는 주요 목표와 타깃은 무엇인가요?', options: ['인지도', '참여도', '전환', '교육'], rationale: '우선순위를 명확히 해 구조와 톤을 결정합니다.' }
     ];
   }
 
   let qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
-  // 이미 언급된 키워드(answers + draft) 포함 질문/옵션은 제거
+  // 이미 언급된 키워드 포함 질문/옵션 제거
   const ban = new Set(Array.from(answeredKW).filter(Boolean));
   qs = qs.filter((q) => {
     const bucket = [q?.question || '', ...(q?.options || [])].join(' ').toLowerCase();
-    for (const k of ban) {
-      if (k && bucket.includes(k)) return false;
-    }
+    for (const k of ban) { if (k && bucket.includes(k)) return false; }
     return true;
   });
 
@@ -293,8 +350,29 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
 async function generateAIPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const domainPrompts = {
-    video: `Create a professional, production-ready video prompt in English from the following information:\n\n${allAnswers}\n\nRequirements:\n- Scene-by-scene timeline\n- Clear subject + audience + platform fit\n- Camera work and editing directions\n- Music/SFX and captions guidance\n- Technical specs (resolution, codec)\n- Length target`,
-    image: `Create a professional, production-ready image prompt in English from the following information:\n\n${allAnswers}\n\nRequirements:\n- Clear subject and composition\n- Style, lighting, lens/camera hints when relevant\n- Background/setting and mood\n- Negative constraints (what to avoid)\n- Technical specs (size/aspect, quality)`
+    video: `Create a professional, production-ready video prompt in English from the following information:
+
+${allAnswers}
+
+Requirements:
+- Scene-by-scene timeline
+- Clear subject + audience + platform fit
+- Camera work and editing directions
+- Music/SFX and captions guidance
+- Technical specs (resolution, codec)
+- Length target
+ - Only include details explicitly mentioned in the user input or answers; do not invent new scenes, actions, or specifics beyond the provided facts.`,
+    image: `Create a professional, production-ready image prompt in English from the following information:
+
+${allAnswers}
+
+Requirements:
+- Clear subject and composition
+- Style, lighting, lens/camera hints when relevant
+- Background/setting and mood
+- Negative constraints (what to avoid)
+ - Technical specs (size/aspect, quality)
+ - Only include details explicitly mentioned in the user input or answers; do not invent new elements beyond the provided facts.`
   };
 
   const sys = `You are a world-class prompt engineer. You write concise but complete prompts that tools can execute.`;
@@ -308,13 +386,17 @@ async function generateAIPrompt(userInput, answers, domain, debug) {
 const DOMAIN_CHECKLISTS = {
   video: {
     items: [
-      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness'] },
-      { item: 'audience', keywords: ['audience', 'target', 'demographic'] },
+      // goal 관련 키워드 확장
+      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness', 'entertain', 'entertainment', 'educate', 'education'] },
+      // audience 관련 키워드 확장
+      { item: 'audience', keywords: ['audience', 'target', 'demographic', 'adult', 'adults', 'kids', 'children', 'general'] },
+      // style 관련 키워드 확장
+      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe', 'dramatic', 'comedic', 'comedy'] },
+      // audio 관련 키워드 확장
+      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption', 'background music', 'sound effects'] },
       { item: 'platform', keywords: ['youtube', 'shorts', 'tiktok', 'instagram', 'platform'] },
       { item: 'length', keywords: ['seconds', 'minutes', 'length', 'duration'] },
-      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe'] },
       { item: 'visuals', keywords: ['camera', 'shot', 'b-roll', 'scene', 'timeline'] },
-      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption'] },
       { item: 'tech', keywords: ['resolution', 'codec', 'fps', 'aspect'] }
     ]
   },
@@ -322,10 +404,13 @@ const DOMAIN_CHECKLISTS = {
     items: [
       { item: 'subject', keywords: ['subject', 'character', 'object'] },
       { item: 'composition', keywords: ['framing', 'rule of thirds', 'composition'] },
-      { item: 'style', keywords: ['style', 'realistic', 'painterly', 'anime', 'photoreal'] },
-      { item: 'lighting', keywords: ['lighting', 'hdr', 'sunset', 'studio light'] },
-      { item: 'background', keywords: ['background', 'setting', 'environment'] },
-      { item: 'negative', keywords: ['avoid', 'no', 'exclude', 'banned'] },
+      { item: 'style', keywords: ['style', 'realistic', 'painterly', 'anime', 'photoreal', 'cartoonish', 'minimalist', 'abstract', 'photorealistic'] },
+      { item: 'lighting', keywords: ['lighting', 'hdr', 'sunset', 'twilight', 'dim', 'dramatic shadows', 'studio light'] },
+      { item: 'background', keywords: ['background', 'setting', 'environment', 'ruins', 'ruined cityscape', 'natural landscape', 'wildlife', 'neon signs'] },
+      { item: 'mood', keywords: ['dark', 'moody', 'menacing', 'harsh', 'dramatic'] },
+      { item: 'view', keywords: ['panoramic', 'side view'] },
+      { item: 'activity', keywords: ['survivor camps', 'survivors', 'foraging', 'mutated creatures', 'makeshift equipment', 'survivor activities'] },
+      { item: 'negative', keywords: ['avoid', 'no', 'exclude', 'banned', 'overly populated areas'] },
       { item: 'tech', keywords: ['size', 'aspect', 'quality', 'dpi'] }
     ]
   }
