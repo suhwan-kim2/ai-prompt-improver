@@ -551,3 +551,65 @@ button:disabled {
 .hidden {
   display: none !important;
 }
+
+/* 진행 상황 오버레이 */
+.status-overlay {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+}
+
+.status-indicator {
+  background: rgba(18, 24, 36, 0.95);
+  border: 2px solid #3b82f6;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+}
+
+.status-indicator.improving {
+  border-color: #f59e0b;
+}
+
+.status-icon {
+  font-size: 24px;
+  animation: pulse 1.5s infinite;
+}
+
+.score-progress {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.mini-progress {
+  height: 4px;
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.mini-progress .fill {
+  height: 100%;
+  background: #3b82f6;
+  transition: width 0.5s ease;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.fade-out {
+  animation: fadeOut 0.5s ease;
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; transform: translateX(20px); }
+}
