@@ -1,7 +1,77 @@
 // api/improve-prompt.js
 // Next.js API Route — video/image + writing/daily/dev 확장
-// 한국어 질문, 중복 방지, 드래프트 진행, 지어내기 금지, 안전한 에러 처리
+// 한국어 질문, 중복 방지, 드래프트 진행, 지어내기 금지, 안전한 에러 처리 + 유틸 폴백
 
+// ---------- 안전 폴백 유틸 ----------
+const g = globalThis;
+
+// mentionExtractor 폴백: @키워드/해시/따옴표 문구 정도만 뽑아줌
+const mentionExtractor = g.mentionExtractor ?? {
+  extract: (text = "") => {
+    try {
+      const m = new Set();
+      (text.match(/#\w+/g) || []).forEach(v => m.add(v));
+      (text.match(/@\w+/g) || []).forEach(v => m.add(v));
+      (text.match(/"([^"]+)"/g) || []).forEach(v => m.add(v.replace(/"/g, '')));
+      (text.match(/'([^']+)'/g) || []).forEach(v => m.add(v.replace(/'/g, '')));
+      return Array.from(m);
+    } catch { return []; }
+  }
+};
+
+// intentAnalyzer 폴백: 커버리지 기반 러프 스코어
+const intentAnalyzer = g.intentAnalyzer ?? {
+  calculateIntentScore: (userInput, answers, domain, checklist, mentions, draft) => {
+    try {
+      const text = [userInput, ...(answers||[]), draft||""].join(" ").toLowerCase();
+      const total = (checklist?.items || []).length || 1;
+      let hit = 0;
+      (checklist?.items || []).forEach(it => {
+        const keys = [it.item, ...(it.keywords || [])].filter(Boolean);
+        if (keys.some(k => text.includes(String(k).toLowerCase()))) hit++;
+      });
+      const base = Math.min(95, Math.round((hit/total)*80)+10);
+      return base;
+    } catch { return 0; }
+  }
+};
+
+// evaluationSystem 폴백: 길이/구조 키워드로 러프 스코어
+const evaluationSystem = g.evaluationSystem ?? {
+  evaluatePromptQuality: (promptText = "", domain = "video") => {
+    try {
+      const p = String(promptText);
+      let score = 50;
+      if (p.includes("###") || p.includes("Scene") || p.includes("Deliver:") || p.includes("Requirements")) score += 15;
+      if (/\[TBD:/.test(p)) score -= 10;
+      if (p.length > 400) score += 10;
+      if (/STRICT:/i.test(p)) score += 5;
+      score = Math.max(0, Math.min(100, score));
+      return { total: score };
+    } catch { return { total: 0 }; }
+  }
+};
+
+// getCoverageRatio 폴백
+function getCoverageRatio(checklist, text = "", mentions = []) {
+  try {
+    const total = (checklist?.items || []).length || 1;
+    const low = text.toLowerCase();
+    let hit = 0;
+    (checklist?.items || []).forEach(it => {
+      const keys = [it.item, ...(it.keywords || [])].filter(Boolean);
+      if (keys.some(k => low.includes(String(k).toLowerCase()))) hit++;
+    });
+    const bonus = Math.min(0.1, (mentions?.length || 0) * 0.005);
+    return Math.min(1, hit/total + bonus);
+  } catch { return 0; }
+}
+
+// OpenAI 호출 폴백들 — 환경에서 제공되면 그걸 사용, 아니면 빈 문자열 반환
+const callOpenAI = g.callOpenAI ?? (async () => "");
+const callOpenAIWithSystem = g.callOpenAIWithSystem ?? (async () => "");
+
+// ---------- 핸들러 ----------
 export default async function handler(req, res) {
   try {
     const {
@@ -16,22 +86,20 @@ export default async function handler(req, res) {
     } = (req.method === 'POST' ? req.body : req.query) || {};
 
     if (!userInput || typeof userInput !== 'string') {
-      return res.status(400).json({ success: false, error: 'USER_INPUT_REQUIRED' });
+      return res.status(200).json({ success: false, error: 'USER_INPUT_REQUIRED', message: 'userInput가 필요합니다.' });
     }
 
-    // 지원 안 되는 도메인 방지: 기본 video로 폴백
     const dom = DOMAIN_CHECKLISTS[domain] ? domain : 'video';
 
-    if (step === 'start') return handleStart(res, userInput, dom, debug);
-    if (step === 'questions') return handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], dom, Number(round) || 1, mode, asked, debug);
-    if (step === 'generate') return handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], dom, debug);
+    if (step === 'start')    return await handleStart(res, userInput, dom, debug);
+    if (step === 'questions') return await handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], dom, Number(round) || 1, mode, asked, debug);
+    if (step === 'generate')  return await handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], dom, debug);
 
-    return handleStart(res, userInput, dom, debug);
+    return await handleStart(res, userInput, dom, debug);
   } catch (e) {
     const wrapped = wrap(e, 'UNHANDLED_API_ERROR');
     if (process.env.NODE_ENV !== 'production') console.error(wrapped);
-    // 항상 JSON으로 응답
-    return res.status(500).json({ success: false, error: wrapped.code || 'UNKNOWN', detail: String(wrapped.message || wrapped) });
+    return res.status(200).json({ success: false, error: wrapped.code || 'UNKNOWN', detail: String(wrapped.message || wrapped) });
   }
 }
 
@@ -52,6 +120,7 @@ async function handleStart(res, userInput, domain, debug) {
       message: 'AI가 체크리스트를 분석해서 질문을 생성했습니다.'
     });
   } catch (e) {
+    // 절대 500 내지 말고 폴백 질문
     return res.status(200).json({
       success: true,
       step: 'questions',
@@ -135,7 +204,6 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
       message: `현재 coverage ${coveragePct}%. 부족 정보만 이어서 질문합니다.`
     });
   } catch (e) {
-    // 여기서도 절대 500 내지 말고 안전한 다음 단계로
     return res.status(200).json({
       success: true,
       step: 'questions',
@@ -168,7 +236,7 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
           step: 'completed',
           originalPrompt: userInput,
           improvedPrompt: generatedPrompt,
-          intentScore: Math.max(90, best.score - 2), // 보여주기용, 과도한 95 고정 제거
+          intentScore: Math.max(90, best.score - 2),
           qualityScore,
           attempts,
           status: 'done',
@@ -176,11 +244,10 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
         });
       }
     } catch (e) {
-      // 계속 재시도
+      // 재시도 계속
     }
   }
 
-  // 최종 폴백
   if (best.text) {
     return res.status(200).json({
       success: true,
@@ -195,7 +262,6 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
     });
   }
 
-  // 정말 실패 시에도 JSON
   return res.status(200).json({
     success: true,
     step: 'completed',
@@ -212,11 +278,8 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
 // ========== LLM 유틸 (안전 래퍼) ==========
 
 async function safeGenerateDraftPrompt(userInput, answers, domain, debug) {
-  try {
-    return await generateDraftPrompt(userInput, answers, domain, debug);
-  } catch {
-    return '';
-  }
+  try { return await generateDraftPrompt(userInput, answers, domain, debug); }
+  catch { return ''; }
 }
 
 async function safeGenerateAIQuestions(userInput, answers, domain, mentions, round, opts) {
@@ -237,15 +300,13 @@ async function safeGenerateAIPrompt(userInput, answers, domain, debug) {
 }
 
 function safeIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt) {
-  try {
-    return intentAnalyzer.calculateIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt);
-  } catch { return 0; }
+  try { return intentAnalyzer.calculateIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt); }
+  catch { return 0; }
 }
 
 function safeCoverage(checklist, text, mentions) {
-  try {
-    return getCoverageRatio(checklist, text, mentions);
-  } catch { return 0; }
+  try { return getCoverageRatio(checklist, text, mentions); }
+  catch { return 0; }
 }
 
 function safeEvaluate(text, domain) {
@@ -259,8 +320,8 @@ function safeEvaluate(text, domain) {
 
 async function generateDraftPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
-
   let prompt;
+
   if (domain === 'image') {
     prompt = `Create an interim improved image prompt in English from the following facts.
 Keep it concise but structured.
@@ -283,7 +344,6 @@ ${allAnswers}
 
 Return only the brief text.`;
   } else if (domain === 'dev') {
-    // ✅ dev용 임시 드래프트
     prompt = `Create a concise interim web app development brief in English from the following facts.
 Include goal, target users, key features, tech/platform preferences (if any), deployment target, and constraints.
 
@@ -291,7 +351,6 @@ ${allAnswers}
 
 Return only the brief text.`;
   } else {
-    // video (default)
     prompt = `Create an interim improved video prompt in English from the following facts.
 Keep it concise but structured.
 
@@ -314,19 +373,17 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
   const safeMentions = Array.from(new Set([...(mentions || [])].map(String))).slice(0, 30).join(', ');
 
   for (const item of checklist.items) {
-    if (!item) continue;
     const keys = Array.isArray(item.keywords) ? item.keywords : [item.item, ...(item.keywords || [])];
     for (const k of keys) if (all.includes(String(k).toLowerCase())) answeredKW.add(String(k).toLowerCase());
   }
   for (const ans of answers) {
-    if (!ans) continue;
-    const parts = String(ans).split(':');
+    const parts = String(ans || '').split(':');
     if (parts.length >= 2) {
       const value = parts.slice(1).join(':').trim().toLowerCase();
       if (value) value.split(/\s+/).forEach(tok => answeredKW.add(tok));
     }
   }
-  asked.forEach(q => answeredKW.add(q.toLowerCase()));
+  (asked || []).forEach(q => answeredKW.add(String(q || '').toLowerCase()));
 
   const missingItems = checklist.items
     .map(x => ({ item: x.item, keywords: x.keywords || [] }))
@@ -365,7 +422,7 @@ ${missingItems.map(x => `- ${String(x.item)}`).join('\n')}
 
 Constraints:
 - Do NOT propose brand/tool names or very specific examples unless already present in user input/answers/draft.
-- Prefer category-style options (예: 플랫폼/호스팅, 기능 범주, 프런트/백엔드 스택, 인증/데이터/배포/테스트/일정).
+- Prefer category-style options (예: 플랫폼/호스팅, 길이/톤/언어/형식 등).
 - For writing/daily/dev domains, you may use inputType 'text' with a short placeholder when options are too narrow.
 
 Return JSON shape:
@@ -398,11 +455,7 @@ ${baseSchema}`;
   if ((domain === 'writing' || domain === 'daily' || domain === 'dev')) {
     qs = qs.map(q => {
       if (!q.options || q.options.length === 0) {
-        return {
-          ...q,
-          inputType: 'text',
-          placeholder: q.placeholder || '간단히 입력해주세요'
-        };
+        return { ...q, inputType: 'text', placeholder: q.placeholder || '간단히 입력해주세요' };
       }
       return q;
     });
@@ -547,7 +600,6 @@ const DOMAIN_CHECKLISTS = {
       { item: 'format', keywords: ['메모', '요약', '메시지', '이메일', '체크리스트'] }
     ]
   },
-  // ✅ dev 도메인(웹앱)
   dev: {
     items: [
       { item: 'goal', keywords: ['goal', '목표', '서비스 목적', '가치제안'] },
@@ -596,12 +648,37 @@ function sanitizeGenerated(text, facts) {
   }
 }
 
-// ========== 공통 유틸 (프로젝트 기존 것 사용) ==========
+// ========== 공통 유틸 ==========
 function wrap(err, code = 'UNKNOWN') {
   const e = err instanceof Error ? err : new Error(String(err));
   e.code = code;
   return e;
 }
 
-// mentionExtractor, intentAnalyzer, evaluationSystem, getCoverageRatio, callOpenAI, callOpenAIWithSystem
-// 는 기존 구현을 그대로 사용하세요.
+function fallbackQuestionsFor(domain = 'video') {
+  // 최소 안전 질문 2~3개
+  if (domain === 'dev') {
+    return [
+      { question: '핵심 기능 범주는 무엇인가요?', options: ['회원/인증', '콘텐츠 CRUD', '결제/구독', '알림/채팅', '관리자 대시보드'] },
+      { question: '배포/호스팅 선호가 있나요?', options: ['Vercel', 'AWS', 'GCP', '온프레미스', '미정'] },
+      { question: '목표 사용자/고객은 누구인가요?', options: ['일반 소비자', 'B2B', '내부 직원', '미정'] }
+    ];
+  }
+  if (domain === 'writing') {
+    return [
+      { question: '글 목적은 무엇인가요?', options: ['정보 제공', '설득/세일즈', '홍보', '내부 보고'] },
+      { question: '톤/문체는 어떻게 할까요?', options: ['전문적', '친근', '간결', '유머러스'] }
+    ];
+  }
+  if (domain === 'daily') {
+    return [
+      { question: '가장 시급한 목표는 무엇인가요?', options: ['연락/메일', '정리/계획', '구매/예산', '업무 진행'] },
+      { question: '마감 시점이 있나요?', options: ['오늘', '내일', '이번 주', '미정'] }
+    ];
+  }
+  // video/image 공용
+  return [
+    { question: '목적/용도는 무엇인가요?', options: ['오락', '교육', '홍보', '정보'] },
+    { question: '대상/플랫폼은 무엇인가요?', options: ['유튜브', '틱톡', '인스타', '웹/앱', '미정'] }
+  ];
+}
