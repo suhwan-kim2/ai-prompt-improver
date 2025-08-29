@@ -1,4 +1,4 @@
-// 🔥 api/improve-prompt.js - 8단계 플로우 메인 API
+// 🔥 api/improve-prompt.js - 8단계 플로우 메인 API (디버그 강화판)
 
 import { readJson } from "./helpers.js";
 import { MentionExtractor } from "../utils/mentionExtractor.js";
@@ -7,12 +7,12 @@ import { EvaluationSystem } from "../utils/evaluationSystem.js";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// 🎯 도메인별 체크리스트 (AI가 참고할 기준)
+// 🎯 도메인별 체크리스트 (생략 없이 유지)
 const DOMAIN_CHECKLISTS = {
   video: {
     basic_info: [
       "영상의 구체적인 목적과 용도",
-      "타겟 시청자의 연령대와 특성", 
+      "타겟 시청자의 연령대와 특성",
       "정확한 영상 길이와 시간",
       "배포할 플랫폼과 채널",
       "핵심 메시지와 전달 내용"
@@ -39,126 +39,115 @@ const DOMAIN_CHECKLISTS = {
       "CTA와 행동 유도"
     ]
   },
-  
   image: {
-    basic_info: ["그릴 주제와 대상", "사용 목적과 용도", "타겟 감상자", "전체적인 컨셉", "핵심 메시지"],
-    visual_elements: ["구체적인 구도와 레이아웃", "색상 팔레트와 톤", "조명과 그림자 설정", "배경과 환경 설정", "세부 디테일과 질감"],
-    style_specs: ["예술적 스타일과 기법", "해상도와 비율", "분위기와 감정 표현", "브랜딩 요소", "금지/회피 요소"]
+    basic_info: ["그릴 주제와 대상","사용 목적과 용도","타겟 감상자","전체적인 컨셉","핵심 메시지"],
+    visual_elements: ["구체적인 구도와 레이아웃","색상 팔레트와 톤","조명과 그림자 설정","배경과 환경 설정","세부 디테일과 질감"],
+    style_specs: ["예술적 스타일과 기법","해상도와 비율","분위기와 감정 표현","브랜딩 요소","금지/회피 요소"]
   },
-
   dev: {
-    project_basics: ["프로젝트 유형과 목적", "주요 기능과 특징", "타겟 사용자 그룹", "사용 시나리오", "성공 지표"],
-    technical_reqs: ["기술 스택과 프레임워크", "성능 요구사항", "보안 고려사항", "확장성 요구사항", "통합/연동 필요성"],
-    ux_design: ["UI/UX 디자인 방향", "사용자 경험 플로우", "접근성 고려사항", "반응형/다기기 지원", "브랜딩과 스타일 가이드"]
+    project_basics: ["프로젝트 유형과 목적","주요 기능과 특징","타겟 사용자 그룹","사용 시나리오","성공 지표"],
+    technical_reqs: ["기술 스택과 프레임워크","성능 요구사항","보안 고려사항","확장성 요구사항","통합/연동 필요성"],
+    ux_design: ["UI/UX 디자인 방향","사용자 경험 플로우","접근성 고려사항","반응형/다기기 지원","브랜딩과 스타일 가이드"]
   }
 };
 
-// 유틸리티 인스턴스들
+// 유틸 인스턴스
 const mentionExtractor = new MentionExtractor();
 const intentAnalyzer = new IntentAnalyzer();
 const evaluationSystem = new EvaluationSystem();
 
 export default async function handler(req, res) {
-  console.log('🚀 AI 프롬프트 개선기 8단계 플로우 시작');
-  
-  // CORS 설정
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: true, message: 'Method not allowed. Use POST.' });
   }
-  
-  if (req.method !== "POST") {
-    return res.status(405).json({ 
-      error: true,
-      message: 'Method not allowed. Use POST.'
-    });
+
+  // 요청 파싱 가드
+  let requestData = {};
+  try {
+    requestData = await readJson(req);
+  } catch (e) {
+    console.warn('⚠️ 요청 JSON 파싱 실패:', e?.message);
+    requestData = {};
   }
+
+  const {
+    userInput = "",
+    answers = [],
+    domain = "video",
+    step = "start",
+    round = 1,
+    mode,
+    debug // ← 프론트에서 {debug:true} 넣으면 상세로그 반환
+  } = requestData;
 
   try {
-    // 📥 1단계: 사용자 입력 받기
-    const requestData = await readJson(req);
-    const { 
-      userInput = "", 
-      answers = [], 
-      domain = "video",
-      step = "start",
-      round = 1,
-      mode
-    } = requestData;
-
-    console.log(`📍 현재 단계: ${step}, 라운드: ${round}`);
-
-    // API 키 확인
-    if (!OPENAI_API_KEY || OPENAI_API_KEY === 'your-api-key-here') {
-      throw new Error('AI_SERVICE_UNAVAILABLE');
+    // 간단 진단 모드: OPENAI 키 유무 + 테스트 호출
+    if (step === 'diag') {
+      const diag = await runDiagnostics(debug);
+      return res.status(diag.ok ? 200 : 500).json(diag);
     }
 
-    // 단계별 처리
+    if (!OPENAI_API_KEY) {
+      throw makeErr('AI_SERVICE_UNAVAILABLE', 'OPENAI_API_KEY is missing on server (Vercel env).');
+    }
+
     switch (step) {
       case 'start':
-        return await handleStart(res, userInput, domain);
-      
-      case 'questions':
-        return await handleQuestions(res, userInput, answers, domain, round, mode);
-      
-      case 'generate':
-        return await handleGenerate(res, userInput, answers, domain);
-      
-      default:
-        throw new Error('INVALID_STEP');
-    }
+        return await handleStart(res, userInput, domain, debug);
 
+      case 'questions':
+        return await handleQuestions(res, userInput, answers, domain, round, mode, debug);
+
+      case 'generate':
+        return await handleGenerate(res, userInput, answers, domain, debug);
+
+      default:
+        throw makeErr('INVALID_STEP', `Unknown step: ${step}`);
+    }
   } catch (error) {
-    console.error('❌ API 오류:', error);
     return handleError(res, error);
   }
 }
 
-// 🎯 2단계: AI가 체크리스트 보고 질문 생성
-async function handleStart(res, userInput, domain) {
-  console.log('📍 2단계: AI 체크리스트 질문 생성');
-  
+// ========== 단계 핸들러들 ==========
+
+async function handleStart(res, userInput, domain, debug) {
   try {
     const mentions = mentionExtractor.extract(userInput);
-    console.log('🔍 추출된 키워드:', mentions);
-    
-    const questions = await generateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: "" });
-    
+    const questions = await generateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: "", targetCount: 5, debug });
     return res.status(200).json({
       success: true,
       step: 'questions',
-      questions: questions,
+      questions,
       round: 1,
-      mentions: mentions,
+      mentions,
       message: 'AI가 체크리스트를 분석해서 질문을 생성했습니다.'
     });
-    
-  } catch (error) {
-    throw new Error(`AI_QUESTION_GENERATION_FAILED: ${error.message}`);
+  } catch (e) {
+    throw wrap(e, 'AI_QUESTION_GENERATION_FAILED');
   }
 }
 
-// 🔄 3-6단계: 답변 수집 → 임시 개선 → 부족 질문(혹은 생성 단계)
-async function handleQuestions(res, userInput, answers, domain, round, mode) {
-  console.log('📍 3-6단계: 답변 반영 임시 개선 + 부족 질문');
-
+async function handleQuestions(res, userInput, answers, domain, round, mode, debug) {
   try {
     const allText = [userInput, ...answers].join(" ");
     const mentions = mentionExtractor.extract(allText);
     const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
 
-    // 1) 라운드별 임시 개선 프롬프트 (영상/이미지는 영어)
-    const draftPrompt = await generateDraftPrompt(userInput, answers, domain);
+    // 임시 개선(영문)
+    const draftPrompt = await generateDraftPrompt(userInput, answers, domain, debug);
 
-    // 2) 체크리스트 커버리지/의도 점수
+    // 의도/커버리지
     const intentScore = intentAnalyzer.calculateIntentScore(userInput, answers, domain, checklist, mentions);
     const coverage = getCoverageRatio(checklist, (allText + "\n" + draftPrompt).toLowerCase(), mentions);
     const coveragePct = Math.round(coverage * 100);
 
-    // 3) 충족되면 → generate
     if (coverage >= 0.65 || (round >= 3 && coverage >= 0.55) || intentScore >= 95) {
       return res.status(200).json({
         success: true,
@@ -170,11 +159,9 @@ async function handleQuestions(res, userInput, answers, domain, round, mode) {
       });
     }
 
-    // 4) 부족 정보만 질문
     const targetCount = mode === 'bulk' ? 7 : 3;
-    const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount });
+    const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, debug });
 
-    // 5) 질문 0개면 → generate
     if (!nextQuestions || nextQuestions.length === 0) {
       return res.status(200).json({
         success: true,
@@ -186,7 +173,6 @@ async function handleQuestions(res, userInput, answers, domain, round, mode) {
       });
     }
 
-    // 6) 계속 질문
     return res.status(200).json({
       success: true,
       step: "questions",
@@ -197,34 +183,22 @@ async function handleQuestions(res, userInput, answers, domain, round, mode) {
       draftPrompt,
       message: `현재 coverage ${coveragePct}%. 부족 정보만 이어서 질문합니다.`
     });
-
   } catch (e) {
-    throw new Error(`INTENT_ANALYSIS_FAILED: ${e.message}`);
+    throw wrap(e, 'INTENT_ANALYSIS_FAILED');
   }
 }
 
-// 🎯 5-8단계: 프롬프트 생성 → 품질 평가
-async function handleGenerate(res, userInput, answers, domain) {
-  console.log('📍 5-8단계: AI 프롬프트 생성 및 품질 평가');
-
+async function handleGenerate(res, userInput, answers, domain, debug) {
   let attempts = 0;
   const maxAttempts = 5;
 
   while (attempts < maxAttempts) {
     attempts++;
-    console.log(`🔄 프롬프트 생성 시도 ${attempts}/${maxAttempts}`);
-
     try {
-      // 📍 5단계: AI가 사용자 답변 보고 프롬프트 생성 ⭐핵심⭐
-      const generatedPrompt = await generateAIPrompt(userInput, answers, domain);
-      console.log('🤖 AI 생성 프롬프트:', (generatedPrompt || '').substring(0, 100) + '...');
-
-      // 📍 8단계: evaluationSystem.js로 품질 95점 계산
+      const generatedPrompt = await generateAIPrompt(userInput, answers, domain, debug);
       const qualityScore = evaluationSystem.evaluatePromptQuality(generatedPrompt, domain);
-      console.log('📊 프롬프트 품질 점수:', qualityScore.total);
 
       if (qualityScore.total >= 95) {
-        // 🎉 완성!
         return res.status(200).json({
           success: true,
           step: 'completed',
@@ -232,23 +206,15 @@ async function handleGenerate(res, userInput, answers, domain) {
           improvedPrompt: generatedPrompt,
           intentScore: 95,
           qualityScore: qualityScore.total,
-          attempts: attempts,
+          attempts,
           message: `🎉 완성! AI가 ${attempts}번 만에 95점 품질 달성!`
         });
       } else {
-        console.log(`⚠️ 품질 ${qualityScore.total}점 → 재생성/보강 필요`);
         if (attempts >= maxAttempts) {
-          // ❗최대 시도 도달 → 부족 정보 보강용 "추가 질문"으로 되돌림
           const mentions = mentionExtractor.extract([userInput, ...answers, generatedPrompt].join(' '));
           const followupQuestions = await generateAIQuestions(
-            userInput,
-            answers,             // 기존 답변 유지
-            domain,
-            mentions,
-            1,
-            { draftPrompt: generatedPrompt, targetCount: 3 }
+            userInput, answers, domain, mentions, 1, { draftPrompt: generatedPrompt, targetCount: 3, debug }
           );
-
           return res.status(200).json({
             success: true,
             step: 'questions',
@@ -258,15 +224,13 @@ async function handleGenerate(res, userInput, answers, domain) {
             message: `현재 품질 ${qualityScore.total}점입니다. 부족 정보를 보완하기 위해 추가 질문을 제시합니다.`
           });
         }
-        // 계속 루프 돌아 재시도
+        // 루프 계속
       }
-
-    } catch (error) {
-      console.error(`💥 시도 ${attempts} 실패:`, error.message);
+    } catch (e) {
       if (attempts >= maxAttempts) {
         const mentions = mentionExtractor.extract([userInput, ...answers].join(' '));
         const fallbackQuestions = await generateAIQuestions(
-          userInput, answers, domain, mentions, 1, { draftPrompt: '', targetCount: 3 }
+          userInput, answers, domain, mentions, 1, { draftPrompt: '', targetCount: 3, debug }
         );
         return res.status(200).json({
           success: true,
@@ -281,44 +245,44 @@ async function handleGenerate(res, userInput, answers, domain) {
   }
 }
 
-// 🤖 임시 개선 프롬프트 (영상/이미지는 영어)
-async function generateDraftPrompt(userInput, answers, domain) {
+// ========== LLM 유틸 ==========
+
+// 임시 개선 프롬프트(영문)
+async function generateDraftPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const prompt =
     domain === 'image'
-      ? `Create an interim improved image prompt in English from the following facts. Keep it concise but structured.
+      ? `Create an interim improved image prompt in English from the following facts.
+Keep it concise but structured.
 
 ${allAnswers}
 
 Return only the prompt text.`
-      : `Create an interim improved video prompt in English from the following facts. Keep it concise but structured.
+      : `Create an interim improved video prompt in English from the following facts.
+Keep it concise but structured.
 
 ${allAnswers}
 
 Return only the prompt text.`;
 
-  return await callOpenAI(prompt, 0.4);
+  return await callOpenAI(prompt, 0.4, debug);
 }
 
-// 🤖 AI 질문 생성 함수 (임시 프롬프트 반영, 중복 차단)
+// 질문 생성 (draft 포함해 중복 차단)
 async function generateAIQuestions(userInput, answers, domain, mentions, round, opts = {}) {
-  const { draftPrompt = "", targetCount = 3 } = opts;
+  const { draftPrompt = "", targetCount = 3, debug = false } = opts;
 
   const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
   const allText = [userInput, ...answers, draftPrompt].join(' ').toLowerCase();
 
-  // 부족한 항목 수집
   const missingItems = [];
   Object.entries(checklist).forEach(([category, items]) => {
     items.forEach(item => {
       const coverage = checkItemCoverage(item, allText, mentions);
-      if (coverage < 0.7) {
-        missingItems.push({ category, item, coverage });
-      }
+      if (coverage < 0.7) missingItems.push({ category, item, coverage });
     });
   });
 
-  // 답변/임시프롬프트에서 나온 키워드(금지어)
   const answeredKW = Array.from(new Set([
     ...buildAnsweredKeywords(answers),
     ...buildAnsweredKeywords([draftPrompt])
@@ -361,41 +325,34 @@ BANNED keywords (already covered):
 ${answeredLine || "(none)"}
 
 MISSING topics (ask ONLY about these; merge if < ${targetCount}):
-${missingItems.map(x => `- ${typeof x.item === "string" ? x.item : String(x.item)}`).join("\n")}
+${missingItems.map(x => `- ${String(x.item)}`).join("\n")}
 
 Return JSON matching this example shape:
 ${baseSchema}
 `;
 
-  // 호출 & 파싱
-  const text = await callOpenAI(prompt, 0.3);
-  try {
-    let s = text.trim().replace(/```(?:json)?/gi, "").replace(/```/g, "");
-    const first = s.indexOf("{"), last = s.lastIndexOf("}");
-    if (first !== -1 && last !== -1 && last > first) s = s.slice(first, last + 1);
-    const parsed = JSON.parse(s);
-    let qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
+  const text = await callOpenAI(prompt, 0.3, debug);
+  let cleaned = text.trim().replace(/```(?:json)?/gi, "").replace(/```/g, "");
+  const first = cleaned.indexOf("{"), last = cleaned.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) cleaned = cleaned.slice(first, last + 1);
 
-    // 금지 키워드 포함된 질문/옵션 제거
-    const ban = new Set(answeredKW.map(v => v.toLowerCase()));
-    qs = qs.filter(q => {
-      const bucket = [q?.question || "", ...(q?.options || [])].join(" ").toLowerCase();
-      for (const k of ban) { if (k && bucket.includes(k)) return false; }
-      return true;
-    });
+  const parsed = JSON.parse(cleaned);
+  let qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
-    if (qs.length > targetCount) qs = qs.slice(0, targetCount);
-    return qs;
-  } catch (e) {
-    console.error('AI 질문 파싱 오류:', e);
-    throw new Error('AI 응답을 파싱할 수 없습니다.');
-  }
+  const ban = new Set(answeredKW.map(v => v.toLowerCase()));
+  qs = qs.filter(q => {
+    const bucket = [q?.question || "", ...(q?.options || [])].join(" ").toLowerCase();
+    for (const k of ban) { if (k && bucket.includes(k)) return false; }
+    return true;
+  });
+
+  if (qs.length > targetCount) qs = qs.slice(0, targetCount);
+  return qs;
 }
 
-// 🤖 AI 프롬프트 생성 함수 (5단계 핵심)
-async function generateAIPrompt(userInput, answers, domain) {
+// 최종 프롬프트 생성
+async function generateAIPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
-  
   const domainPrompts = {
     video: `Create a professional, production-ready video prompt in English from the following information:
 
@@ -432,53 +389,56 @@ Requirements:
 - Performance & security expectations
 - 600-1000 characters total`
   };
-
   const prompt = domainPrompts[domain] || domainPrompts.video;
-  return await callOpenAI(prompt, 0.8);
+  return await callOpenAI(prompt, 0.8, debug);
 }
 
-// 🤖 OpenAI API 호출 (호환성 강화 버전)
-async function callOpenAI(prompt, temperature = 0.7) {
-  // 안전 타임아웃(초 단위)
-  const TIMEOUT_MS = 60000; // 필요시 30000으로 줄여도 OK
+// 🤖 OpenAI API 호출 (AbortController 타임아웃, 에러 메시지 풍부화)
+async function callOpenAI(prompt, temperature = 0.7, debug = false) {
+  const TIMEOUT_MS = 60000;
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(new Error("RequestTimeout")), TIMEOUT_MS);
 
   try {
+    const body = {
+      model: 'gpt-4o-mini', // 필요 시 계정에서 허용된 모델명으로 교체
+      messages: [{ role: 'user', content: prompt }],
+      temperature,
+      max_tokens: 1000
+    };
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify({
-        // 허용 모델 중 하나로 설정 (변경 가능)
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature,
-        max_tokens: 1000
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
 
+    const rawText = await response.text().catch(() => '');
     if (!response.ok) {
-      // OpenAI 표준 에러 포맷을 최대한 살려서 리턴
-      let errText = '';
-      try { errText = await response.text(); } catch {}
-      let errJson;
-      try { errJson = JSON.parse(errText); } catch {}
-      const apiMsg = errJson?.error?.message || errText || `status ${response.status}`;
-      throw new Error(`OpenAI API 오류: ${apiMsg}`);
+      let apiMsg = rawText;
+      try {
+        const j = JSON.parse(rawText);
+        apiMsg = j?.error?.message || rawText;
+      } catch {}
+      throw makeErr('OPENAI_API_ERROR', `status=${response.status} ${apiMsg || ''}`.trim());
     }
+    let data;
+    try { data = JSON.parse(rawText); } catch { throw makeErr('OPENAI_PARSE_ERROR', 'JSON parse failed'); }
 
-    const data = await response.json();
     const text = data?.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new Error('OpenAI 응답 파싱 실패(빈 content)');
+    if (!text) throw makeErr('OPENAI_EMPTY', 'Empty content from API');
+
+    if (debug) {
+      console.log('🔎 OpenAI OK:', { model: data?.model, usage: data?.usage });
+    }
     return text;
   } catch (e) {
-    // 타임아웃/권한/네트워크 등 모든 에러를 명확히 올려보냄
     if (e?.name === 'AbortError' || String(e?.message).includes('RequestTimeout')) {
-      throw new Error('OpenAI 호출 타임아웃(네트워크 지연 또는 모델 응답 지연)');
+      throw makeErr('OPENAI_TIMEOUT', 'OpenAI call timed out');
     }
     throw e;
   } finally {
@@ -486,25 +446,23 @@ async function callOpenAI(prompt, temperature = 0.7) {
   }
 }
 
-// 📊 항목 커버리지 체크
+// ========== 스코어/커버리지 유틸 ==========
+
 function checkItemCoverage(item, text, mentions) {
   const keywords = extractItemKeywords(item);
   let matches = 0;
-  
-  keywords.forEach(keyword => {
-    if (text.includes(keyword.toLowerCase())) matches++;
-  });
-  
-  Object.values(mentions || {}).flat().forEach(mention => {
-    keywords.forEach(keyword => {
-      if ((mention || '').toLowerCase().includes(keyword.toLowerCase())) matches++;
+
+  keywords.forEach(k => { if (text.includes(String(k).toLowerCase())) matches++; });
+
+  Object.values(mentions || {}).flat().forEach(m => {
+    keywords.forEach(k => {
+      if (String(m || '').toLowerCase().includes(String(k).toLowerCase())) matches++;
     });
   });
-  
+
   return keywords.length > 0 ? Math.min(matches / keywords.length, 1) : 0;
 }
 
-// 질문/답변으로부터 키워드 추출(금지어용)
 function buildAnsweredKeywords(arr = []) {
   const text = (arr || []).join(" ").toLowerCase();
   const tokens = text.split(/[^a-zA-Z0-9가-힣+#:/._-]+/).filter(Boolean);
@@ -519,17 +477,16 @@ function stringifyMentions(mentions = {}) {
   }
 }
 
-// 키워드 추출
 function extractItemKeywords(item) {
   const keywordMap = {
-    '목적': ['목적', '용도', '목표'],
-    '시청자': ['시청자', '대상', '타겟', '성인', '30대', '20대', '10대'],
-    '길이': ['길이', '시간', '분', '초', '1-2분', '1~2분', '1-3분', '3분', '1분', '2분'],
-    '플랫폼': ['플랫폼', '유튜브', 'youtube', '틱톡', 'tiktok', '인스타', 'instagram', 'shorts', '쇼츠'],
-    '스토리': ['스토리', '구성', '흐름', '시작', '중간', '끝', '씬', '타임라인'],
-    '등장인물': ['등장인물', '캐릭터', '인물', '강아지', '주인공'],
-    '카메라': ['카메라', '촬영', '앵글', '줌', '슬로우 모션', '드론'],
-    '음향': ['음향', '음악', '소리', '효과음', 'BGM', '자막']
+    '목적': ['목적','용도','목표'],
+    '시청자': ['시청자','대상','타겟','성인','30대','20대','10대'],
+    '길이': ['길이','시간','분','초','1-2분','1~2분','1-3분','3분','1분','2분'],
+    '플랫폼': ['플랫폼','유튜브','youtube','틱톡','tiktok','인스타','instagram','shorts','쇼츠'],
+    '스토리': ['스토리','구성','흐름','시작','중간','끝','씬','타임라인'],
+    '등장인물': ['등장인물','캐릭터','인물','강아지','주인공'],
+    '카메라': ['카메라','촬영','앵글','줌','슬로우 모션','드론'],
+    '음향': ['음향','음악','소리','효과음','BGM','자막']
   };
   for (const [key, keywords] of Object.entries(keywordMap)) {
     if (String(item).includes(key)) return keywords;
@@ -537,7 +494,6 @@ function extractItemKeywords(item) {
   return String(item).split(' ').filter(word => word.length > 1);
 }
 
-// 커버리지 계산(간단 비율)
 function getCoverageRatio(checklist, text, mentions) {
   let total = 0, covered = 0;
   Object.values(checklist).forEach(items => {
@@ -549,37 +505,61 @@ function getCoverageRatio(checklist, text, mentions) {
   return total ? covered / total : 0;
 }
 
-// ❌ 에러 처리
-function handleError(res, error) {
-  const errorMessage = error.message || '';
+// ========== 에러 & 진단 ==========
 
-  if (errorMessage.includes('AI_SERVICE_UNAVAILABLE')) {
-    return res.status(503).json({
-      error: true,
-      type: 'service_unavailable',
-      title: '🚫 AI 서비스 이용 불가',
-      message: 'OpenAI API 키가 설정되지 않았습니다.',
-      canRetry: false
-    });
-  }
-  
-  if (errorMessage.includes('QUOTA_EXCEEDED')) {
-    return res.status(503).json({
-      error: true,
-      type: 'quota_exceeded',
-      title: '🚫 AI 사용량 초과',
-      message: 'AI 서비스 사용량이 초과되었습니다.',
-      canRetry: true,
-      retryAfter: '1-2시간'
-    });
-  }
-  
-  return res.status(500).json({
+function makeErr(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+function wrap(e, code) {
+  const err = new Error(`${code}: ${e?.message || e}`);
+  err.code = code;
+  err.cause = e;
+  return err;
+}
+
+function handleError(res, error) {
+  const payload = {
     error: true,
-    type: 'system_error',
+    type: error?.code || 'system_error',
     title: '❌ 시스템 오류',
     message: 'AI 프롬프트 개선 중 오류가 발생했습니다.',
     canRetry: true,
-    originalError: errorMessage
-  });
+    originalError: String(error?.message || error)
+  };
+
+  // 스택/내부 cause 도 함께 내려줌(디버깅 편의)
+  if (error?.cause) payload.cause = String(error.cause?.message || error.cause);
+  if (error?.stack) payload.stack = String(error.stack);
+
+  console.error('❌ API 오류 상세:', payload);
+  return res.status(500).json(payload);
+}
+
+// 간단 서버 진단: 키 유무 + 소형 프롬프트 호출
+async function runDiagnostics(debug = false) {
+  const out = { ok: false, checks: {} };
+  try {
+    out.checks.env = { hasKey: !!OPENAI_API_KEY, keyPrefix: OPENAI_API_KEY ? OPENAI_API_KEY.slice(0, 6) + '…' : null };
+    if (!OPENAI_API_KEY) {
+      out.message = 'OPENAI_API_KEY missing on server';
+      return out;
+    }
+    try {
+      const ping = await callOpenAI('Say "pong".', 0.0, debug);
+      out.checks.model = { ok: true, sample: ping.slice(0, 40) };
+    } catch (e) {
+      out.checks.model = { ok: false, error: String(e?.message || e) };
+      out.message = 'Model call failed';
+      return out;
+    }
+    out.ok = true;
+    out.message = 'All diagnostics passed';
+    return out;
+  } catch (e) {
+    out.ok = false;
+    out.message = String(e?.message || e);
+    return out;
+  }
 }
