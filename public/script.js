@@ -121,7 +121,7 @@ async function requestAIQuestions(step) {
       domain: state.domain,
       step,
       round: state.round,
-      asked: state.asked, // ⬅️ 중복 방지용
+      asked: state.asked,
     };
 
     console.log('📤 API 요청:', requestData);
@@ -134,17 +134,29 @@ async function requestAIQuestions(step) {
 
     console.log('📡 API 응답 상태:', response.status);
 
-    const result = await response.json();
-    console.log('📨 API 응답 데이터:', result);
+    const ctype = response.headers.get('content-type') || '';
+    let result;
+    if (ctype.includes('application/json')) {
+      result = await response.json();
+    } else {
+      const text = await response.text();
+      console.warn('서버가 JSON이 아닌 응답을 반환했습니다:', text.slice(0, 500));
+      // 비-JSON 에러를 사용자에게도 전달
+      return handleAPIError({
+        title: '🧩 서버 응답 오류',
+        message: '서버가 올바른 데이터 형식을 반환하지 않았습니다.',
+        action: '잠시 후 다시 시도해주세요. 문제가 지속되면 관리자에게 문의하세요.',
+        canRetry: true
+      });
+    }
 
+    console.log('📨 API 응답 데이터:', result);
     hideLoading();
 
     if (result.success) {
       handleAPIResponse(result);
-    } else if (result.error) {
-      handleAPIError(result);
     } else {
-      showError('예상치 못한 응답 형식입니다.');
+      handleAPIError(result);
     }
   } catch (error) {
     console.error('❌ 네트워크 오류:', error);
