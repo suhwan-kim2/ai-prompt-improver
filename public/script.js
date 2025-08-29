@@ -1,4 +1,4 @@
-// ⚡ public/script.js - 8단계 플로우 프론트엔드 (FULL)
+// ⚡ public/script.js - 8단계 플로우 프론트엔드 (FULL, dedupe + draft + multi + other + undo)
 
 const $ = (id) => document.getElementById(id);
 
@@ -6,7 +6,8 @@ const $ = (id) => document.getElementById(id);
 const state = {
   domain: "video",
   userInput: "",
-  answers: [],               // ["q1: ...", "q2: ..."] 누적
+  answers: [],               // ["qKey: value", ...] 누적 (복수선택 허용)
+  asked: [],                 // 이전 라운드까지 표시했던 질문 텍스트 (중복 방지용)
   currentQuestions: [],
   currentKeys: [],           // 이번 라운드 질문 key들
   currentStep: "start",
@@ -15,11 +16,13 @@ const state = {
   qualityScore: 0,
   isProcessing: false,
   maxRounds: 10,
-  minRequired: 1             // 이번 라운드 최소 답변 개수(동적 1~3)
+  minRequired: 1,            // 이번 라운드 최소 답변 개수(동적 1~3)
+  draftPrompt: "",           // 라운드별 드래프트 (서버에서 수신해 표시)
+  ui: { language: "ko", allowMulti: true, includeOther: true }, // 서버 힌트
 };
 
 // 🚀 앱 초기화
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   console.log('🎯 AI 프롬프트 개선기 시작');
   initializeApp();
 });
@@ -44,7 +47,7 @@ function initializeApp() {
 
   const userInputField = $("userInput");
   if (userInputField) {
-    userInputField.addEventListener('keypress', function(e) {
+    userInputField.addEventListener('keypress', function (e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         startImprovement();
@@ -60,7 +63,7 @@ function updateDomainDescription() {
   const descriptions = {
     video: "📹 영상 제작: 유튜브, 광고, 교육 영상 등",
     image: "🎨 이미지 생성: 포스터, 로고, 일러스트 등",
-    dev:   "💻 개발 프로젝트: 웹사이트, 앱, API 등"
+    dev: "💻 개발 프로젝트: 웹사이트, 앱, API 등"
   };
   const el = $("domainDescription");
   if (el) el.textContent = descriptions[state.domain] || descriptions.video;
@@ -88,6 +91,7 @@ async function startImprovement() {
 // 🔄 상태 초기화
 function resetState() {
   state.answers = [];
+  state.asked = [];
   state.currentQuestions = [];
   state.currentKeys = [];
   state.currentStep = "start";
@@ -96,6 +100,8 @@ function resetState() {
   state.qualityScore = 0;
   state.isProcessing = false;
   state.minRequired = 1;
+  state.draftPrompt = "";
+  state.ui = { language: "ko", allowMulti: true, includeOther: true };
   updateScoreDisplay();
 }
 
@@ -111,8 +117,9 @@ async function requestAIQuestions(step) {
       userInput: state.userInput,
       answers: state.answers,
       domain: state.domain,
-      step: step,
-      round: state.round
+      step,
+      round: state.round,
+      asked: state.asked, // ⬅️ 중복 방지용
     };
 
     console.log('📤 API 요청:', requestData);
@@ -150,6 +157,19 @@ async function requestAIQuestions(step) {
 function handleAPIResponse(result) {
   state.currentStep = result.step;
 
+  // 서버 힌트 수용
+  if (result.ui) state.ui = { ...state.ui, ...result.ui };
+
+  // 라운드별 드래프트 표시
+  if (typeof result.draftPrompt === 'string') {
+    state.draftPrompt = result.draftPrompt;
+    console.log(`✍️ 드래프트 v${state.round}:`, state.draftPrompt);
+  }
+
+  // 진행도/점수 수용
+  if (typeof result.intentScore === 'number') state.intentScore = result.intentScore;
+  if (result.progress && typeof result.progress.intentScore === 'number') state.intentScore = result.progress.intentScore;
+
   switch (result.step) {
     case 'questions':
       handleQuestionsResponse(result);
@@ -169,16 +189,30 @@ function handleAPIResponse(result) {
 function handleQuestionsResponse(result) {
   console.log(`📍 ${state.round}라운드 질문 표시`);
 
-  state.currentQuestions = result.questions || [];
+  // 서버 질문 수신
+  const rawQuestions = result.questions || [];
+
+  // 프론트 측에서도 중복 걸러내기(이미 asked에 있거나 동일 텍스트인 것은 제거)
+  const seenAsked = new Set(state.asked.map(s => s.trim().toLowerCase()));
+  const filtered = rawQuestions.filter(q => {
+    const key = (q?.question || '').trim().toLowerCase();
+    return key && !seenAsked.has(key);
+  });
+
+  state.currentQuestions = filtered;
+  state.currentKeys = filtered.map((q, i) => (q.key ?? String(i)));
   state.round = result.round || state.round;
-  state.intentScore = result.intentScore || 0;
+
   updateScoreDisplay();
 
-  // 질문 없으면 → 더 물을 게 없음 → 자동 생성 단계
+  // 질문 없으면 → 자동 생성으로
   if (state.currentQuestions.length === 0) {
     goGenerate();
     return;
   }
+
+  // 이번 라운드에 표시한 질문을 asked에 누적 (중복질문 방지용)
+  state.asked.push(...filtered.map(q => (q?.question || '').trim()).filter(Boolean));
 
   showQuestions(result);
 }
@@ -187,9 +221,9 @@ function handleQuestionsResponse(result) {
 function handleGenerateResponse(result) {
   console.log('📍 5단계: 프롬프트 생성 진행');
 
-  // 서버가 준 점수만 반영 (임의로 95로 덮어쓰지 않음)
   if (typeof result.intentScore === 'number') {
     state.intentScore = result.intentScore;
+    updateScoreDisplay();
   }
 
   showLoading('🤖 AI가 전문급 프롬프트를 생성하고 있습니다...');
@@ -200,12 +234,8 @@ function handleGenerateResponse(result) {
 function handleCompletedResponse(result) {
   console.log('📍 7-8단계: 완성!');
 
-  if (typeof result.intentScore === 'number') {
-    state.intentScore = result.intentScore;
-  }
-  if (typeof result.qualityScore === 'number') {
-    state.qualityScore = result.qualityScore;
-  }
+  if (typeof result.intentScore === 'number') state.intentScore = result.intentScore;
+  if (typeof result.qualityScore === 'number') state.qualityScore = result.qualityScore;
 
   updateScoreDisplay();
   showFinalResult(result);
@@ -213,11 +243,12 @@ function handleCompletedResponse(result) {
 
 // ❓ 질문 표시
 function showQuestions(result) {
-  // 이번 라운드 질문 key들 저장
-  state.currentKeys = (result.questions || []).map((q, i) => (q.key ?? String(i)));
-
   // 이번 라운드 최소 답변 개수(질문 수 기반 1~3)
   state.minRequired = Math.min(Math.max(state.currentKeys.length, 1), 3);
+
+  const draftBox = state.draftPrompt
+    ? `<div class="draft-box"><div class="draft-title">✍️ 현재 드래프트(v${state.round})</div><pre class="draft-body">${escapeHtml(state.draftPrompt)}</pre></div>`
+    : '';
 
   const questionsHTML = `
     <div class="questions-container">
@@ -230,38 +261,48 @@ function showQuestions(result) {
           <div class="progress-fill" style="width: ${Math.round((state.intentScore / 95) * 100)}%"></div>
         </div>
         <p class="progress-text">${escapeHtml(result.message || 'AI가 전문 질문을 생성했습니다.')}</p>
+        ${draftBox}
       </div>
 
       <div class="questions-list">
-        ${state.currentQuestions.map((q, index) => `
-          <div class="question-item" data-key="${q.key || index}">
+        ${state.currentQuestions.map((q, index) => {
+          const key = q.key || index;
+          const opts = Array.isArray(q.options) ? q.options.slice() : [];
+
+          // 서버가 includeOther true면 "직접 입력" 추가
+          if (state.ui.includeOther && (!opts.includes("직접 입력"))) opts.push("직접 입력");
+
+          return `
+          <div class="question-item" data-key="${key}">
             <div class="question-header">
               <h4 class="question-title">${escapeHtml(q.question)}</h4>
               <span class="question-priority ${q.priority || 'medium'}">${getPriorityText(q.priority)}</span>
             </div>
 
-            ${q.options && q.options.length > 0 ? `
+            ${opts.length > 0 ? `
               <div class="quick-options">
-                ${q.options.map(option => `
+                ${opts.map(option => `
                   <button class="option-btn" data-value="${escapeHtml(option)}"
-                          onclick="selectOption('${q.key || index}', '${escapeHtml(option)}')">
+                          onclick="toggleOption('${key}', '${escapeHtml(option)}')">
                     ${escapeHtml(option)}
                   </button>
                 `).join('')}
               </div>
             ` : `
               <div class="text-input-area">
-                <textarea placeholder="답변을 입력해주세요..." id="answer-${q.key || index}" rows="3"></textarea>
-                <button class="btn btn-small" onclick="submitTextAnswer('${q.key || index}')">확인</button>
+                <textarea placeholder="답변을 입력해주세요..." id="answer-${key}" rows="3"></textarea>
+                <button class="btn btn-small" onclick="submitTextAnswer('${key}')">확인</button>
               </div>
             `}
 
-            <div class="custom-input" id="custom-${q.key || index}" style="display: none;">
-              <input type="text" placeholder="직접 입력..." id="input-${q.key || index}" />
-              <button class="btn btn-small" onclick="submitCustomAnswer('${q.key || index}')">확인</button>
+            <div class="custom-input" id="custom-${key}" style="display: none;">
+              <input type="text" placeholder="직접 입력..." id="input-${key}" />
+              <button class="btn btn-small" onclick="submitCustomAnswer('${key}')">확인</button>
             </div>
-          </div>
-        `).join('')}
+
+            <div class="selected-list" id="selected-${key}"></div>
+          </div>`;
+        }).join('')}
       </div>
 
       <div class="questions-footer">
@@ -269,6 +310,7 @@ function showQuestions(result) {
           답변 완료 (0/${state.minRequired})
         </button>
         <button class="btn btn-secondary" onclick="skipQuestions()">현재 정보로 진행</button>
+        <button class="btn btn-tertiary" onclick="undoLast()">되돌리기</button>
       </div>
     </div>
   `;
@@ -279,12 +321,13 @@ function showQuestions(result) {
     questionsSection.classList.remove("hidden");
     questionsSection.scrollIntoView({ behavior: 'smooth' });
   }
+
+  // 이미 선택되어 있는 옵션 표시 동기화
+  syncSelectedBadges();
 }
 
-// 🎯 옵션 선택 처리
-function selectOption(questionKey, selectedValue) {
-  console.log('🎯 옵션 선택:', questionKey, selectedValue);
-
+// ✅ 옵션 토글(복수선택 허용)
+function toggleOption(questionKey, selectedValue) {
   if (selectedValue === '직접 입력') {
     const customDiv = $(`custom-${questionKey}`);
     if (customDiv) {
@@ -292,9 +335,27 @@ function selectOption(questionKey, selectedValue) {
       const inputField = $(`input-${questionKey}`);
       if (inputField) inputField.focus();
     }
-  } else {
-    setAnswer(questionKey, selectedValue);
+    return;
   }
+
+  const token = `${questionKey}: ${selectedValue}`;
+  const idx = state.answers.findIndex(a => a === token);
+
+  // allowMulti: true면 토글, false면 단일 선택
+  if (state.ui.allowMulti) {
+    if (idx >= 0) {
+      state.answers.splice(idx, 1); // 해제
+    } else {
+      state.answers.push(token);    // 선택
+    }
+  } else {
+    // 단일 선택 모드: 기존 같은 key는 모두 제거 후 삽입
+    state.answers = state.answers.filter(a => !a.startsWith(`${questionKey}:`));
+    state.answers.push(token);
+  }
+
+  syncSelectedBadges();
+  updateSubmitButton();
 }
 
 // ✍️ 텍스트 답변 제출
@@ -308,8 +369,7 @@ function submitTextAnswer(questionKey) {
     textarea.focus();
     return;
   }
-  console.log('✍️ 텍스트 답변:', questionKey, answer);
-  setAnswer(questionKey, answer);
+  setTextAnswer(questionKey, answer);
 }
 
 // ✍️ 커스텀 답변 제출
@@ -323,78 +383,107 @@ function submitCustomAnswer(questionKey) {
     inputField.focus();
     return;
   }
-  console.log('✍️ 커스텀 답변:', questionKey, inputValue);
-  setAnswer(questionKey, inputValue);
+  setTextAnswer(questionKey, inputValue);
+
+  // 입력창 닫기
+  const customDiv = $(`custom-${questionKey}`);
+  if (customDiv) customDiv.style.display = 'none';
 }
 
-// 📝 답변 설정(이번 라운드 기준으로 버튼 활성화)
-function setAnswer(questionKey, answerValue) {
-  console.log('📝 답변 설정:', questionKey, '=', answerValue);
-
-  // 기존 동일 key 제거 후 재삽입
-  state.answers = state.answers.filter(a => !a.startsWith(`${questionKey}:`));
-  state.answers.push(`${questionKey}: ${answerValue}`);
-
-  // UI 표시 업데이트
-  const questionDiv = document.querySelector(`[data-key="${questionKey}"]`);
-  if (questionDiv) {
-    questionDiv.classList.add('answered');
-    const existing = questionDiv.querySelector('.selected-answer');
-    if (existing) existing.remove();
-
-    const answerDisplay = document.createElement('div');
-    answerDisplay.className = 'selected-answer';
-    answerDisplay.innerHTML = `<strong>선택:</strong> ${escapeHtml(answerValue)} ✅`;
-    questionDiv.appendChild(answerDisplay);
-
-    // 옵션 버튼/입력 비활성화
-    questionDiv.querySelectorAll('.option-btn').forEach(btn => {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
-    });
-    const textArea = questionDiv.querySelector('textarea');
-    if (textArea) { textArea.disabled = true; textArea.style.opacity = '0.5'; }
-    const customInput = questionDiv.querySelector('.custom-input');
-    if (customInput) customInput.style.display = 'none';
+function setTextAnswer(questionKey, value) {
+  const token = `${questionKey}: ${value}`;
+  if (state.ui.allowMulti) {
+    // 중복만 제거하고 추가
+    state.answers = state.answers.filter(a => a !== token);
+    state.answers.push(token);
+  } else {
+    // 단일 선택 모드: 같은 key 모두 제거 후 삽입
+    state.answers = state.answers.filter(a => !a.startsWith(`${questionKey}:`));
+    state.answers.push(token);
   }
-
+  syncSelectedBadges();
   updateSubmitButton();
 }
 
-// 🔄 제출 버튼 상태 업데이트(이번 라운드만 카운트)
+// 🧹 선택 뱃지 UI 동기화
+function syncSelectedBadges() {
+  // 질문별로 선택된 항목 표시
+  state.currentKeys.forEach((key) => {
+    const selectedDiv = $(`selected-${key}`);
+    if (!selectedDiv) return;
+    const selected = state.answers
+      .filter(a => a.startsWith(`${key}:`))
+      .map(a => a.split(':').slice(1).join(':').trim());
+
+    // 버튼 상태도 갱신
+    const container = document.querySelector(`.question-item[data-key="${key}"]`);
+    if (container) {
+      container.querySelectorAll('.option-btn').forEach(btn => {
+        const val = btn.getAttribute('data-value');
+        if (selected.includes(val)) {
+          btn.classList.add('selected');
+          btn.setAttribute('aria-pressed', 'true');
+        } else {
+          btn.classList.remove('selected');
+          btn.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
+
+    if (selected.length === 0) {
+      selectedDiv.innerHTML = '';
+      return;
+    }
+    selectedDiv.innerHTML = `
+      <div class="selected-answer">
+        <strong>선택됨:</strong> ${selected.map(escapeHtml).join(', ')}
+      </div>`;
+  });
+}
+
+// 🔄 제출 버튼 상태 업데이트(이번 라운드 기준 유효 키 수)
 function updateSubmitButton() {
   const submitBtn = $("submitBtn");
   if (!submitBtn) return;
 
   const keySet = new Set(state.currentKeys);
-  const answeredCount = state.answers.filter(a => {
-    const key = a.split(":")[0].trim();
-    return keySet.has(key);
-  }).length;
+  // 이번 라운드에서 최소 1개 이상 답변이 존재하는 key 수
+  const keysAnswered = new Set(
+    state.answers
+      .map(a => a.split(":")[0].trim())
+      .filter(k => keySet.has(k))
+  );
 
+  const count = keysAnswered.size;
   const need = state.minRequired || 1;
-  submitBtn.disabled = answeredCount < need;
-  submitBtn.textContent = `답변 완료 (${answeredCount}/${need})`;
+  submitBtn.disabled = count < need;
+  submitBtn.textContent = `답변 완료 (${count}/${need})`;
 }
 
 // 📤 모든 답변 제출
 async function submitAllAnswers() {
   console.log('📤 답변 제출:', state.answers);
 
-  // 이번 라운드 최소 개수 충족 여부 확인
   const keySet = new Set(state.currentKeys);
-  const answeredCount = state.answers.filter(a => {
-    const key = a.split(":")[0].trim();
-    return keySet.has(key);
-  }).length;
+  const keysAnswered = new Set(
+    state.answers.map(a => a.split(":")[0].trim()).filter(k => keySet.has(k))
+  );
 
-  if (answeredCount < (state.minRequired || 1)) {
-    alert(`최소 ${state.minRequired}개 이상 답변해주세요.`);
+  if (keysAnswered.size < (state.minRequired || 1)) {
+    alert(`최소 ${state.minRequired}개 질문에 답해주세요.`);
     return;
   }
 
   hideAllSections();
   await requestAIQuestions('questions');
+}
+
+// ⏮️ 되돌리기(가장 최근 선택/입력 취소)
+function undoLast() {
+  if (state.answers.length === 0) return;
+  state.answers.pop();
+  syncSelectedBadges();
+  updateSubmitButton();
 }
 
 // ⏭️ 질문 건너뛰기 → 곧바로 generate
@@ -414,7 +503,8 @@ async function goGenerate() {
     answers: state.answers,
     domain: state.domain,
     step: 'generate',
-    round: state.round
+    round: state.round,
+    asked: state.asked, // ⬅️ 중복 방지용
   };
   const res = await fetch('/api/improve-prompt', {
     method: 'POST',
@@ -525,7 +615,7 @@ async function copyToClipboard() {
       const original = copyBtn.textContent;
       copyBtn.textContent = '✅ 복사 완료!';
       copyBtn.style.background = '#10b981';
-      setTimeout(() => { copyBtn.textContent = original; copyBtn.style.background = ''; }, 2000);
+      setTimeout(() => { copyBtn.textContent = original; copyBtn.style.background = ''; }, 1800);
     }
     console.log('📋 클립보드 복사 성공');
   } catch (e) {
@@ -687,16 +777,17 @@ if (typeof window !== 'undefined') {
 }
 
 // 🎯 전역 함수 exports
-window.startImprovement   = startImprovement;
-window.selectOption       = selectOption;
-window.submitTextAnswer   = submitTextAnswer;
+window.startImprovement = startImprovement;
+window.toggleOption = toggleOption;
+window.submitTextAnswer = submitTextAnswer;
 window.submitCustomAnswer = submitCustomAnswer;
-window.submitAllAnswers   = submitAllAnswers;
-window.skipQuestions      = skipQuestions;
-window.copyToClipboard    = copyToClipboard;
-window.startNew           = startNew;
-window.showDetails        = showDetails;
-window.closeDetails       = closeDetails;
-window.retryCurrentStep   = retryCurrentStep;
+window.submitAllAnswers = submitAllAnswers;
+window.skipQuestions = skipQuestions;
+window.undoLast = undoLast;
+window.copyToClipboard = copyToClipboard;
+window.startNew = startNew;
+window.showDetails = showDetails;
+window.closeDetails = closeDetails;
+window.retryCurrentStep = retryCurrentStep;
 
 console.log('✅ 8단계 플로우 Script 로드 완료!');
