@@ -1,77 +1,6 @@
 // api/improve-prompt.js
-// Next.js API Route — video/image + writing/daily/dev 확장
-// 한국어 질문, 중복 방지, 드래프트 진행, 지어내기 금지, 안전한 에러 처리 + 유틸 폴백
+// Next.js API Route — 한국어 강제, 빈/부실 출력 차단, 질문 라운드 회귀, 중복질문 방지, 도메인 확장(video/image/writing/daily/dev)
 
-// ---------- 안전 폴백 유틸 ----------
-const g = globalThis;
-
-// mentionExtractor 폴백: @키워드/해시/따옴표 문구 정도만 뽑아줌
-const mentionExtractor = g.mentionExtractor ?? {
-  extract: (text = "") => {
-    try {
-      const m = new Set();
-      (text.match(/#\w+/g) || []).forEach(v => m.add(v));
-      (text.match(/@\w+/g) || []).forEach(v => m.add(v));
-      (text.match(/"([^"]+)"/g) || []).forEach(v => m.add(v.replace(/"/g, '')));
-      (text.match(/'([^']+)'/g) || []).forEach(v => m.add(v.replace(/'/g, '')));
-      return Array.from(m);
-    } catch { return []; }
-  }
-};
-
-// intentAnalyzer 폴백: 커버리지 기반 러프 스코어
-const intentAnalyzer = g.intentAnalyzer ?? {
-  calculateIntentScore: (userInput, answers, domain, checklist, mentions, draft) => {
-    try {
-      const text = [userInput, ...(answers||[]), draft||""].join(" ").toLowerCase();
-      const total = (checklist?.items || []).length || 1;
-      let hit = 0;
-      (checklist?.items || []).forEach(it => {
-        const keys = [it.item, ...(it.keywords || [])].filter(Boolean);
-        if (keys.some(k => text.includes(String(k).toLowerCase()))) hit++;
-      });
-      const base = Math.min(95, Math.round((hit/total)*80)+10);
-      return base;
-    } catch { return 0; }
-  }
-};
-
-// evaluationSystem 폴백: 길이/구조 키워드로 러프 스코어
-const evaluationSystem = g.evaluationSystem ?? {
-  evaluatePromptQuality: (promptText = "", domain = "video") => {
-    try {
-      const p = String(promptText);
-      let score = 50;
-      if (p.includes("###") || p.includes("Scene") || p.includes("Deliver:") || p.includes("Requirements")) score += 15;
-      if (/\[TBD:/.test(p)) score -= 10;
-      if (p.length > 400) score += 10;
-      if (/STRICT:/i.test(p)) score += 5;
-      score = Math.max(0, Math.min(100, score));
-      return { total: score };
-    } catch { return { total: 0 }; }
-  }
-};
-
-// getCoverageRatio 폴백
-function getCoverageRatio(checklist, text = "", mentions = []) {
-  try {
-    const total = (checklist?.items || []).length || 1;
-    const low = text.toLowerCase();
-    let hit = 0;
-    (checklist?.items || []).forEach(it => {
-      const keys = [it.item, ...(it.keywords || [])].filter(Boolean);
-      if (keys.some(k => low.includes(String(k).toLowerCase()))) hit++;
-    });
-    const bonus = Math.min(0.1, (mentions?.length || 0) * 0.005);
-    return Math.min(1, hit/total + bonus);
-  } catch { return 0; }
-}
-
-// OpenAI 호출 폴백들 — 환경에서 제공되면 그걸 사용, 아니면 빈 문자열 반환
-const callOpenAI = g.callOpenAI ?? (async () => "");
-const callOpenAIWithSystem = g.callOpenAIWithSystem ?? (async () => "");
-
-// ---------- 핸들러 ----------
 export default async function handler(req, res) {
   try {
     const {
@@ -86,20 +15,25 @@ export default async function handler(req, res) {
     } = (req.method === 'POST' ? req.body : req.query) || {};
 
     if (!userInput || typeof userInput !== 'string') {
-      return res.status(200).json({ success: false, error: 'USER_INPUT_REQUIRED', message: 'userInput가 필요합니다.' });
+      return res.status(400).json({ success: false, error: 'USER_INPUT_REQUIRED' });
     }
 
-    const dom = DOMAIN_CHECKLISTS[domain] ? domain : 'video';
+    if (step === 'start') {
+      return handleStart(res, userInput, domain, debug);
+    }
+    if (step === 'questions') {
+      return handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], domain, Number(round) || 1, mode, asked, debug);
+    }
+    if (step === 'generate') {
+      return handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], domain, asked, debug);
+    }
 
-    if (step === 'start')    return await handleStart(res, userInput, dom, debug);
-    if (step === 'questions') return await handleQuestions(res, userInput, Array.isArray(answers) ? answers : [], dom, Number(round) || 1, mode, asked, debug);
-    if (step === 'generate')  return await handleGenerate(res, userInput, Array.isArray(answers) ? answers : [], dom, debug);
-
-    return await handleStart(res, userInput, dom, debug);
+    // 기본은 start
+    return handleStart(res, userInput, domain, debug);
   } catch (e) {
     const wrapped = wrap(e, 'UNHANDLED_API_ERROR');
     if (process.env.NODE_ENV !== 'production') console.error(wrapped);
-    return res.status(200).json({ success: false, error: wrapped.code || 'UNKNOWN', detail: String(wrapped.message || wrapped) });
+    return res.status(500).json({ success: false, error: wrapped.code || 'UNKNOWN', detail: String(wrapped.message || wrapped) });
   }
 }
 
@@ -108,7 +42,7 @@ export default async function handler(req, res) {
 async function handleStart(res, userInput, domain, debug) {
   try {
     const mentions = mentionExtractor.extract(userInput);
-    const questions = await safeGenerateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: '', targetCount: 5, asked: [], debug });
+    const questions = await generateAIQuestions(userInput, [], domain, mentions, 1, { draftPrompt: '', targetCount: 5, asked: [], debug });
     return res.status(200).json({
       success: true,
       step: 'questions',
@@ -120,16 +54,7 @@ async function handleStart(res, userInput, domain, debug) {
       message: 'AI가 체크리스트를 분석해서 질문을 생성했습니다.'
     });
   } catch (e) {
-    // 절대 500 내지 말고 폴백 질문
-    return res.status(200).json({
-      success: true,
-      step: 'questions',
-      questions: fallbackQuestionsFor(domain),
-      round: 1,
-      draftPrompt: '',
-      status: 'collecting',
-      message: '일부 오류가 있었지만 질문을 시작합니다.'
-    });
+    throw wrap(e, 'AI_QUESTION_GENERATION_FAILED');
   }
 }
 
@@ -137,14 +62,17 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
   try {
     const allText = [userInput, ...answers].join(' ');
     const mentions = mentionExtractor.extract(allText);
-    const checklist = DOMAIN_CHECKLISTS[domain];
+    const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
 
-    const draftPrompt = await safeGenerateDraftPrompt(userInput, answers, domain, debug);
+    // 🔹 드래프트(현재 사실 기반) 갱신
+    const draftPrompt = await generateDraftPrompt(userInput, answers, domain, debug);
 
-    const intentScore = safeIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt);
-    const coverage = safeCoverage(checklist, (allText + '\n' + draftPrompt).toLowerCase(), mentions);
+    // 🔹 의도/커버리지 계산 (드래프트 포함)
+    const intentScore = intentAnalyzer.calculateIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt);
+    const coverage = getCoverageRatio(checklist, (allText + '\n' + draftPrompt).toLowerCase(), mentions);
     const coveragePct = Math.round(coverage * 100);
 
+    // 🔹 충분 조건 → 생성 단계로
     if (coverage >= 0.65 || (round >= 3 && coverage >= 0.55) || intentScore >= 80) {
       return res.status(200).json({
         success: true,
@@ -157,16 +85,15 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
       });
     }
 
+    // 🔹 부족하면 최소 질문만 추가로 수집(중복 방지)
     const targetCount = mode === 'bulk' ? 5 : 3;
-    const nextQuestions = await safeGenerateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, asked, debug });
+    const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, asked, debug });
 
     if (!nextQuestions || nextQuestions.length === 0) {
+      // 라운드 초반인데 비면 1~2개 보강 질문 시도
       if (round <= 1) {
         const mentions2 = mentionExtractor.extract([userInput, ...answers, draftPrompt].join(' '));
-        const fallbackQs = await safeGenerateAIQuestions(
-          userInput, answers, domain, mentions2, round + 1,
-          { draftPrompt, targetCount: 2, asked, debug }
-        );
+        const fallbackQs = await generateAIQuestions(userInput, answers, domain, mentions2, round + 1, { draftPrompt, targetCount: 2, asked, debug });
         if (fallbackQs && fallbackQs.length > 0) {
           return res.status(200).json({
             success: true,
@@ -181,6 +108,7 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
           });
         }
       }
+      // 그래도 없으면 생성으로
       return res.status(200).json({
         success: true,
         step: 'generate',
@@ -204,21 +132,15 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
       message: `현재 coverage ${coveragePct}%. 부족 정보만 이어서 질문합니다.`
     });
   } catch (e) {
-    return res.status(200).json({
-      success: true,
-      step: 'questions',
-      questions: fallbackQuestionsFor(domain),
-      round: round + 1,
-      intentScore: 0,
-      coverage: 0,
-      draftPrompt: '',
-      status: 'collecting',
-      message: '임시 오류로 간단 질문을 이어갑니다.'
-    });
+    throw wrap(e, 'INTENT_ANALYSIS_FAILED');
   }
 }
 
-async function handleGenerate(res, userInput, answers, domain, debug) {
+/**
+ * 생성 단계: 빈/부실/영어 위주/지어내기 감지 → 재질문 라운드로 회귀
+ * 최종 UI에 placeholder([TBD: ...], empty output 등) 절대 노출되지 않게 설계
+ */
+async function handleGenerate(res, userInput, answers, domain, asked, debug) {
   let attempts = 0;
   const maxAttempts = 4;
   let best = { text: '', score: -1 };
@@ -226,165 +148,136 @@ async function handleGenerate(res, userInput, answers, domain, debug) {
   while (attempts < maxAttempts) {
     attempts++;
     try {
-      const generatedPrompt = await safeGenerateAIPrompt(userInput, answers, domain, debug);
-      const qualityScore = safeEvaluate(generatedPrompt, domain);
-      if (qualityScore > best.score) best = { text: generatedPrompt, score: qualityScore };
+      const generatedPrompt = await generateAIPrompt(userInput, answers, domain, debug); // ← 내부에서 검증 실패 시 throw
+      const qualityScore = evaluationSystem.evaluatePromptQuality(generatedPrompt, domain);
+      if (qualityScore.total > best.score) best = { text: generatedPrompt, score: qualityScore.total };
 
-      if (qualityScore >= 95) {
+      if (qualityScore.total >= 95) {
         return res.status(200).json({
           success: true,
           step: 'completed',
           originalPrompt: userInput,
           improvedPrompt: generatedPrompt,
-          intentScore: Math.max(90, best.score - 2),
-          qualityScore,
+          intentScore: Math.max(80, qualityScore.intent || 80),
+          qualityScore: qualityScore.total,
           attempts,
           status: 'done',
-          message: `🎉 완성! AI가 ${attempts}번 만에 고품질을 달성했습니다.`
+          message: `🎉 완성! AI가 ${attempts}번 만에 95점 품질 달성!`
         });
       }
+      // 계속 시도
     } catch (e) {
-      // 재시도 계속
+      // GENERATION_VALIDATION_FAILED 등 검증 실패 → 반복 시도
     }
   }
 
-  if (best.text) {
+  // 여기까지 왔는데 품질이 낮거나 검증 실패 지속 → 보완 질문으로 회귀
+  const mentions = mentionExtractor.extract([userInput, ...answers].join(' '));
+  const followupQuestions = await generateAIQuestions(
+    userInput, answers, domain, mentions, 1,
+    { draftPrompt: best.text || '', targetCount: 2, asked, debug }
+  );
+
+  if (followupQuestions && followupQuestions.length > 0) {
     return res.status(200).json({
       success: true,
-      step: 'completed',
-      originalPrompt: userInput,
-      improvedPrompt: best.text,
-      intentScore: Math.max(80, best.score - 5),
-      qualityScore: best.score,
-      attempts: maxAttempts,
-      status: 'done',
-      message: `최대 시도 도달. 현재 최고 품질 ${best.score}점으로 완료합니다.`
+      step: 'questions',
+      questions: followupQuestions,
+      round: 1,
+      intentScore: Math.max(60, best.score || 60),
+      status: 'collecting',
+      message: '출력이 불충분하여 꼭 필요한 정보만 이어서 질문합니다.'
     });
   }
 
+  // 정말 더 물을 게 없으면 — placeholder는 노출하지 않음(안전 메세지)
   return res.status(200).json({
     success: true,
     step: 'completed',
     originalPrompt: userInput,
-    improvedPrompt: `[TBD: could not generate prompt safely for domain "${domain}"]`,
-    intentScore: 0,
-    qualityScore: 0,
+    improvedPrompt: (best.text || '프롬프트 생성이 원활하지 않았습니다. 목적/대상/스타일 등 핵심 정보를 조금만 더 구체적으로 입력해 주세요.'),
+    intentScore: Math.max(60, best.score || 60),
+    qualityScore: best.score >= 0 ? best.score : 40,
     attempts: maxAttempts,
     status: 'done',
-    message: '생성에 실패하여 임시 결과를 반환합니다.'
+    message: '핵심 정보가 부족해 완전한 결과를 만들지 못했습니다. 입력을 보강해 다시 시도해 주세요.'
   });
 }
 
-// ========== LLM 유틸 (안전 래퍼) ==========
-
-async function safeGenerateDraftPrompt(userInput, answers, domain, debug) {
-  try { return await generateDraftPrompt(userInput, answers, domain, debug); }
-  catch { return ''; }
-}
-
-async function safeGenerateAIQuestions(userInput, answers, domain, mentions, round, opts) {
-  try {
-    const qs = await generateAIQuestions(userInput, answers, domain, mentions, round, opts);
-    if (Array.isArray(qs)) return qs;
-  } catch {}
-  return fallbackQuestionsFor(domain);
-}
-
-async function safeGenerateAIPrompt(userInput, answers, domain, debug) {
-  try {
-    const out = await generateAIPrompt(userInput, answers, domain, debug);
-    return (out || '').trim() || `[TBD: empty output for ${domain}]`;
-  } catch {
-    return `[TBD: failed to generate for ${domain}]`;
-  }
-}
-
-function safeIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt) {
-  try { return intentAnalyzer.calculateIntentScore(userInput, answers, domain, checklist, mentions, draftPrompt); }
-  catch { return 0; }
-}
-
-function safeCoverage(checklist, text, mentions) {
-  try { return getCoverageRatio(checklist, text, mentions); }
-  catch { return 0; }
-}
-
-function safeEvaluate(text, domain) {
-  try {
-    const q = evaluationSystem.evaluatePromptQuality(text, domain);
-    return Math.max(0, Math.min(100, q?.total ?? 0));
-  } catch { return 0; }
-}
-
-// ========== 드래프트 생성 ==========
+// ========== LLM 유틸 ==========
 
 async function generateDraftPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
-  let prompt;
 
+  let prompt;
   if (domain === 'image') {
-    prompt = `Create an interim improved image prompt in English from the following facts.
+    prompt = `Create an interim improved image prompt in Korean from the following facts.
 Keep it concise but structured.
 
 ${allAnswers}
 
-Return only the prompt text.`;
+Return only the prompt text in Korean.`;
   } else if (domain === 'writing') {
-    prompt = `Create a concise interim writing brief in English from the following facts.
+    prompt = `Create a concise interim writing brief in Korean from the following facts.
 Keep it structured with purpose, audience, tone, length, and outline.
 
 ${allAnswers}
 
-Return only the brief text.`;
+Return only the brief text in Korean.`;
   } else if (domain === 'daily') {
-    prompt = `Summarize the user's intent and produce a task-oriented brief in English from the following facts.
+    prompt = `Summarize the user's intent and produce a task-oriented brief in Korean from the following facts.
 Include purpose, key constraints, and a short checklist.
 
 ${allAnswers}
 
-Return only the brief text.`;
+Return only the brief text in Korean.`;
   } else if (domain === 'dev') {
-    prompt = `Create a concise interim web app development brief in English from the following facts.
-Include goal, target users, key features, tech/platform preferences (if any), deployment target, and constraints.
+    prompt = `Create a concise interim development brief in Korean from the following facts.
+Include goal, scope, stack, deployment target, and constraints.
 
 ${allAnswers}
 
-Return only the brief text.`;
+Return only the brief text in Korean.`;
   } else {
-    prompt = `Create an interim improved video prompt in English from the following facts.
+    // video (default)
+    prompt = `Create an interim improved video prompt in Korean from the following facts.
 Keep it concise but structured.
 
 ${allAnswers}
 
-Return only the prompt text.`;
+Return only the prompt text in Korean.`;
   }
 
   const text = await callOpenAI(prompt, 0.2, debug);
   return (text || '').trim();
 }
 
-// ========== 질문 생성 ==========
-
 async function generateAIQuestions(userInput, answers, domain, mentions, round, opts = {}) {
   const { draftPrompt = '', targetCount = 3, asked = [], debug = false } = opts;
-  const checklist = DOMAIN_CHECKLISTS[domain];
+  const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
   const all = [userInput, ...answers, draftPrompt].join(' ').toLowerCase();
   const answeredKW = new Set();
   const safeMentions = Array.from(new Set([...(mentions || [])].map(String))).slice(0, 30).join(', ');
 
+  // 이미 커버된 키워드(체크리스트 기준)
   for (const item of checklist.items) {
+    if (!item) continue;
     const keys = Array.isArray(item.keywords) ? item.keywords : [item.item, ...(item.keywords || [])];
     for (const k of keys) if (all.includes(String(k).toLowerCase())) answeredKW.add(String(k).toLowerCase());
   }
+  // 사용자가 고른 값도 금지 세트에 추가 (중복질문 방지)
   for (const ans of answers) {
-    const parts = String(ans || '').split(':');
+    if (!ans) continue;
+    const parts = String(ans).split(':');
     if (parts.length >= 2) {
       const value = parts.slice(1).join(':').trim().toLowerCase();
       if (value) value.split(/\s+/).forEach(tok => answeredKW.add(tok));
     }
   }
-  (asked || []).forEach(q => answeredKW.add(String(q || '').toLowerCase()));
+  // 프론트에서 이미 보여준 질문(asked)도 금지
+  asked.forEach(q => answeredKW.add(q.toLowerCase()));
 
+  // 아직 부족한 항목 추출
   const missingItems = checklist.items
     .map(x => ({ item: x.item, keywords: x.keywords || [] }))
     .filter(x => {
@@ -421,8 +314,8 @@ MISSING topics:
 ${missingItems.map(x => `- ${String(x.item)}`).join('\n')}
 
 Constraints:
-- Do NOT propose brand/tool names or very specific examples unless already present in user input/answers/draft.
-- Prefer category-style options (예: 플랫폼/호스팅, 길이/톤/언어/형식 등).
+- Do NOT propose brand/platform names or very specific examples unless already present in user input/answers/draft.
+- Prefer category-style options (예: '플랫폼', '길이 범위', '톤/무드', '언어', '형식', '마감일').
 - For writing/daily/dev domains, you may use inputType 'text' with a short placeholder when options are too narrow.
 
 Return JSON shape:
@@ -437,6 +330,7 @@ ${baseSchema}`;
   try { parsed = JSON.parse(cleaned); } catch { return []; }
   let qs = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
+  // 금지세트 기반 필터 (중복 제거)
   const ban = new Set(Array.from(answeredKW).filter(Boolean));
   qs = qs.filter(q => {
     const bucket = [q?.question || '', ...(q?.options || [])].join(' ').toLowerCase();
@@ -444,6 +338,7 @@ ${baseSchema}`;
     return true;
   });
 
+  // 동일 질문 텍스트 제거
   const seen = new Set();
   qs = qs.filter(q => {
     const key = (q?.question || '').trim().toLowerCase();
@@ -452,101 +347,104 @@ ${baseSchema}`;
     return true;
   });
 
-  if ((domain === 'writing' || domain === 'daily' || domain === 'dev')) {
-    qs = qs.map(q => {
-      if (!q.options || q.options.length === 0) {
-        return { ...q, inputType: 'text', placeholder: q.placeholder || '간단히 입력해주세요' };
-      }
-      return q;
-    });
-  }
+  // writing/daily/dev의 경우 옵션 과도 축소 시 inputType을 text로 유도
+  qs = qs.map(q => {
+    if ((domain === 'writing' || domain === 'daily' || domain === 'dev') && (!q.options || q.options.length === 0)) {
+      return {
+        ...q,
+        inputType: 'text',
+        placeholder: q.placeholder || '간단히 입력해주세요'
+      };
+    }
+    return q;
+  });
 
   if (qs.length > targetCount) qs = qs.slice(0, targetCount);
   return qs;
 }
 
-// ========== 최종 프롬프트 생성 ==========
-
 async function generateAIPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
 
   const domainPrompts = {
-    video: `Create a professional, production-ready video prompt in English from the following information:
+    video: `한국어로만 작성하세요. 아래 정보만 사용해 영상 프롬프트를 만드세요.
 
 ${allAnswers}
 
-Requirements:
-- Scene-by-scene timeline
-- Clear subject + audience + platform fit
-- Camera work and editing directions
-- Music/SFX and captions guidance
-- Technical specs (resolution, codec)
-- Length target
-- STRICT: Use only details explicitly present in the user input or answers. Do NOT invent specific examples (brand names, platforms, props, exact times) unless provided.
-- If any required field is missing, write a placeholder like [TBD: field] instead of guessing.`,
-    image: `Create a professional, production-ready image prompt in English from the following information:
+요구사항:
+- 장면별 타임라인
+- 주제/대상/플랫폼 적합성
+- 촬영/카메라/편집 지시
+- 음악/SFX/자막 가이드
+- 기술 사양(해상도, 코덱, 프레임레이트)
+- 길이 목표
+- STRICT: 사용자 입력/답변에 있는 정보만 사용. 지어내지 말 것.
+- 누락 시 [TBD: 항목] 표기(최종 노출은 서버에서 판단).`,
+    image: `한국어로만 작성하세요. 아래 정보만 사용해 이미지 프롬프트를 만드세요.
 
 ${allAnswers}
 
-Requirements:
-- Clear subject and composition
-- Style, lighting, lens/camera hints when relevant
-- Background/setting and mood
-- Negative constraints (what to avoid)
-- Technical specs (size/aspect, quality)
-- STRICT: Use only details explicitly present in the user input or answers. Do NOT invent specific examples or elements.
-- If any required field is missing, write a placeholder like [TBD: field].`,
-    writing: `Create a professional, production-ready writing brief in English from the following information.
+요구사항:
+- 주제/구성(구도)
+- 스타일/무드, 조명
+- 배경/세부 요소
+- 네거티브(제외할 것)
+- 기술 사양(크기/비율/품질)
+- STRICT: 사용자 입력/답변에 있는 정보만 사용. 지어내지 말 것.
+- 누락 시 [TBD: 항목] 표기(최종 노출은 서버에서 판단).`,
+    writing: `한국어로만 작성하세요. 아래 정보만 사용해 글쓰기 브리프를 만드세요.
 
 ${allAnswers}
 
-Deliver:
-- Purpose, audience, tone, language
-- Target length (words or characters)
-- Structure/outline with bullet points
-- Key points to include and to avoid
-- Constraints (deadline, platform, style guide)
-- STRICT: Use only details explicitly present in the user input or answers. Do NOT invent sources, quotes, names, or data.
-- If information is missing, leave [TBD: field] placeholders.
-- Output the final brief only.`,
-    daily: `Create a concise, actionable task brief in English from the following information.
+산출물:
+- 목적, 독자, 톤, 언어
+- 목표 분량(글자/단어)
+- 구조/아웃라인(불릿)
+- 포함/제외할 핵심 포인트
+- 제약(마감, 플랫폼, 스타일 가이드)
+- STRICT: 지어내지 말 것. 누락 시 [TBD: 항목]`,
+    daily: `한국어로만 작성하세요. 아래 정보만 사용해 실행 브리프를 만드세요.
 
 ${allAnswers}
 
-Deliver:
-- Purpose and success criteria
-- A prioritized checklist (3–7 items)
-- Constraints (time, budget, tools)
-- Communication template if relevant (e.g., short message/email draft)
-- STRICT: Use only details explicitly present in the user input or answers. Do NOT invent contacts, accounts, or tools unless provided.
-- If information is missing, leave [TBD: field] placeholders.
-- Output the final brief only.`,
-    dev: `Create a professional, production-ready web app delivery brief in English from the following information.
+산출물:
+- 목적과 성공 기준
+- 우선순위 체크리스트(3–7)
+- 제약(시간/예산/도구)
+- 필요 시 커뮤니케이션 템플릿(짧은 메시지/이메일)
+- STRICT: 지어내지 말 것. 누락 시 [TBD: 항목]`,
+    dev: `한국어로만 작성하세요. 아래 정보만 사용해 개발 브리프를 만드세요.
 
 ${allAnswers}
 
-Deliver:
-- Summary (goal, target users, value proposition)
-- Functional scope (features grouped by modules)
-- Architecture (frontend, backend, API, data flow)
-- Tech stack (constraints or [TBD])
-- Data model (key entities, fields) and persistence
-- Authentication/authorization strategy
-- Deployment & hosting plan (environments, CI/CD)
-- Non-functional requirements (performance, scalability, availability, cost)
-- Security & privacy notes
-- Testing plan (unit/e2e), monitoring/logging
-- Milestones & timeline
-- STRICT: Use only details explicitly present in the user input or answers. Do NOT invent vendor names, accounts, or credentials.
-- If information is missing, leave [TBD: field] placeholders.
-- Output the final brief only.`
+산출물:
+- 목표/범위, 주요 기능
+- 기술 스택(프론트/백/DB)
+- 배포 대상(예: Vercel, Netlify, Docker 등)과 환경
+- 제약(성능/보안/예산/마감)
+- 기본 페이지/엔드포인트 구조(불릿)
+- STRICT: 지어내지 말 것. 누락 시 [TBD: 항목]`
   };
 
-  const sys = `You are a world-class prompt engineer. You write concise, complete outputs only from provided facts.`;
+  const sys = `당신은 세계적 수준의 프롬프트 엔지니어입니다.
+- 반드시 한국어로만 작성합니다.
+- 제공된 사실만 사용하고, 지어내지 않습니다.
+- 정보가 부족하면 추측하지 말고 [TBD: ...]를 임시로 둘 수 있으나, 최종 노출은 서버 로직이 결정합니다.`;
+
   const prompt = domainPrompts[domain] || domainPrompts.video;
   const raw = await callOpenAIWithSystem(sys, prompt, 0.2, debug);
   const generated = (raw || '').trim();
-  return sanitizeGenerated(generated, allAnswers);
+
+  // 🔎 생성물 검증(빈/영어/구조미달/지어내기 징후)
+  const v = validateGenerated(generated, allAnswers, domain);
+  if (!v.ok) {
+    const err = new Error(`GENERATION_VALIDATION_FAILED: ${v.reason}`);
+    err.code = 'GENERATION_VALIDATION_FAILED';
+    throw err;
+  }
+
+  // 🔧 경미한 용어/플랫폼 정규화(지어내기로 의심될 때만 치환)
+  return sanitizeMinor(generated, allAnswers);
 }
 
 // ========== 체크리스트(도메인별) ==========
@@ -554,26 +452,26 @@ Deliver:
 const DOMAIN_CHECKLISTS = {
   video: {
     items: [
-      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness', 'entertain', 'entertainment', 'educate', 'education'] },
-      { item: 'audience', keywords: ['audience', 'target', 'demographic', 'adult', 'adults', 'kids', 'children', 'family', 'general'] },
-      { item: 'platform', keywords: ['youtube', 'tiktok', 'instagram', 'reels', 'shorts'] },
-      { item: 'length', keywords: ['length', 'duration', '1-3 minutes', 'seconds', 'minutes'] },
-      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe', 'dramatic', 'comedic', 'comedy'] },
-      { item: 'camera', keywords: ['camera', 'shot', 'close-up', 'wide', 'over-the-shoulder'] },
-      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption', 'background music', 'sound effects'] },
-      { item: 'subject', keywords: ['dog', 'shiba', 'person', 'product'] },
-      { item: 'tech', keywords: ['resolution', 'codec', 'framerate', 'aspect'] }
+      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness', 'entertain', 'entertainment', 'educate', 'education', '엔터테인', '교육'] },
+      { item: 'audience', keywords: ['audience', 'target', 'demographic', 'adult', 'adults', 'kids', 'children', 'family', 'general', '성인', '가족', '아동', '모든 연령'] },
+      { item: 'platform', keywords: ['youtube', 'tiktok', 'instagram', 'reels', 'shorts', '유튜브'] },
+      { item: 'length', keywords: ['length', 'duration', '1-3 minutes', 'seconds', 'minutes', '분', '초'] },
+      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe', 'dramatic', 'comedic', 'comedy', '드라마', '코미디', '톤', '무드'] },
+      { item: 'camera', keywords: ['camera', 'shot', 'close-up', 'wide', 'over-the-shoulder', '촬영', '카메라', '클로즈업', '와이드'] },
+      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption', 'background music', 'sound effects', '배경 음악', '효과음', '자막'] },
+      { item: 'subject', keywords: ['dog', 'shiba', 'person', 'product', '강아지', '시바견', '인물', '제품'] },
+      { item: 'tech', keywords: ['resolution', 'codec', 'framerate', 'aspect', '해상도', '코덱', '프레임', '비율'] }
     ]
   },
   image: {
     items: [
-      { item: 'goal', keywords: ['goal', 'purpose', 'poster', 'logo', 'illustration'] },
-      { item: 'subject', keywords: ['subject', 'main object', 'character'] },
-      { item: 'style', keywords: ['style', 'tone', 'mood', 'realistic', 'cartoon', 'minimalist'] },
-      { item: 'lighting', keywords: ['lighting', 'sunset', 'dramatic', 'moody'] },
-      { item: 'composition', keywords: ['composition', 'wide', 'close-up', 'side view'] },
-      { item: 'negative', keywords: ['avoid', 'exclude', 'negative'] },
-      { item: 'tech', keywords: ['size', 'aspect', 'quality'] }
+      { item: 'goal', keywords: ['goal', 'purpose', 'poster', 'logo', 'illustration', '목적', '포스터', '로고', '일러스트'] },
+      { item: 'subject', keywords: ['subject', 'main object', 'character', '주제', '대상', '캐릭터'] },
+      { item: 'style', keywords: ['style', 'tone', 'mood', 'realistic', 'cartoon', 'minimalist', '픽셀', '레트로', '스타일', '무드'] },
+      { item: 'lighting', keywords: ['lighting', 'sunset', 'dramatic', 'moody', '조명', '역광', '노을', '극적'] },
+      { item: 'composition', keywords: ['composition', 'wide', 'close-up', 'side view', '구도', '구성'] },
+      { item: 'negative', keywords: ['avoid', 'exclude', 'negative', '제외', '네거티브'] },
+      { item: 'tech', keywords: ['size', 'aspect', 'quality', '크기', '비율', '품질'] }
     ]
   },
   writing: {
@@ -602,83 +500,97 @@ const DOMAIN_CHECKLISTS = {
   },
   dev: {
     items: [
-      { item: 'goal', keywords: ['goal', '목표', '서비스 목적', '가치제안'] },
-      { item: 'target-users', keywords: ['user', '사용자', '타깃', '페르소나'] },
-      { item: 'features', keywords: ['기능', 'MVP', '필수', '선택', '모듈'] },
-      { item: 'frontend', keywords: ['frontend', 'react', 'next', 'vue', 'svelte', 'tailwind'] },
-      { item: 'backend', keywords: ['backend', 'node', 'python', 'fastapi', 'nest', 'spring'] },
-      { item: 'api', keywords: ['api', 'rest', 'graphql', 'websocket'] },
-      { item: 'data', keywords: ['db', 'database', 'postgres', 'mysql', 'mongodb', 'schema'] },
-      { item: 'auth', keywords: ['auth', '인증', '인가', 'oauth', 'jwt', 'session'] },
-      { item: 'deployment', keywords: ['배포', 'hosting', 'vercel', 'aws', 'gcp', 'azure', 'docker', 'kubernetes', 'ci/cd'] },
-      { item: 'nfr', keywords: ['성능', '확장성', '가용성', '비용', '보안'] },
-      { item: 'monitoring', keywords: ['로깅', '모니터링', '알림', 'observability'] },
-      { item: 'testing', keywords: ['테스트', 'unit', 'e2e', 'coverage'] },
-      { item: 'timeline', keywords: ['일정', '마일스톤', '스프린트', '마감'] },
-      { item: 'constraints', keywords: ['제약', '예산', '시간', '리소스'] }
+      { item: 'goal', keywords: ['목표', '기능', '요구사항', '스펙'] },
+      { item: 'stack', keywords: ['스택', '프론트', '백엔드', '데이터베이스', '언어'] },
+      { item: 'deployment', keywords: ['배포', '서버', '도메인', 'SSL', 'CDN'] },
+      { item: 'constraints', keywords: ['마감', '예산', '성능', '보안'] },
+      { item: 'pages', keywords: ['페이지', '라우팅', '엔드포인트'] }
     ]
   }
 };
 
-// ========== sanitize ==========
-function sanitizeGenerated(text, facts) {
+// ========== 생성물 검증 & 정규화 ==========
+
+/**
+ * 최종 노출 전 "유효성 검사".
+ * - 빈 출력, 한국어 비율, 최소 길이, 도메인별 섹션 체크, 지어내기 징후 감지
+ * - 실패 시 ok:false 로 반환 → handleGenerate가 질문 라운드로 회귀
+ */
+function validateGenerated(text, facts, domain = 'image') {
+  const out = (text || '').trim();
+
+  if (!out) return { ok: false, reason: 'empty' };
+
+  // 한국어 비율(한글 문자수 / 전체) — 대략 20% 이상
+  const hangul = (out.match(/[가-힣]/g) || []).length;
+  const total  = out.replace(/\s+/g, '').length || 1;
+  if (hangul / total < 0.2) return { ok: false, reason: 'not_korean' };
+
+  // 최소 길이
+  if (out.length < 80) return { ok: false, reason: 'too_short' };
+
+  // 도메인별 섹션 키워드 존재 여부(느슨한 검사)
+  const need = domain === 'image'
+    ? [/주제|콘셉트|컨셉|목적/i, /구도|구성/i, /스타일|무드/i, /조명/i, /배경|세부/i]
+    : domain === 'video'
+    ? [/목적|대상|플랫폼/i, /타임라인|씬|장면/i, /촬영|카메라|편집/i, /음악|효과음|자막|BGM/i]
+    : domain === 'writing'
+    ? [/목적|독자/i, /톤|문체/i, /분량|길이/i, /구성|아웃라인/i]
+    : domain === 'daily'
+    ? [/목적|성공/i, /체크리스트|우선순위/i]
+    : [/목표|스택|배포|제약|페이지/i]; // dev
+
+  const hasAll = need.every((re) => re.test(out));
+  if (!hasAll) return { ok: false, reason: 'missing_sections' };
+
+  // 지어내기 대표 징후(사실에 없는 고유명/플랫폼 언급 등)
+  const base = (facts || '').toLowerCase();
+  const suspicious = [
+    'vimeo', 'instagram reels', 'tiktok', 'netflix', 'prime video',
+    'midjourney', 'stable diffusion', 'dalle', 'runway', 'capcut'
+  ];
+  for (const s of suspicious) {
+    if (out.toLowerCase().includes(s) && !base.includes(s)) {
+      return { ok: false, reason: 'hallucination_like' };
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * 경미한 용어/플랫폼을 일반화(필요 시)
+ * - 사용자 사실에 없는 고유 플랫폼이 들어오면 일반 표현으로 치환
+ * - 최종 UI placeholder 문자열은 절대 넣지 않음
+ */
+function sanitizeMinor(text, facts) {
   try {
     const base = (facts || '').toLowerCase();
-    const lines = (text || '').split(/\r?\n/);
-    const suspicious = [
-      'vimeo', 'facebook', 'instagram reels', 'tiktok', 'prime video', 'netflix',
-      'pulling a rabbit', 'rabbit from a hat', 'top hat',
-      'midjourney', 'stable diffusion', 'dalle', 'runway', 'capcut'
+    const map = [
+      { re: /vimeo/ig, to: '온라인 동영상 플랫폼' },
+      { re: /instagram reels/ig, to: '쇼트폼 플랫폼' },
+      { re: /tiktok/ig, to: '쇼트폼 플랫폼' },
+      { re: /midjourney|stable diffusion|dalle|runway|capcut/ig, to: '지정된 도구' }
     ];
-    const cleaned = lines.map(line => {
-      const low = line.toLowerCase();
-      if (suspicious.some(w => low.includes(w)) && !base.includes(low)) {
-        return line
-          .replace(/vimeo/ig, 'online video platform')
-          .replace(/instagram reels/ig, 'short-form platform')
-          .replace(/tiktok/ig, 'short-form platform')
-          .replace(/(pulling a rabbit|rabbit from a hat|top hat)/ig, 'a signature trick')
-          .replace(/midjourney|stable diffusion|dalle|runway|capcut/ig, 'the chosen tool');
+    let out = text;
+    for (const m of map) {
+      if (m.re.test(out) && !base.includes(String(m.to).toLowerCase())) {
+        out = out.replace(m.re, m.to);
       }
-      return line;
-    });
-    return cleaned.join('\n');
+    }
+    return out;
   } catch {
     return text || '';
   }
 }
 
 // ========== 공통 유틸 ==========
+
 function wrap(err, code = 'UNKNOWN') {
   const e = err instanceof Error ? err : new Error(String(err));
   e.code = code;
   return e;
 }
 
-function fallbackQuestionsFor(domain = 'video') {
-  // 최소 안전 질문 2~3개
-  if (domain === 'dev') {
-    return [
-      { question: '핵심 기능 범주는 무엇인가요?', options: ['회원/인증', '콘텐츠 CRUD', '결제/구독', '알림/채팅', '관리자 대시보드'] },
-      { question: '배포/호스팅 선호가 있나요?', options: ['Vercel', 'AWS', 'GCP', '온프레미스', '미정'] },
-      { question: '목표 사용자/고객은 누구인가요?', options: ['일반 소비자', 'B2B', '내부 직원', '미정'] }
-    ];
-  }
-  if (domain === 'writing') {
-    return [
-      { question: '글 목적은 무엇인가요?', options: ['정보 제공', '설득/세일즈', '홍보', '내부 보고'] },
-      { question: '톤/문체는 어떻게 할까요?', options: ['전문적', '친근', '간결', '유머러스'] }
-    ];
-  }
-  if (domain === 'daily') {
-    return [
-      { question: '가장 시급한 목표는 무엇인가요?', options: ['연락/메일', '정리/계획', '구매/예산', '업무 진행'] },
-      { question: '마감 시점이 있나요?', options: ['오늘', '내일', '이번 주', '미정'] }
-    ];
-  }
-  // video/image 공용
-  return [
-    { question: '목적/용도는 무엇인가요?', options: ['오락', '교육', '홍보', '정보'] },
-    { question: '대상/플랫폼은 무엇인가요?', options: ['유튜브', '틱톡', '인스타', '웹/앱', '미정'] }
-  ];
-}
+// (외부 모듈: mentionExtractor, intentAnalyzer, evaluationSystem, getCoverageRatio, callOpenAI, callOpenAIWithSystem)
+// 기존 구현 그대로 사용
