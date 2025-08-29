@@ -1,7 +1,7 @@
 // api/improve-prompt.js
 // Next.js API Route — self-contained drop-in version
 // NOTE: If your project already has utils (mentionExtractor, intentAnalyzer, evaluationSystem, callOpenAI, DOMAIN_CHECKLISTS),
-// you can remove the inline shims below and import your own. The logic reflects your diff changes.
+// you can remove the inline shims below and import your own. The logic reflects your diff changes plus the user's latest patch.
 
 export default async function handler(req, res) {
   try {
@@ -192,8 +192,18 @@ async function generateDraftPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const prompt =
     domain === 'image'
-      ? `Create an interim improved image prompt in English from the following facts.\nKeep it concise but structured.\n\n${allAnswers}\n\nReturn only the prompt text.`
-      : `Create an interim improved video prompt in English from the following facts.\nKeep it concise but structured.\n\n${allAnswers}\n\nReturn only the prompt text.`;
+      ? `Create an interim improved image prompt in English from the following facts.
+Keep it concise but structured.
+
+${allAnswers}
+
+Return only the prompt text.`
+      : `Create an interim improved video prompt in English from the following facts.
+Keep it concise but structured.
+
+${allAnswers}
+
+Return only the prompt text.`;
 
   const text = await callOpenAI(prompt, 0.2, debug);
   return (text || '').trim();
@@ -215,6 +225,20 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
       if (!k) continue;
       if (all.includes(String(k).toLowerCase())) {
         answeredKW.add(String(k).toLowerCase());
+      }
+    }
+  }
+  // 이미 선택한 답변을 금지 목록에 추가하여 중복 질문 방지
+  for (const ans of answers) {
+    if (!ans) continue;
+    const parts = String(ans).split(':');
+    if (parts.length >= 2) {
+      const value = parts.slice(1).join(':').trim().toLowerCase();
+      if (value) {
+        answeredKW.add(value);
+        value.split(/[\s,]+/).forEach(tok => {
+          if (tok) answeredKW.add(tok);
+        });
       }
     }
   }
@@ -243,7 +267,30 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
     2
   );
 
-  const prompt = `You are an expert prompt engineer.\nGoal: ask only the minimum decisive questions needed to complete a strong ${domain} prompt.\nAvoid duplicates and avoid anything already covered.\nLimit to ${targetCount} questions max.\n\nCurrent draft prompt (established facts):\n${draftPrompt ? draftPrompt.slice(0, 1200) : '(none)'}\n\nUser input: ${userInput.slice(0, 400)}\nAnswers so far: ${(answers.join(' | ') || 'none').slice(0, 400)}\nExtracted mentions:\n${safeMentions || '(none)'}\n\nBANNED keywords (already covered):\n${Array.from(answeredKW).join(', ') || '(none)'}\n\nMISSING topics (ask ONLY about these; merge if < ${targetCount}):\n${missingItems.map((x) => `- ${String(x.item)}`).join('\n')}\n\nReturn JSON matching this example shape:\n${baseSchema}\n`;
+  const prompt = `You are an expert prompt engineer.
+Goal: ask only the minimum decisive questions needed to complete a strong ${domain} prompt.
+Avoid duplicates and avoid anything already covered.
+Limit to ${targetCount} questions max.
+
+Return all questions and options in Korean. Use concise Korean wording.
+
+Current draft prompt (established facts):
+${draftPrompt ? draftPrompt.slice(0, 1200) : '(none)'}
+
+User input: ${userInput.slice(0, 400)}
+Answers so far: ${(answers.join(' | ') || 'none').slice(0, 400)}
+Extracted mentions:
+${safeMentions || '(none)'}
+
+BANNED keywords (already covered):
+${Array.from(answeredKW).join(', ') || '(none)'}
+
+MISSING topics (ask ONLY about these; merge if < ${targetCount}):
+${missingItems.map((x) => `- ${String(x.item)}`).join('\n')}
+
+Return JSON matching this example shape:
+${baseSchema}
+`;
 
   const raw = await callOpenAI(prompt, 0.3, debug);
   let cleaned = (raw || '').trim().replace(/```(?:json)?/gi, '').replace(/```/g, '');
@@ -257,9 +304,9 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
     if (debug) console.warn('JSON parse failed, returning fallback single question. Raw:', cleaned);
     return [
       {
-        question: 'What is the primary goal and audience we must optimize for?',
-        options: ['Awareness', 'Engagement', 'Conversion', 'Education'],
-        rationale: 'Clarifies priority to shape structure and tone.'
+        question: '최적화해야 하는 주요 목표와 타깃은 무엇인가요?',
+        options: ['인지도', '참여도', '전환', '교육'],
+        rationale: '우선순위를 명확히 해 구조와 톤을 결정합니다.'
       }
     ];
   }
@@ -293,8 +340,29 @@ async function generateAIQuestions(userInput, answers, domain, mentions, round, 
 async function generateAIPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const domainPrompts = {
-    video: `Create a professional, production-ready video prompt in English from the following information:\n\n${allAnswers}\n\nRequirements:\n- Scene-by-scene timeline\n- Clear subject + audience + platform fit\n- Camera work and editing directions\n- Music/SFX and captions guidance\n- Technical specs (resolution, codec)\n- Length target`,
-    image: `Create a professional, production-ready image prompt in English from the following information:\n\n${allAnswers}\n\nRequirements:\n- Clear subject and composition\n- Style, lighting, lens/camera hints when relevant\n- Background/setting and mood\n- Negative constraints (what to avoid)\n- Technical specs (size/aspect, quality)`
+    video: `Create a professional, production-ready video prompt in English from the following information:
+
+${allAnswers}
+
+Requirements:
+- Scene-by-scene timeline
+- Clear subject + audience + platform fit
+- Camera work and editing directions
+- Music/SFX and captions guidance
+- Technical specs (resolution, codec)
+- Length target
+ - Only include details explicitly mentioned in the user input or answers; do not invent new scenes, actions, or specifics beyond the provided facts.`,
+    image: `Create a professional, production-ready image prompt in English from the following information:
+
+${allAnswers}
+
+Requirements:
+- Clear subject and composition
+- Style, lighting, lens/camera hints when relevant
+- Background/setting and mood
+- Negative constraints (what to avoid)
+ - Technical specs (size/aspect, quality)
+ - Only include details explicitly mentioned in the user input or answers; do not invent new elements beyond the provided facts.`
   };
 
   const sys = `You are a world-class prompt engineer. You write concise but complete prompts that tools can execute.`;
@@ -308,13 +376,17 @@ async function generateAIPrompt(userInput, answers, domain, debug) {
 const DOMAIN_CHECKLISTS = {
   video: {
     items: [
-      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness'] },
-      { item: 'audience', keywords: ['audience', 'target', 'demographic'] },
+      // goal 관련 키워드 확장: 엔터테인, 교육 등을 포함
+      { item: 'goal', keywords: ['goal', 'objective', 'kpi', 'conversion', 'awareness', 'entertain', 'entertainment', 'educate', 'education'] },
+      // audience 관련 키워드 확장: 성인, 어린이 등
+      { item: 'audience', keywords: ['audience', 'target', 'demographic', 'adult', 'adults', 'kids', 'children', 'general'] },
+      // style 관련 키워드 확장: dramatic, comedic 등
+      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe', 'dramatic', 'comedic', 'comedy'] },
+      // audio 관련 키워드 확장: background music, sound effects 등
+      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption', 'background music', 'sound effects'] },
       { item: 'platform', keywords: ['youtube', 'shorts', 'tiktok', 'instagram', 'platform'] },
       { item: 'length', keywords: ['seconds', 'minutes', 'length', 'duration'] },
-      { item: 'style', keywords: ['style', 'tone', 'mood', 'vibe'] },
       { item: 'visuals', keywords: ['camera', 'shot', 'b-roll', 'scene', 'timeline'] },
-      { item: 'audio', keywords: ['music', 'sfx', 'sound', 'voiceover', 'caption'] },
       { item: 'tech', keywords: ['resolution', 'codec', 'fps', 'aspect'] }
     ]
   },
