@@ -159,80 +159,201 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
   }
 }
 
+// api/improve-prompt.js의 handleGenerate 함수 수정
 async function handleGenerate(res, userInput, answers, domain, asked, debug) {
   let attempts = 0;
   const maxAttempts = 4;
   let best = { text: '', score: -1 };
+  
+  // ⭐ 실제 의도 점수 계산 (95 하드코딩 제거)
+  const mentions = mentionExtractor.extract([userInput, ...answers].join(' '));
+  const checklist = DOMAIN_CHECKLISTS[domain] || DOMAIN_CHECKLISTS.video;
+  const actualIntentScore = calculateDetailedIntentScore(userInput, answers, domain);
 
   while (attempts < maxAttempts) {
     attempts++;
     try {
+      // 진행 상황 알림
+      if (attempts === 1) {
+        console.log(`🔄 프롬프트 개선 시도 ${attempts}/${maxAttempts}`);
+      }
+      
       const generatedPrompt = await generateAIPrompt(userInput, answers, domain, debug);
       const qualityScore = evaluationSystem.evaluatePromptQuality(generatedPrompt, domain);
+      
       if (qualityScore.total > best.score) {
         best = { text: generatedPrompt, score: qualityScore.total };
       }
 
-      if (qualityScore.total >= 95) {
+      if (qualityScore.total >= 95 && actualIntentScore >= 95) {
         return res.status(200).json({
           success: true,
           step: 'completed',
           originalPrompt: userInput,
           improvedPrompt: generatedPrompt,
-          intentScore: 95,
+          intentScore: actualIntentScore, // ⭐ 실제 점수 사용
           qualityScore: qualityScore.total,
           attempts,
-          message: `🎉 완성! AI가 ${attempts}번 만에 95점 품질 달성!`
+          message: `🎉 완성! 의도 ${actualIntentScore}점, 품질 ${qualityScore.total}점 달성!`
         });
-      } else {
-        if (attempts >= maxAttempts) {
-          // ✅ 95 미만이어도 최고 점수 버전을 우선 반환(완결)
-          if (best.text) {
-            return res.status(200).json({
-              success: true,
-              step: 'completed',
-              originalPrompt: userInput,
-              improvedPrompt: best.text,
-              intentScore: 95,
-              qualityScore: best.score,
-              attempts,
-              message: `최대 시도 도달. 현재 최고 품질 ${best.score}점으로 완료합니다.`
-            });
-          }
-        }
-        // continue loop
       }
-    } catch (e) {
-      if (attempts >= maxAttempts) {
-        // 실패해도 최고 버전 있으면 완결
-        if (best.text) {
-          return res.status(200).json({
-            success: true,
-            step: 'completed',
-            originalPrompt: userInput,
-            improvedPrompt: best.text,
-            intentScore: 95,
-            qualityScore: best.score,
-            attempts,
-            message: `생성 반복 실패. 현재 최고 품질 ${best.score}점으로 완료합니다.`
-          });
-        }
-        // 정말 아무 것도 없으면 최소 질문 1~2개만
-        const mentions = mentionExtractor.extract([userInput, ...answers].join(' '));
-        const fallbackQuestions = await generateAIQuestions(
-          userInput, answers, domain, mentions, 1, { draftPrompt: '', targetCount: 2, asked, debug }
+      
+      // ⭐ 점수가 부족하면 추가 질문 생성
+      if (actualIntentScore < 95) {
+        const targetedQuestions = await generateTargetedQuestions(
+          userInput, answers, domain, actualIntentScore, debug
         );
+        
         return res.status(200).json({
           success: true,
           step: 'questions',
-          questions: fallbackQuestions || [],
-          round: 1,
-          intentScore: 95,
-          message: '생성에 실패하여 꼭 필요한 최소 질문을 제시합니다.'
+          questions: targetedQuestions,
+          round: attempts + 1,
+          intentScore: actualIntentScore,
+          qualityScore: qualityScore.total,
+          status: 'improving', // ⭐ 진행 상황 표시
+          message: `개선 중... 의도 점수를 올리기 위한 추가 정보가 필요합니다.`
         });
       }
+    } catch (e) {
+      console.error('Generate error:', e);
     }
   }
+  
+  // 최대 시도 후 최고 버전 반환
+  return res.status(200).json({
+    success: true,
+    step: 'completed',
+    originalPrompt: userInput,
+    improvedPrompt: best.text,
+    intentScore: actualIntentScore,
+    qualityScore: best.score,
+    attempts,
+    message: `최선의 결과입니다. 의도 ${actualIntentScore}점, 품질 ${best.score}점`
+  });
+}
+
+// ⭐ 새로운 함수: 상세한 의도 점수 계산
+function calculateDetailedIntentScore(userInput, answers, domain) {
+  const allText = [userInput, ...answers].join(' ').toLowerCase();
+  let score = 10; // 기본 점수
+  
+  const scoreComponents = {
+    video: {
+      length: { weight: 15, keywords: ['초', '분', '시간', '길이'] },
+      platform: { weight: 10, keywords: ['유튜브', '틱톡', '인스타', 'youtube'] },
+      subject_detail: { weight: 20, keywords: ['품종', '크기', '색상', '외모'] },
+      action_detail: { weight: 20, keywords: ['마술', '트릭', '동작', '행동'] },
+      style: { weight: 10, keywords: ['실사', '애니메이션', '3d'] },
+      audience: { weight: 10, keywords: ['성인', '아이', '가족', '모든'] },
+      mood: { weight: 10, keywords: ['유머', '감동', '신나는', '차분한'] }
+    },
+    image: {
+      subject_detail: { weight: 25, keywords: ['구체적', '상세', '특징'] },
+      style: { weight: 20, keywords: ['스타일', '화풍', '기법'] },
+      composition: { weight: 15, keywords: ['구도', '배치', '레이아웃'] },
+      colors: { weight: 15, keywords: ['색상', '톤', '팔레트'] },
+      resolution: { weight: 10, keywords: ['해상도', '크기', 'dpi'] },
+      mood: { weight: 10, keywords: ['분위기', '느낌', '감정'] }
+    }
+  };
+  
+  const components = scoreComponents[domain] || scoreComponents.video;
+  
+  Object.entries(components).forEach(([key, config]) => {
+    const hasKeyword = config.keywords.some(kw => allText.includes(kw));
+    if (hasKeyword) {
+      score += config.weight;
+    }
+  });
+  
+  // 답변 개수에 따른 보너스 (최대 10점)
+  const answerBonus = Math.min(answers.length * 2, 10);
+  score += answerBonus;
+  
+  return Math.min(score, 95);
+}
+
+// ⭐ 새로운 함수: 점수 향상을 위한 타겟 질문 생성
+async function generateTargetedQuestions(userInput, answers, domain, currentScore, debug) {
+  const missingScore = 95 - currentScore;
+  
+  // 어떤 정보가 부족한지 분석
+  const missingInfo = analyzeMissingInfo(userInput, answers, domain);
+  
+  const prompt = `
+You are helping improve a ${domain} prompt. Current intent score: ${currentScore}/95.
+Missing score: ${missingScore} points.
+
+Missing information categories:
+${missingInfo.map(info => `- ${info.category}: ${info.description}`).join('\n')}
+
+Generate 2-3 SPECIFIC questions in Korean that will help raise the score.
+Focus on the most important missing details.
+
+Each question should:
+1. Target a specific missing piece of information
+2. Include a text input field (not just options)
+3. Be clear and specific
+
+Return JSON:
+{
+  "questions": [
+    {
+      "question": "구체적인 질문",
+      "category": "카테고리",
+      "inputType": "text",
+      "placeholder": "예시 답변",
+      "scoreValue": 10
+    }
+  ]
+}`;
+
+  const raw = await callOpenAI(prompt, 0.3, debug);
+  
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.questions || [];
+  } catch (e) {
+    // 폴백 질문
+    return [
+      {
+        question: "강아지의 품종이나 외모를 구체적으로 설명해주세요",
+        inputType: "text",
+        placeholder: "예: 골든 리트리버, 중형견, 갈색 털",
+        scoreValue: 20
+      },
+      {
+        question: "어떤 마술 트릭을 보여주면 좋을까요?",
+        inputType: "text",
+        placeholder: "예: 공 사라지게 하기, 간식 찾기",
+        scoreValue: 20
+      }
+    ];
+  }
+}
+
+// ⭐ 정보 부족 분석
+function analyzeMissingInfo(userInput, answers, domain) {
+  const allText = [userInput, ...answers].join(' ').toLowerCase();
+  const missing = [];
+  
+  if (domain === 'video') {
+    if (!allText.match(/\d+\s*(초|분)/)) {
+      missing.push({ category: 'duration', description: '구체적인 영상 길이' });
+    }
+    if (!allText.includes('품종') && !allText.includes('골든') && !allText.includes('푸들')) {
+      missing.push({ category: 'subject', description: '강아지 품종/외모' });
+    }
+    if (!allText.includes('트릭') && !allText.includes('마술')) {
+      missing.push({ category: 'action', description: '구체적인 마술 내용' });
+    }
+    if (!allText.includes('유튜브') && !allText.includes('틱톡')) {
+      missing.push({ category: 'platform', description: '업로드 플랫폼' });
+    }
+  }
+  
+  return missing;
 }
 
 // ========== LLM 유틸 ==========
