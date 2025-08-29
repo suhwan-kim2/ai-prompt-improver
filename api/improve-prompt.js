@@ -72,7 +72,29 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
     const coverage = getCoverageRatio(checklist, (allText + '\n' + draftPrompt).toLowerCase(), mentions);
     const coveragePct = Math.round(coverage * 100);
 
-    // ✅ 조건: 커버리지/라운드/점수 중 하나라도 통과하면 generate로 진행
+    // ✅ 라운드 1에서는 더 엄격한 기준 적용
+    if (round === 1) {
+      // 라운드 1에서는 최소 50% 이상 커버리지 필요
+      if (coverage < 0.5) {
+        const targetCount = mode === 'bulk' ? 5 : 3;
+        const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, asked, debug });
+        
+        return res.status(200).json({
+          success: true,
+          step: 'questions',
+          questions: nextQuestions.length > 0 ? nextQuestions : await generateFallbackQuestions(domain),
+          round: round + 1,
+          intentScore,
+          coverage: coveragePct,
+          draftPrompt,
+          ui: { language: 'ko', allowMulti: true, includeOther: true },
+          progress: { intentScore, coverage: coveragePct },
+          message: `기본 정보 수집 중입니다. (coverage ${coveragePct}%)`
+        });
+      }
+    }
+
+    // 일반 조건: 커버리지/라운드/점수 중 하나라도 통과하면 generate로 진행
     if (coverage >= 0.65 || (round >= 3 && coverage >= 0.55) || intentScore >= 80) {
       return res.status(200).json({
         success: true,
@@ -91,6 +113,23 @@ async function handleQuestions(res, userInput, answers, domain, round, mode, ask
     const nextQuestions = await generateAIQuestions(userInput, answers, domain, mentions, round + 1, { draftPrompt, targetCount, asked, debug });
 
     if (!nextQuestions || nextQuestions.length === 0) {
+      // ⭐ 라운드 2 이하에서는 fallback 질문 제공
+      if (round <= 2) {
+        const fallbackQuestions = await generateFallbackQuestions(domain);
+        return res.status(200).json({
+          success: true,
+          step: 'questions',
+          questions: fallbackQuestions,
+          round: round + 1,
+          intentScore,
+          coverage: coveragePct,
+          draftPrompt,
+          ui: { language: 'ko', allowMulti: true, includeOther: true },
+          progress: { intentScore, coverage: coveragePct },
+          message: '핵심 정보 보강을 위해 추가 질문을 진행합니다.'
+        });
+      }
+      
       return res.status(200).json({
         success: true,
         step: 'generate',
@@ -220,6 +259,21 @@ Return only the prompt text.`;
   return (text || '').trim();
 }
 
+// Fallback 질문 생성
+async function generateFallbackQuestions(domain) {
+  const fallbackQuestions = {
+    video: [
+      { question: "영상의 구체적인 목적은 무엇인가요?", options: ["교육", "홍보", "엔터테인먼트", "정보 전달"], key: "purpose" },
+      { question: "타겟 시청자는 누구인가요?", options: ["10대", "20-30대", "40-50대", "모든 연령"], key: "audience" }
+    ],
+    image: [
+      { question: "이미지의 주요 용도는 무엇인가요?", options: ["웹사이트", "인쇄물", "SNS", "프레젠테이션"], key: "usage" },
+      { question: "원하는 스타일은 무엇인가요?", options: ["사실적", "일러스트", "미니멀", "복잡한"], key: "style" }
+    ]
+  };
+  return fallbackQuestions[domain] || fallbackQuestions.video;
+}
+
 // 질문 생성기
 async function generateAIQuestions(userInput, answers, domain, mentions, round, opts = {}) {
   const { draftPrompt = '', targetCount = 3, asked = [], debug = false } = opts;
@@ -290,6 +344,11 @@ Limit to ${targetCount} questions max.
 
 Return all questions and options in Korean. Use concise Korean wording.
 
+IMPORTANT CONSTRAINTS:
+- Do NOT propose specific brand names, platform names, or overly specific examples
+- Keep options generic and category-based
+- Avoid suggesting "Vimeo", "rabbit from hat", or other specific props unless user mentioned them
+
 Current draft prompt (established facts):
 ${draftPrompt ? draftPrompt.slice(0, 1200) : '(none)'}
 
@@ -346,7 +405,7 @@ ${baseSchema}
   return qs;
 }
 
-// 최종 프롬프트 생성
+// 최종 프롬프트 생성 (지어내기 방지 강화)
 async function generateAIPrompt(userInput, answers, domain, debug) {
   const allAnswers = [userInput, ...answers].join('\n');
   const domainPrompts = {
@@ -361,7 +420,14 @@ Requirements:
 - Music/SFX and captions guidance
 - Technical specs (resolution, codec)
 - Length target
- - Only include details explicitly mentioned in the user input or answers; do not invent new scenes, actions, or specifics beyond the provided facts.`,
+
+STRICT RULES:
+- ONLY include details explicitly mentioned in the user input or answers
+- Do NOT invent specific examples, brand names, or platforms (no Vimeo, no Facebook, etc.)
+- Do NOT add specific props or examples (no "rabbit from hat", no specific tricks)
+- If any required field is missing, write [TBD: field name] as placeholder
+- Keep everything factual based only on provided information`,
+    
     image: `Create a professional, production-ready image prompt in English from the following information:
 
 ${allAnswers}
@@ -371,14 +437,64 @@ Requirements:
 - Style, lighting, lens/camera hints when relevant
 - Background/setting and mood
 - Negative constraints (what to avoid)
- - Technical specs (size/aspect, quality)
- - Only include details explicitly mentioned in the user input or answers; do not invent new elements beyond the provided facts.`
+- Technical specs (size/aspect, quality)
+
+STRICT RULES:
+- ONLY include details explicitly mentioned in the user input or answers
+- Do NOT invent specific elements, brands, or examples
+- If any required field is missing, write [TBD: field name] as placeholder
+- Keep everything factual based only on provided information`
   };
 
-  const sys = `You are a world-class prompt engineer. You write concise but complete prompts that tools can execute.`;
+  const sys = `You are a world-class prompt engineer. You write concise but complete prompts that tools can execute.
+NEVER add information not provided by the user. Use [TBD] placeholders for missing information.`;
+  
   const prompt = domainPrompts[domain] || domainPrompts.video;
   const raw = await callOpenAIWithSystem(sys, prompt, 0.2, debug);
-  return (raw || '').trim();
+  const generated = (raw || '').trim();
+  
+  // sanitize 적용
+  return sanitizeGenerated(generated, allAnswers);
+}
+
+// ========== sanitize 함수 추가 ==========
+function sanitizeGenerated(text, facts) {
+  try {
+    const base = (facts || '').toLowerCase();
+    const lines = (text || '').split(/\r?\n/);
+    
+    // 의심 단어들 (사용자가 언급하지 않은 것들)
+    const suspicious = [
+      'vimeo', 'facebook', 'instagram reels', 'tiktok', 'prime video', 'netflix',
+      'pulling a rabbit', 'rabbit from a hat', 'rabbit from the hat', 'top hat',
+      'disappearing act', 'card tricks'
+    ];
+    
+    const cleaned = lines.map(line => {
+      const low = line.toLowerCase();
+      
+      // 사실에 없는 의심 단어가 포함된 라인 처리
+      for (const word of suspicious) {
+        if (low.includes(word) && !base.includes(word)) {
+          // 완전 제거보다는 일반화
+          line = line
+            .replace(/vimeo/gi, 'online platform')
+            .replace(/facebook/gi, 'social media')
+            .replace(/(pulling a rabbit|rabbit from a hat|rabbit from the hat)/gi, 'magic trick')
+            .replace(/top hat/gi, 'prop')
+            .replace(/disappearing act/gi, 'performance')
+            .replace(/card tricks/gi, 'tricks');
+        }
+      }
+      
+      return line;
+    });
+    
+    return cleaned.join('\n');
+  } catch (e) {
+    console.warn('sanitizeGenerated error:', e);
+    return text || '';
+  }
 }
 
 // ========== 평가/의도/체크리스트/멘션 — 간단한 SHIMS ==========
@@ -506,35 +622,34 @@ async function callOpenAIWithSystem(system, user, temperature = 0.2, debug = fal
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY missing');
 
-  const body = {
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user }
-    ],
-    temperature,
-  };
+  const body = {model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+   messages: [
+     { role: 'system', content: system },
+     { role: 'user', content: user }
+   ],
+   temperature,
+ };
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body)
-  });
+ const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+   body: JSON.stringify(body)
+ });
 
-  if (!resp.ok) {
-    const msg = await resp.text();
-    if (debug) console.warn('OpenAI error:', msg);
-    throw new Error(`OPENAI_HTTP_${resp.status}`);
-  }
+ if (!resp.ok) {
+   const msg = await resp.text();
+   if (debug) console.warn('OpenAI error:', msg);
+   throw new Error(`OPENAI_HTTP_${resp.status}`);
+ }
 
-  const data = await resp.json();
-  return data?.choices?.[0]?.message?.content || '';
+ const data = await resp.json();
+ return data?.choices?.[0]?.message?.content || '';
 }
 
 // ========== utils ==========
 
 function wrap(err, code = 'UNKNOWN') {
-  const e = err instanceof Error ? err : new Error(String(err));
-  e.code = code;
-  return e;
+ const e = err instanceof Error ? err : new Error(String(err));
+ e.code = code;
+ return e;
 }
