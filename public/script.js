@@ -63,7 +63,9 @@ function updateDomainDescription() {
   const descriptions = {
     video: "📹 영상 제작: 유튜브, 광고, 교육 영상 등",
     image: "🎨 이미지 생성: 포스터, 로고, 일러스트 등",
-    dev: "💻 개발 프로젝트: 웹사이트, 앱, API 등"
+    dev:   "💻 개발 프로젝트: 웹사이트, 앱, API 등",
+    writing: "✍️ 글쓰기: 이메일, 보고서, 에세이, 블로그, 카피",
+    daily:   "🗒️ 일상/범용: 할일/체크리스트, 요약, 메시지/이메일 초안"
   };
   const el = $("domainDescription");
   if (el) el.textContent = descriptions[state.domain] || descriptions.video;
