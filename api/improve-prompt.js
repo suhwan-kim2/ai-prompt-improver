@@ -1,4 +1,4 @@
-// api/improve-prompt.js - 100% AI 기반 고급 프롬프트 개선 시스템
+// api/improve-prompt.js - 100% AI 기반 고급 프롬프트 개선 시스템 (완전판)
 import { readJson } from './helpers.js';
 import OpenAI from 'openai';
 
@@ -246,11 +246,35 @@ async function handleAIGenerate(res, userInput, answers, domain) {
     throw error;
   }
 }
-// 🏆 최종 완벽한 프롬프트 생성 (generateFinalPrompt 함수 교체)
+
+// 🎯 드래프트 프롬프트 생성
+async function generateDraftPrompt(userInput, answers, domain) {
+  const platform = getPlatform(domain);
+  const allInfo = [userInput, ...answers].join('\n');
+
+  const prompt = `${domain} 프롬프트 전문가로서 현재까지 정보로 최선의 프롬프트를 작성하세요.
+
+플랫폼: ${platform}
+정보: ${allInfo}
+
+간결하고 전문적인 프롬프트만 작성 (설명 없이):`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+    max_tokens: 800
+  });
+
+  return completion.choices[0].message.content;
+}
+
+// 🏆 최종 완벽한 프롬프트 생성
 async function generateFinalPrompt(userInput, answers, domain) {
   const platform = getPlatform(domain);
+  const requirements = getRequirements(domain);
   
-  // 답변 정리 및 중복 제거
+  // 답변 정리
   const cleanedAnswers = cleanupAnswers(answers);
   
   const prompt = `당신은 ${platform} 프롬프트 작성 전문가입니다.
@@ -259,6 +283,7 @@ async function generateFinalPrompt(userInput, answers, domain) {
 === 입력 정보 ===
 원본 요청: "${userInput}"
 수집된 정보: ${cleanedAnswers}
+모든 답변: ${answers.join(', ')}
 
 === 중요 규칙 ===
 1. JSON이나 구조화된 형식 절대 금지
@@ -277,6 +302,11 @@ ${domain === 'image' ? `
 "Professional photography of golden retriever puppy in magical forest, soft morning light filtering through trees, photorealistic, highly detailed fur texture, shallow depth of field, nature documentary style --ar 16:9 --stylize 750 --v 6"
 ` : ''}
 
+${domain === 'dev' ? `
+=== 개발 프로젝트 프롬프트 예시 ===
+"E-commerce website using Next.js 14 and Tailwind CSS. Features: product catalog with filtering, shopping cart, user authentication with JWT, payment integration with Stripe. PostgreSQL database with Prisma ORM. Responsive design for mobile and desktop. Deploy on Vercel with CI/CD pipeline."
+` : ''}
+
 실제 사용 가능한 프롬프트만 출력 (설명이나 JSON 없이):`;
 
   const completion = await openai.chat.completions.create({
@@ -289,22 +319,73 @@ ${domain === 'image' ? `
   return completion.choices[0].message.content.trim();
 }
 
-// 답변 정리 함수 추가
+// ============ 헬퍼 함수들 (오류 수정) ============
+
+// 도메인별 컨텍스트
+function getDomainContext(domain) {
+  const contexts = {
+    video: `필수: 플랫폼(유튜브/틱톡), 길이, 해상도, 타겟 시청자
+중요: 스토리라인, 카메라 워크, 전환 효과, 음향
+선택: 자막, 색보정, 특수효과`,
+    
+    image: `필수: 주체, 스타일(사실적/일러스트/3D), 해상도, 용도
+중요: 조명, 구도, 색상 팔레트, 분위기
+선택: 카메라 설정, 참조 아티스트, 플랫폼 파라미터`,
+    
+    dev: `필수: 프로젝트 유형, 기술 스택, 핵심 기능
+중요: 데이터베이스, API 설계, 인증 방식
+선택: 배포 환경, 성능 요구사항, 보안`
+  };
+  return contexts[domain] || contexts.video;
+}
+
+// 플랫폼 매핑
+function getPlatform(domain) {
+  const platforms = {
+    video: 'Runway Gen-3/Pika Labs',
+    image: 'Midjourney v6/DALL-E 3',
+    dev: 'GitHub Copilot/Cursor'
+  };
+  return platforms[domain] || 'AI Platform';
+}
+
+// 플랫폼별 요구사항
+function getRequirements(domain) {
+  const reqs = {
+    video: `- 카메라 움직임 명시 (dolly, pan, zoom)
+- 씬 단위 구체적 묘사
+- 조명과 분위기 설정
+- 모션 강도 지정 (-motion 0-4)
+- 시드값 일관성 (--seed)`,
+    
+    image: `- Midjourney: --ar 비율, --stylize 750, --v 6
+- 네거티브 프롬프트 필수
+- 품질 키워드: highly detailed, 8K, masterpiece
+- 조명: dramatic lighting, golden hour
+- 스타일 참조: trending on ArtStation`,
+    
+    dev: `- 명확한 프로젝트 스코프
+- 기술 스택 상세 명시
+- 데이터 모델 설계
+- API 엔드포인트 정의
+- 성능/보안 요구사항`
+  };
+  return reqs[domain] || '';
+}
+
+// 답변 정리 함수
 function cleanupAnswers(answers) {
-  // 중복 제거 및 핵심만 추출
   const uniqueAnswers = {};
   
   answers.forEach(answer => {
     const [key, value] = answer.split(':').map(s => s.trim());
     if (key && value && value !== '없음' && value !== '불필요') {
-      // 같은 키에 여러 값이 있으면 첫 번째만 사용
       if (!uniqueAnswers[key]) {
         uniqueAnswers[key] = value;
       }
     }
   });
   
-  // 중요한 정보만 텍스트로 변환
   const important = [];
   if (uniqueAnswers.video_length) important.push(`길이: ${uniqueAnswers.video_length}`);
   if (uniqueAnswers.resolution_quality) important.push(`해상도: ${uniqueAnswers.resolution_quality}`);
