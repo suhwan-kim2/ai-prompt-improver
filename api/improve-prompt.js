@@ -1,392 +1,358 @@
-// api/improve-prompt.js - 체크리스트 기반 완벽 중복 방지
+// api/improve-prompt.js - 100% AI 기반 고급 프롬프트 개선 시스템
 import { readJson } from './helpers.js';
-import { MentionExtractor } from '../utils/mentionExtractor.js';
+import OpenAI from 'openai';
 
-const mentionExtractor = new MentionExtractor();
+// OpenAI 클라이언트 초기화 - 필수!
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-// ========== 도메인별 MUST 체크리스트 ==========
-const DOMAIN_MUST_CHECKLIST = {
-  video: {
-    목표플랫폼: { 
-      required: true, 
-      keywords: ['유튜브', '틱톡', '인스타', '광고', '교육'],
-      question: "어느 플랫폼용 영상인가요?",
-      options: ["유튜브", "틱톡/쇼츠", "인스타 릴스", "광고", "교육용"]
-    },
-    정확한길이: { 
-      required: true, 
-      keywords: ['초', '분', '길이', '러닝타임'],
-      question: "영상 길이는 정확히 몇 초인가요?",
-      options: ["15초", "30초", "60초", "180초", "300초 이상"]
-    },
-    타겟시청자: { 
-      required: true, 
-      keywords: ['시청자', '대상', '연령', '타겟'],
-      question: "주 시청자층은 누구인가요?",
-      options: ["10대", "20-30대", "40-50대", "전연령", "전문가"]
-    },
-    화면스펙: { 
-      required: true, 
-      keywords: ['해상도', '비율', '16:9', '9:16', 'fps'],
-      question: "화면 비율과 해상도는?",
-      options: ["16:9 FHD", "9:16 세로", "1:1 정사각형", "4K", "기타"]
-    },
-    씬구성: { 
-      required: true, 
-      keywords: ['씬', '장면', '구성', '시퀀스'],
-      question: "주요 장면 구성은 어떻게 되나요?",
-      options: ["단일 씬", "3-5개 씬", "5-10개 씬", "10개 이상", "몽타주"]
-    }
-  },
-  
-  image: {
-    목적매체: { 
-      required: true, 
-      keywords: ['썸네일', '포스터', '배너', '용도'],
-      question: "이미지의 용도는 무엇인가요?",
-      options: ["유튜브 썸네일", "SNS 포스트", "웹 배너", "인쇄물", "NFT/아트"]
-    },
-    스타일: { 
-      required: true, 
-      keywords: ['스타일', '화풍', '실사', '일러스트', '3D'],
-      question: "어떤 스타일로 제작하시겠어요?",
-      options: ["실사/포토", "일러스트", "3D 렌더", "미니멀", "빈티지"]
-    },
-    해상도비율: { 
-      required: true, 
-      keywords: ['해상도', '크기', '비율', 'px'],
-      question: "정확한 해상도와 비율은?",
-      options: ["1920x1080", "1080x1080", "1080x1920", "4K", "커스텀"]
-    },
-    색상팔레트: { 
-      required: true, 
-      keywords: ['색상', '컬러', '톤', '팔레트'],
-      question: "주요 색상 톤은?",
-      options: ["밝고 화사한", "어둡고 무거운", "파스텔톤", "모노톤", "네온/비비드"]
-    }
-  },
-  
-  dev: {
-    문제정의: { 
-      required: true, 
-      keywords: ['목표', '문제', '해결', '구현'],
-      question: "해결하려는 핵심 문제는?",
-      inputType: "text"
-    },
-    기술스택: { 
-      required: true, 
-      keywords: ['언어', '프레임워크', 'react', 'node', 'python'],
-      question: "사용할 기술 스택은?",
-      options: ["React+Node", "Vue+Django", "Next.js", "Python", "기타"]
-    },
-    입출력스키마: { 
-      required: true, 
-      keywords: ['입력', '출력', 'API', '스키마', 'JSON'],
-      question: "입출력 데이터 형식은?",
-      inputType: "text"
-    }
-  },
-  
-  general: {
-    목적: { 
-      required: true, 
-      keywords: ['목적', '용도', '왜', '이유'],
-      question: "이 글의 목적은 무엇인가요?",
-      options: ["정보 전달", "설득", "자기소개", "리포트", "스토리텔링"]
-    },
-    대상독자: { 
-      required: true, 
-      keywords: ['독자', '대상', '읽는이'],
-      question: "주요 독자는 누구인가요?",
-      options: ["일반 대중", "전문가", "팀 내부", "고객", "투자자"]
-    },
-    분량: { 
-      required: true, 
-      keywords: ['길이', '분량', '글자', '단어'],
-      question: "전체 분량은?",
-      options: ["200자 이내", "500자", "1000자", "2000자 이상", "A4 1장"]
-    }
-  }
-};
+// API 키 체크
+if (!process.env.OPENAI_API_KEY) {
+  console.error('❌ OPENAI_API_KEY가 설정되지 않았습니다!');
+}
 
-// ========== 메인 핸들러 ==========
 export default async function handler(req, res) {
+  // API 키 없으면 즉시 에러
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({
+      success: false,
+      title: '⚠️ OpenAI API 키 누락',
+      message: 'AI 서비스를 사용하려면 OpenAI API 키가 필요합니다.',
+      action: 'Vercel 환경변수에 OPENAI_API_KEY를 설정해주세요.'
+    });
+  }
+
   try {
     const body = await readJson(req);
     const {
       userInput = '',
       answers = [],
       domain = 'video',
+      step = 'start',
       round = 1,
-      filledChecklist = {},
-      currentPrompt = ''
+      asked = []
     } = body;
 
-    console.log(`📥 라운드 ${round}`);
-    console.log('이미 채워진 항목:', Object.keys(filledChecklist));
+    console.log(`🤖 AI 프롬프트 개선 - Step: ${step}, Round: ${round}`);
 
     if (!userInput) {
-      return res.status(400).json({ 
-        success: false, 
-        message: '프롬프트를 입력해주세요.' 
+      return res.status(400).json({
+        success: false,
+        message: '개선할 프롬프트를 입력해주세요.'
       });
     }
 
-    if (round > 5) {
-      return await finalizePrompt(res, userInput, answers, domain, currentPrompt, filledChecklist);
+    // 단계별 AI 처리
+    switch (step) {
+      case 'start':
+      case 'questions':
+        return await handleAIQuestions(res, userInput, answers, domain, round, asked);
+      case 'generate':
+        return await handleAIGenerate(res, userInput, answers, domain);
+      default:
+        return res.status(400).json({
+          success: false,
+          message: '잘못된 요청입니다.'
+        });
     }
 
-    return await processRound(res, userInput, answers, domain, round, filledChecklist, currentPrompt);
-    
   } catch (error) {
-    console.error('❌ 오류:', error);
-    return res.status(500).json({ 
-      success: false, 
-      message: '서버 오류가 발생했습니다.',
-      error: error.message
+    console.error('❌ AI 처리 오류:', error);
+    return res.status(500).json({
+      success: false,
+      title: '🤖 AI 서비스 오류',
+      message: error.message || 'AI 처리 중 문제가 발생했습니다.',
+      action: 'API 키를 확인하고 다시 시도해주세요.'
     });
   }
 }
 
-// ========== 라운드 처리 ==========
-async function processRound(res, userInput, answers, domain, round, filledChecklist, previousPrompt) {
+// 🤖 AI 기반 질문 생성 및 점수 계산
+async function handleAIQuestions(res, userInput, answers, domain, round, asked) {
   try {
-    // 1️⃣ 현재까지 모든 정보 추출
-    const allText = [userInput, ...answers].join(' ');
-    const mentions = mentionExtractor.extract(allText);
+    // 1. 현재까지 수집된 정보로 점수 계산
+    const scoreResult = await calculateScores(userInput, answers, domain);
     
-    // 2️⃣ 체크리스트 업데이트 (입력과 답변에서 자동 추출)
-    const updatedChecklist = updateChecklistFromText(
-      filledChecklist, 
-      allText, 
-      domain,
-      mentions
-    );
-    
-    // 3️⃣ 프롬프트 개선
-    let improvedPrompt = previousPrompt || userInput;
-    if (answers.length > 0) {
-      improvedPrompt = await buildPromptFromChecklist(
-        userInput, 
-        updatedChecklist, 
-        domain
-      );
-    }
-    
-    // 4️⃣ 점수 계산
-    const { intentScore, qualityScore } = calculateScores(
-      updatedChecklist, 
-      improvedPrompt, 
-      domain
-    );
-    
-    console.log(`📊 의도: ${intentScore}/95, 품질: ${qualityScore}/100`);
-    
-    // 5️⃣ 목표 달성 체크
-    if (intentScore >= 95 && qualityScore >= 100) {
+    console.log(`📊 Round ${round} - 의도: ${scoreResult.intentScore}/95, 품질: ${scoreResult.qualityScore}/95`);
+
+    // 2. 목표 달성 체크 (95/95)
+    if (scoreResult.intentScore >= 95 && scoreResult.qualityScore >= 95) {
+      const finalPrompt = await generateFinalPrompt(userInput, answers, domain);
       return res.status(200).json({
         success: true,
         step: 'completed',
         originalPrompt: userInput,
-        improvedPrompt,
+        improvedPrompt: finalPrompt,
         intentScore: 95,
-        qualityScore: 100,
-        message: '🎉 완벽한 프롬프트 완성!'
+        qualityScore: 95,
+        message: '🎉 완벽한 95점 프롬프트가 완성되었습니다!',
+        attempts: round
       });
     }
-    
-    // 6️⃣ 부족한 항목만 질문 생성
-    const questions = generateQuestionsForMissing(
-      updatedChecklist, 
-      domain, 
-      round
-    );
-    
-    if (!questions || questions.length === 0) {
-      return await finalizePrompt(res, userInput, answers, domain, improvedPrompt, updatedChecklist);
+
+    // 3. 라운드 제한 체크
+    if (round >= 10) {
+      return handleAIGenerate(res, userInput, answers, domain);
     }
-    
+
+    // 4. AI가 다음 질문 생성
+    const questions = await generateSmartQuestions(
+      userInput, 
+      answers, 
+      domain, 
+      round,
+      asked,
+      scoreResult
+    );
+
+    // 5. 현재 드래프트 생성
+    const draftPrompt = await generateDraftPrompt(userInput, answers, domain);
+
     return res.status(200).json({
       success: true,
       step: 'questions',
       questions,
       round: round + 1,
-      intentScore,
-      qualityScore,
-      currentPrompt: improvedPrompt,
-      draftPrompt: improvedPrompt,
-      filledChecklist: updatedChecklist,
-      message: `라운드 ${round}: 필수 항목 ${Object.keys(updatedChecklist).length}/${Object.keys(DOMAIN_MUST_CHECKLIST[domain]).length}개 완료`
+      intentScore: scoreResult.intentScore,
+      qualityScore: scoreResult.qualityScore,
+      draftPrompt,
+      status: scoreResult.intentScore < 95 ? 'collecting' : 'improving',
+      message: `AI가 ${domain} 전문 질문을 생성했습니다. (${round}라운드)`
     });
-    
+
   } catch (error) {
-    console.error('processRound 오류:', error);
+    console.error('질문 생성 오류:', error);
     throw error;
   }
 }
 
-// ========== 텍스트에서 체크리스트 자동 채우기 ==========
-function updateChecklistFromText(currentChecklist, text, domain, mentions) {
-  const checklist = { ...currentChecklist };
-  const mustItems = DOMAIN_MUST_CHECKLIST[domain] || DOMAIN_MUST_CHECKLIST.general;
-  const textLower = text.toLowerCase();
+// 🎯 AI로 스마트한 질문 생성
+async function generateSmartQuestions(userInput, answers, domain, round, asked, scores) {
+  const domainContext = getDomainContext(domain);
   
-  // 각 MUST 항목 체크
-  Object.entries(mustItems).forEach(([key, config]) => {
-    // 이미 채워진 항목은 스킵
-    if (checklist[key]) return;
-    
-    // 키워드 매칭으로 자동 감지
-    const hasKeyword = config.keywords.some(keyword => 
-      textLower.includes(keyword.toLowerCase())
-    );
-    
-    if (hasKeyword) {
-      // 구체적인 값 추출 시도
-      let value = null;
-      
-      // 숫자 관련 (길이, 해상도 등)
-      if (key === '정확한길이') {
-        const match = text.match(/(\d+)\s*초/);
-        if (match) value = `${match[1]}초`;
-      }
-      else if (key === '해상도비율') {
-        const match = text.match(/(\d+)\s*[x×]\s*(\d+)/);
-        if (match) value = `${match[1]}×${match[2]}`;
-      }
-      // 플랫폼
-      else if (key === '목표플랫폼') {
-        if (textLower.includes('유튜브')) value = '유튜브';
-        else if (textLower.includes('틱톡')) value = '틱톡';
-        else if (textLower.includes('인스타')) value = '인스타그램';
-      }
-      // 시청자
-      else if (key === '타겟시청자') {
-        const ageMatch = text.match(/(\d+)[-~]?(\d+)?대/);
-        if (ageMatch) value = ageMatch[0];
-      }
-      
-      if (value) {
-        checklist[key] = value;
-        console.log(`✅ 자동 감지: ${key} = ${value}`);
-      }
+  const prompt = `당신은 ${domain} 프롬프트 개선 전문가입니다.
+현재 프롬프트 품질을 95점 이상으로 만들기 위해 핵심 질문을 생성해야 합니다.
+
+=== 현재 상황 ===
+도메인: ${domain}
+라운드: ${round}/10
+원본 입력: "${userInput}"
+현재 점수: 의도 ${scores.intentScore}/95, 품질 ${scores.qualityScore}/95
+
+수집된 답변:
+${answers.length > 0 ? answers.join('\n') : '아직 없음'}
+
+이미 한 질문들:
+${asked.length > 0 ? asked.join('\n') : '없음'}
+
+=== ${domain} 필수 요소 ===
+${domainContext}
+
+=== 요구사항 ===
+1. 아직 수집하지 못한 핵심 정보를 파악하는 질문 ${round <= 2 ? '5개' : '3개'}
+2. 이미 한 질문과 절대 중복되지 않을 것
+3. 답변하기 쉬운 객관식 형태 (4-5개 옵션 + 기타)
+4. ${domain} 전문가 수준의 구체적 질문
+5. 점수를 크게 향상시킬 수 있는 고가치 질문
+
+JSON 형식으로 응답:
+{
+  "questions": [
+    {
+      "key": "unique_key",
+      "question": "구체적인 한국어 질문",
+      "options": ["옵션1", "옵션2", "옵션3", "옵션4", "직접 입력"],
+      "priority": "high",
+      "scoreValue": 10,
+      "reason": "이 정보가 왜 중요한지"
     }
+  ]
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+    max_tokens: 1500,
+    response_format: { type: "json_object" }
   });
-  
-  return checklist;
+
+  const result = JSON.parse(completion.choices[0].message.content);
+  return result.questions || [];
 }
 
-// ========== 부족한 항목만 질문 생성 ==========
-function generateQuestionsForMissing(filledChecklist, domain, round) {
-  const mustItems = DOMAIN_MUST_CHECKLIST[domain] || DOMAIN_MUST_CHECKLIST.general;
-  const questions = [];
+// 📊 AI로 점수 계산
+async function calculateScores(userInput, answers, domain) {
+  const allInfo = [userInput, ...answers].join('\n');
   
-  // MUST 항목 중 빈 것만 찾기
-  Object.entries(mustItems).forEach(([key, config]) => {
-    if (!filledChecklist[key]) {
-      questions.push({
-        question: config.question,
-        options: config.options,
-        inputType: config.inputType,
-        key: key,
-        priority: "high",
-        reason: `필수 항목: ${key}`
-      });
-    }
+  const prompt = `프롬프트 품질 평가 전문가로서 다음 정보를 분석해주세요.
+
+도메인: ${domain}
+입력 정보:
+${allInfo}
+
+=== 평가 기준 ===
+의도 파악 점수 (95점 만점):
+- 목적 명확성 (25점): 무엇을 만들고 싶은지
+- 대상 정의 (20점): 누구를 위한 것인지
+- 기술 사양 (15점): 크기, 길이, 해상도 등
+- 스타일 (15점): 시각적/청각적 스타일
+- 제약사항 (10점): 예산, 시간, 플랫폼
+- 세부사항 (10점): 구체적 요구사항
+
+프롬프트 품질 점수 (95점 만점):
+- 구체성 (30점): 모호한 표현이 없는가
+- 완성도 (25점): 필수 요소가 모두 있는가
+- 기술적 정확성 (20점): 전문 용어 사용
+- 실행가능성 (20점): 실제 제작 가능한가
+
+JSON 형식으로 점수만 응답:
+{
+  "intentScore": 0-95 사이 정수,
+  "qualityScore": 0-95 사이 정수,
+  "weakPoints": ["부족한 점1", "부족한 점2"]
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.3,
+    max_tokens: 500,
+    response_format: { type: "json_object" }
   });
-  
-  // 라운드별 질문 수 제한
-  const maxQuestions = round <= 2 ? 5 : 3;
-  
-  // 우선순위: MUST 항목 먼저
-  return questions.slice(0, maxQuestions);
+
+  return JSON.parse(completion.choices[0].message.content);
 }
 
-// ========== 점수 계산 ==========
-function calculateScores(filledChecklist, prompt, domain) {
-  const mustItems = DOMAIN_MUST_CHECKLIST[domain] || DOMAIN_MUST_CHECKLIST.general;
-  const totalMust = Object.keys(mustItems).length;
-  const filledMust = Object.keys(filledChecklist).length;
-  
-  // 의도 파악 점수 (Must 항목 충족도)
-  const intentScore = Math.round((filledMust / totalMust) * 95);
-  
-  // 품질 점수 (구체성 체크)
-  let qualityScore = 60; // 기본 점수
-  
-  // 구체적 수치 포함 체크
-  if (/\d+/.test(prompt)) qualityScore += 10;
-  if (/\d+초|\d+분/.test(prompt)) qualityScore += 10;
-  if (/\d+x\d+|\d+×\d+/.test(prompt)) qualityScore += 10;
-  if (prompt.length > 200) qualityScore += 10;
-  
-  // 모호어 체크 (감점)
-  const vagueWords = ['적당히', '대충', '예쁘게', '깔끔하게', '좋게'];
-  vagueWords.forEach(word => {
-    if (prompt.includes(word)) qualityScore -= 10;
+// ✨ 최종 프롬프트 생성
+async function handleAIGenerate(res, userInput, answers, domain) {
+  try {
+    const finalPrompt = await generateFinalPrompt(userInput, answers, domain);
+    const finalScores = await calculateScores(userInput, answers, domain);
+
+    return res.status(200).json({
+      success: true,
+      step: 'completed',
+      originalPrompt: userInput,
+      improvedPrompt: finalPrompt,
+      intentScore: Math.max(finalScores.intentScore, 85),
+      qualityScore: Math.max(finalScores.qualityScore, 85),
+      message: '✨ AI가 최고 품질의 프롬프트를 완성했습니다!'
+    });
+
+  } catch (error) {
+    console.error('최종 생성 오류:', error);
+    throw error;
+  }
+}
+
+// 🎯 드래프트 프롬프트 생성
+async function generateDraftPrompt(userInput, answers, domain) {
+  const platform = getPlatform(domain);
+  const allInfo = [userInput, ...answers].join('\n');
+
+  const prompt = `${domain} 프롬프트 전문가로서 현재까지 정보로 최선의 프롬프트를 작성하세요.
+
+플랫폼: ${platform}
+정보: ${allInfo}
+
+간결하고 전문적인 프롬프트만 작성 (설명 없이):`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+    max_tokens: 800
   });
+
+  return completion.choices[0].message.content;
+}
+
+// 🏆 최종 완벽한 프롬프트 생성
+async function generateFinalPrompt(userInput, answers, domain) {
+  const platform = getPlatform(domain);
+  const requirements = getRequirements(domain);
   
-  return {
-    intentScore: Math.min(intentScore, 95),
-    qualityScore: Math.min(Math.max(qualityScore, 0), 100)
+  const prompt = `당신은 ${platform}의 최고 전문가입니다.
+다음 정보로 95점 이상의 완벽한 ${domain} 프롬프트를 생성하세요.
+
+=== 입력 정보 ===
+원본: "${userInput}"
+추가 정보:
+${answers.join('\n')}
+
+=== ${platform} 최적화 요구사항 ===
+${requirements}
+
+=== 생성 규칙 ===
+1. 모든 필수 요소 포함
+2. 구체적이고 명확한 지시
+3. ${platform} 전용 파라미터 포함
+4. 품질 향상 키워드 적절히 사용
+5. 부정 프롬프트 포함 (필요시)
+6. 전문가가 사용하는 고급 기법 적용
+
+최고 품질의 프롬프트만 출력 (설명 없이):`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4-turbo-preview",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.8,
+    max_tokens: 1500
+  });
+
+  return completion.choices[0].message.content;
+}
+
+// 도메인별 컨텍스트
+function getDomainContext(domain) {
+  const contexts = {
+    video: `필수: 플랫폼(유튜브/틱톡), 길이, 해상도, 타겟 시청자
+중요: 스토리라인, 카메라 워크, 전환 효과, 음향
+선택: 자막, 색보정, 특수효과`,
+    
+    image: `필수: 주체, 스타일(사실적/일러스트/3D), 해상도, 용도
+중요: 조명, 구도, 색상 팔레트, 분위기
+선택: 카메라 설정, 참조 아티스트, 플랫폼 파라미터`,
+    
+    dev: `필수: 프로젝트 유형, 기술 스택, 핵심 기능
+중요: 데이터베이스, API 설계, 인증 방식
+선택: 배포 환경, 성능 요구사항, 보안`
   };
+  return contexts[domain] || contexts.video;
 }
 
-// ========== 체크리스트 기반 프롬프트 생성 ==========
-async function buildPromptFromChecklist(userInput, checklist, domain) {
-  const templates = {
-    video: `
-[영상 제작 요청]
-원본 요청: ${userInput}
-
-목표/플랫폼: ${checklist.목표플랫폼 || '미정'}
-시청자: ${checklist.타겟시청자 || '미정'}  
-길이: ${checklist.정확한길이 || '미정'}
-화면 스펙: ${checklist.화면스펙 || '미정'}
-씬 구성: ${checklist.씬구성 || '미정'}`,
-    
-    image: `
-[이미지 생성 요청]
-원본 요청: ${userInput}
-
-목적/매체: ${checklist.목적매체 || '미정'}
-스타일: ${checklist.스타일 || '미정'}
-해상도/비율: ${checklist.해상도비율 || '미정'}
-색상 팔레트: ${checklist.색상팔레트 || '미정'}`,
-    
-    dev: `
-[개발 프로젝트]
-원본 요청: ${userInput}
-
-문제 정의: ${checklist.문제정의 || '미정'}
-기술 스택: ${checklist.기술스택 || '미정'}
-입출력 스키마: ${checklist.입출력스키마 || '미정'}`,
-    
-    general: `
-[문서 작성 요청]
-원본 요청: ${userInput}
-
-목적: ${checklist.목적 || '미정'}
-대상 독자: ${checklist.대상독자 || '미정'}
-분량: ${checklist.분량 || '미정'}`
+// 플랫폼 매핑
+function getPlatform(domain) {
+  const platforms = {
+    video: 'Runway Gen-3/Pika Labs',
+    image: 'Midjourney v6/DALL-E 3',
+    dev: 'GitHub Copilot/Cursor'
   };
-  
-  return templates[domain] || templates.general;
+  return platforms[domain] || 'AI Platform';
 }
 
-// ========== 최종 완성 ==========
-async function finalizePrompt(res, userInput, answers, domain, currentPrompt, filledChecklist) {
-  const finalPrompt = await buildPromptFromChecklist(userInput, filledChecklist, domain);
-  const { intentScore, qualityScore } = calculateScores(filledChecklist, finalPrompt, domain);
-  
-  return res.status(200).json({
-    success: true,
-    step: 'completed',
-    originalPrompt: userInput,
-    improvedPrompt: finalPrompt,
-    intentScore: Math.max(intentScore, 85),
-    qualityScore: Math.max(qualityScore, 85),
-    filledChecklist,
-    message: '프롬프트 완성!'
-  });
+// 플랫폼별 요구사항
+function getRequirements(domain) {
+  const reqs = {
+    video: `- 카메라 움직임 명시 (dolly, pan, zoom)
+- 씬 단위 구체적 묘사
+- 조명과 분위기 설정
+- 모션 강도 지정 (-motion 0-4)
+- 시드값 일관성 (--seed)`,
+    
+    image: `- Midjourney: --ar 비율, --stylize 750, --v 6
+- 네거티브 프롬프트 필수
+- 품질 키워드: highly detailed, 8K, masterpiece
+- 조명: dramatic lighting, golden hour
+- 스타일 참조: trending on ArtStation`,
+    
+    dev: `- 명확한 프로젝트 스코프
+- 기술 스택 상세 명시
+- 데이터 모델 설계
+- API 엔드포인트 정의
+- 성능/보안 요구사항`
+  };
+  return reqs[domain] || '';
 }
