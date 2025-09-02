@@ -246,29 +246,6 @@ async function handleAIGenerate(res, userInput, answers, domain) {
     throw error;
   }
 }
-
-// 🎯 드래프트 프롬프트 생성
-async function generateDraftPrompt(userInput, answers, domain) {
-  const platform = getPlatform(domain);
-  const allInfo = [userInput, ...answers].join('\n');
-
-  const prompt = `${domain} 프롬프트 전문가로서 현재까지 정보로 최선의 프롬프트를 작성하세요.
-
-플랫폼: ${platform}
-정보: ${allInfo}
-
-간결하고 전문적인 프롬프트만 작성 (설명 없이):`;
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4-turbo-preview",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-    max_tokens: 800
-  });
-
-  return completion.choices[0].message.content;
-}
-
 // 🏆 최종 완벽한 프롬프트 생성 (generateFinalPrompt 함수 교체)
 async function generateFinalPrompt(userInput, answers, domain) {
   const platform = getPlatform(domain);
