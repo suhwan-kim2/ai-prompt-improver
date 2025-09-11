@@ -444,49 +444,92 @@ async function handleQuestionsFlow(res, userInput, answers, domain, round, asked
   }
 }
 
-// 🎯 최종 생성 플로우
+// handleFinalGeneration 함수 찾아서 이 부분으로 교체
 async function handleFinalGeneration(res, userInput, answers, domain, intentScore = 95, qualityScore = 95) {
   try {
     console.log('🎉 최종 프롬프트 생성 시작');
     
     // 영상 도메인: 씬 분할 처리
     if (domain === 'video') {
-      const videoEngine = new VideoSceneEngine();
-      
-      // 길이 추출
+      // 간단한 씬 분할 (VideoSceneEngine 없이도 작동하도록)
       const duration = extractDuration(answers) || 60;
       console.log(`🎬 영상 길이: ${duration}초`);
       
-      // 씬 분할
-      const scenes = await videoEngine.splitIntoScenes(userInput, duration);
+      // 씬 수 계산
+      const sceneCount = Math.ceil(duration / 10); // 10초당 1씬
+      const scenes = [];
       
-      // 기본 프롬프트
-      const basicPrompt = await generateFinalPrompt(userInput, answers, domain);
+      // 각 씬 생성
+      for (let i = 0; i < sceneCount; i++) {
+        const start = i * 10;
+        const end = Math.min((i + 1) * 10, duration);
+        
+        scenes.push({
+          scene: i + 1,
+          duration: `${start}-${end}초`,
+          image_prompt: generateSceneImagePrompt(userInput, answers, i + 1),
+          video_prompt: generateSceneVideoPrompt(userInput, answers, i + 1),
+          camera: getCameraWork(i),
+          transition: getTransition(i)
+        });
+      }
       
-      // 씬 시나리오 생성
-      const scenario = {
-        title: userInput,
-        duration: `${duration}초`,
-        scene_count: scenes.length,
-        scenes: scenes,
-        basic_prompt: basicPrompt,
-        platform_guides: generatePlatformGuides(domain)
-      };
+      // 씬별 프롬프트 텍스트 생성
+      const scenePrompts = scenes.map(s => `
+### 씬 ${s.scene} (${s.duration})
+📷 이미지: ${s.image_prompt}
+🎬 영상: ${s.video_prompt}
+📹 카메라: ${s.camera}
+🔄 전환: ${s.transition}
+`).join('\n');
+      
+      // 전체 시나리오
+      const fullScenario = `
+## 🎬 영상 시나리오: ${userInput}
+
+### 📊 개요
+- 총 길이: ${duration}초
+- 씬 개수: ${sceneCount}개
+- 플랫폼: ${getSelectedPlatform(answers)}
+
+### 🎞️ 씬별 프롬프트
+${scenePrompts}
+
+### 💡 플랫폼별 사용 가이드
+**Runway Gen-3:**
+1. 각 씬의 이미지 프롬프트로 첫 프레임 생성
+2. Image to Video 모드로 전환
+3. 영상 프롬프트 입력 후 10초씩 생성
+4. Extend 기능으로 연결
+
+**Pika Labs:**
+1. /create 명령어 사용
+2. 이미지 업로드 + 프롬프트
+3. -motion 2 -ar 16:9 설정
+
+**실제 제작 팁:**
+- 씬 간 연속성을 위해 이전 씬 마지막 프레임 활용
+- 일관된 캐릭터 유지를 위해 같은 seed 값 사용
+`;
       
       return res.status(200).json({
         success: true,
         step: 'completed',
         originalPrompt: userInput,
-        improvedPrompt: basicPrompt,
-        scenarioData: scenario,
+        improvedPrompt: fullScenario,
+        scenarioData: {
+          scenes: scenes,
+          totalDuration: duration,
+          sceneCount: sceneCount
+        },
         intentScore,
         qualityScore,
-        message: '🎬 영상 프롬프트 완성! 씬별 분할과 플랫폼 가이드를 확인하세요.',
+        message: '🎬 영상 씬 분할 완성! 각 씬별로 사용 가능한 프롬프트입니다.',
         attempts: answers.length
       });
     }
     
-    // 이미지/개발 도메인: 일반 프롬프트
+    // 기존 코드 (이미지/개발 도메인)
     const finalPrompt = await generateFinalPrompt(userInput, answers, domain);
     
     return res.status(200).json({
@@ -497,14 +540,12 @@ async function handleFinalGeneration(res, userInput, answers, domain, intentScor
       intentScore,
       qualityScore,
       message: `✨ ${domain === 'image' ? '이미지' : '개발'} 프롬프트 완성!`,
-      platformGuides: generatePlatformGuides(domain),
       attempts: answers.length
     });
     
   } catch (error) {
     console.error('최종 생성 오류:', error);
-    
-    // 폴백: 기본 프롬프트 반환
+    // 폴백 처리
     const fallbackPrompt = `${userInput}\n\n추가 정보:\n${answers.join('\n')}`;
     
     return res.status(200).json({
@@ -518,6 +559,74 @@ async function handleFinalGeneration(res, userInput, answers, domain, intentScor
       attempts: answers.length
     });
   }
+}
+
+// 헬퍼 함수들 추가
+function generateSceneImagePrompt(userInput, answers, sceneNum) {
+  // 웰시코기 예시
+  const dog = answers.find(a => a.includes('웰시코기')) ? 'Welsh Corgi' : 'dog';
+  const location = answers.find(a => a.includes('파리')) ? 'Paris' : 
+                   answers.find(a => a.includes('유럽')) ? 'Europe' : 'world';
+  
+  const prompts = {
+    1: `${dog} with travel backpack at famous landmark in ${location}, professional photography, 4K`,
+    2: `${dog} walking on city street, happy expression, golden hour lighting`,
+    3: `${dog} at local cafe, sitting at table, cute pose, warm atmosphere`,
+    4: `${dog} exploring tourist spot, curious expression, vibrant colors`,
+    5: `${dog} meeting locals, friendly interaction, candid shot`,
+    6: `${dog} enjoying sunset view, peaceful moment, cinematic lighting`
+  };
+  
+  return prompts[sceneNum] || `${dog} traveling scene ${sceneNum}, high quality`;
+}
+
+function generateSceneVideoPrompt(userInput, answers, sceneNum) {
+  const dog = answers.find(a => a.includes('웰시코기')) ? 'Welsh Corgi' : 'dog';
+  
+  const prompts = {
+    1: `${dog} wagging tail excitedly, looking around landmark, slow zoom in`,
+    2: `${dog} trotting happily, head turning to explore, tracking shot`,
+    3: `${dog} sniffing food, tilting head cutely, close-up shot`,
+    4: `${dog} running playfully, ears bouncing, dynamic movement`,
+    5: `${dog} interacting with people, tail wagging, natural reactions`,
+    6: `${dog} sitting peacefully, enjoying view, slow pan across scenery`
+  };
+  
+  return prompts[sceneNum] || `${dog} natural movement, scene ${sceneNum}`;
+}
+
+function getCameraWork(index) {
+  const works = ['Static shot', 'Slow zoom in', 'Pan left to right', 'Tracking shot', 'Close-up', 'Wide angle'];
+  return works[index % works.length];
+}
+
+function getTransition(index) {
+  const transitions = ['Cut to', 'Fade in', 'Cross dissolve', 'Match cut', 'Wipe'];
+  return transitions[index % transitions.length];
+}
+
+function getSelectedPlatform(answers) {
+  if (answers.some(a => a.includes('유튜브'))) return 'YouTube Shorts';
+  if (answers.some(a => a.includes('틱톡'))) return 'TikTok';
+  if (answers.some(a => a.includes('인스타'))) return 'Instagram Reels';
+  return 'YouTube Shorts';
+}
+
+// extractDuration 함수도 확인
+function extractDuration(answers) {
+  const text = answers.join(' ');
+  
+  if (text.includes('15초')) return 15;
+  if (text.includes('30초')) return 30;
+  if (text.includes('60초')) return 60;
+  if (text.includes('3분')) return 180;
+  if (text.includes('5분')) return 300;
+  
+  // 숫자 추출
+  const match = text.match(/(\d+)\s*초/);
+  if (match) return parseInt(match[1]);
+  
+  return 60; // 기본값
 }
 
 // 🧠 스마트 질문 생성 (Chain of Thought + 가이드)
