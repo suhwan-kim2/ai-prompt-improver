@@ -617,6 +617,42 @@ async function goGenerate() {
 // 🎉 최종 결과 표시
 function showFinalResult(result) {
   console.log('🎉 최종 결과 표시');
+   
+  if (state.domain === 'video' && result.scenarioData) {
+    const scenes = result.scenarioData.scenes || [];
+     // 씬별 카드 UI (복사 버튼 포함)
+    const scenesHTML = scenes.map(s => `
+      <div class="scene-card">
+        <div class="scene-header">
+          <h4>📎 씬 ${s.scene} (${s.duration})</h4>
+          <span class="scene-concept">${s.concept || ''}</span>
+        </div>
+        
+        <div class="prompt-section image-prompt">
+          <div class="prompt-label">
+            📷 이미지 생성용
+            <button class="copy-btn" onclick="copyText('${btoa(s.image_prompt)}')">
+              📋 복사
+            </button>
+          </div>
+          <div class="prompt-content">${escapeHtml(s.image_prompt)}</div>
+        </div>
+        
+        <div class="prompt-section video-prompt">
+          <div class="prompt-label">
+            🎬 영상 생성용
+            <button class="copy-btn" onclick="copyText('${btoa(s.video_prompt)}')">
+              📋 복사
+            </button>
+          </div>
+          <div class="prompt-content">${escapeHtml(s.video_prompt)}</div>
+        </div>
+        
+        <div class="scene-settings">
+          ⚙️ ${s.camera} | ${s.transition}
+        </div>
+      </div>
+    `).join('');
 
   const finalHTML = `
     <div class="final-container">
@@ -875,7 +911,19 @@ if (typeof window !== 'undefined') {
   window.state = state;
 }
 
+window.copyText = function(encodedText) {
+  const text = atob(encodedText);
+  navigator.clipboard.writeText(text).then(() => {
+    // 복사 완료 피드백
+    event.target.textContent = '✅ 복사됨!';
+    setTimeout(() => {
+      event.target.textContent = '📋 복사';
+    }, 2000);
+  });
+}
+
 // 🎯 전역 함수 exports
+
 window.startImprovement = startImprovement;
 window.toggleOption = toggleOption;
 window.submitTextAnswer = submitTextAnswer;
