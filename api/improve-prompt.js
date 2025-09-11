@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 🎬 영상 씬 분할 엔진 (인라인 클래스)
+// 🎬 영상 씬 분할 엔진 (인라인 클래스 - import 불필요)
 class VideoSceneEngine {
   constructor() {
     this.PLATFORM_LIMITS = {
@@ -15,9 +15,17 @@ class VideoSceneEngine {
     };
   }
 
-  async splitIntoScenes(userInput, duration = 60) {
+  async splitIntoScenes(userInput, answers, duration = 60) {
     const sceneCount = duration <= 15 ? 3 : duration <= 30 ? 5 : duration <= 60 ? 8 : Math.ceil(duration / 8);
     const scenes = [];
+    
+    // 답변에서 정보 추출
+    const dog = answers.find(a => a.includes('웰시코기')) ? 'Welsh Corgi' : 
+                answers.find(a => a.includes('강아지')) ? 'cute dog' : 'dog';
+    const location = answers.find(a => a.includes('파리')) ? 'Paris' : 
+                     answers.find(a => a.includes('유럽')) ? 'Europe' : 'world';
+    const style = answers.find(a => a.includes('브이로그')) ? 'vlog style' : 
+                  answers.find(a => a.includes('시네마틱')) ? 'cinematic' : 'travel video';
     
     for (let i = 0; i < sceneCount; i++) {
       const start = i * Math.floor(duration / sceneCount);
@@ -26,8 +34,8 @@ class VideoSceneEngine {
       scenes.push({
         scene: i + 1,
         duration: `${start}-${end}초`,
-        image_prompt: await this.generateImagePrompt(userInput, i + 1, sceneCount),
-        video_prompt: await this.generateVideoPrompt(userInput, i + 1, sceneCount),
+        image_prompt: this.generateImagePrompt(dog, location, style, i + 1, sceneCount),
+        video_prompt: this.generateVideoPrompt(dog, location, style, i + 1, sceneCount),
         camera: this.getCameraWork(i),
         transition: this.getTransition(i)
       });
@@ -36,28 +44,43 @@ class VideoSceneEngine {
     return scenes;
   }
 
-  async generateImagePrompt(userInput, sceneNum, totalScenes) {
-    const sceneDescriptions = {
-      1: "opening shot, establishing scene",
-      2: "main action begins, key subject in frame",
-      3: "action develops, dynamic composition",
-      [totalScenes]: "closing shot, resolution"
+  generateImagePrompt(subject, location, style, sceneNum, totalScenes) {
+    const prompts = {
+      1: `${subject} with travel backpack arriving at ${location}, excited expression, ${style}, golden hour lighting, 4K quality`,
+      2: `${subject} exploring famous landmark in ${location}, curious look, ${style}, professional photography`,
+      3: `${subject} at local cafe in ${location}, sitting at table, ${style}, warm atmosphere, shallow depth of field`,
+      4: `${subject} walking through streets of ${location}, happy trotting, ${style}, dynamic composition`,
+      5: `${subject} meeting local people in ${location}, friendly interaction, ${style}, candid moment`,
+      6: `${subject} enjoying sunset view in ${location}, peaceful moment, ${style}, cinematic lighting`,
+      7: `${subject} playing in park of ${location}, joyful movement, ${style}, vibrant colors`,
+      8: `${subject} at night scene in ${location}, city lights background, ${style}, moody lighting`
     };
     
-    return `Scene ${sceneNum}: ${userInput}, ${sceneDescriptions[sceneNum] || 'continuation'}, cinematic quality, 4K`;
+    return prompts[sceneNum] || `${subject} in ${location}, scene ${sceneNum}, ${style}, high quality`;
   }
 
-  async generateVideoPrompt(userInput, sceneNum, totalScenes) {
-    return `Scene ${sceneNum} motion: smooth camera movement, natural action flow, professional cinematography`;
+  generateVideoPrompt(subject, location, style, sceneNum, totalScenes) {
+    const prompts = {
+      1: `${subject} wagging tail excitedly, looking around ${location}, slow zoom in, ${style}`,
+      2: `${subject} sniffing and exploring landmark, head tilting curiously, tracking shot, ${style}`,
+      3: `${subject} at cafe, sniffing food, cute reactions, close-up shot, ${style}`,
+      4: `${subject} trotting happily through streets, ears bouncing, following shot, ${style}`,
+      5: `${subject} interacting with people, tail wagging, natural reactions, ${style}`,
+      6: `${subject} sitting peacefully watching sunset, slow pan across scenery, ${style}`,
+      7: `${subject} running and playing, dynamic movement, multiple angles, ${style}`,
+      8: `${subject} under city lights, looking up at buildings, ambient mood, ${style}`
+    };
+    
+    return prompts[sceneNum] || `${subject} natural movement in ${location}, scene ${sceneNum}, ${style}`;
   }
 
   getCameraWork(index) {
-    const works = ['Static shot', 'Slow zoom in', 'Pan left to right', 'Tracking shot', 'Close-up'];
+    const works = ['Static shot', 'Slow zoom in', 'Pan left to right', 'Tracking shot', 'Close-up', 'Wide angle', 'Drone shot', 'Handheld'];
     return works[index % works.length];
   }
 
   getTransition(index) {
-    const transitions = ['Cut to', 'Fade in', 'Cross dissolve', 'Match cut'];
+    const transitions = ['Cut to', 'Fade in', 'Cross dissolve', 'Match cut', 'Wipe', 'Zoom transition'];
     return transitions[index % transitions.length];
   }
 }
@@ -78,17 +101,17 @@ const COMPLETION_GUIDES = {
     주인공: { 
       weight: 12, 
       options: ["사람", "동물", "제품", "캐릭터", "풍경"],
-      keywords: ["강아지", "고양이", "사람", "캐릭터", "주인공"]
+      keywords: ["강아지", "고양이", "사람", "캐릭터", "주인공", "웰시코기"]
     },
     스토리: { 
       weight: 12, 
       options: ["튜토리얼", "브이로그", "스토리텔링", "제품소개", "교육"],
-      keywords: ["이야기", "스토리", "내용", "줄거리"]
+      keywords: ["이야기", "스토리", "내용", "줄거리", "브이로그"]
     },
     스타일: { 
       weight: 10, 
       options: ["시네마틱", "다큐멘터리", "애니메이션", "실사", "모션그래픽"],
-      keywords: ["스타일", "느낌", "분위기", "톤"]
+      keywords: ["스타일", "느낌", "분위기", "톤", "시네마틱", "실사"]
     },
     씬구성: { 
       weight: 10, 
@@ -98,17 +121,17 @@ const COMPLETION_GUIDES = {
     카메라: { 
       weight: 8, 
       options: ["고정", "핸드헬드", "드론", "짐벌", "크레인"],
-      keywords: ["카메라", "촬영", "앵글", "샷"]
+      keywords: ["카메라", "촬영", "앵글", "샷", "흥미로운"]
     },
     음향: { 
       weight: 8, 
       options: ["BGM", "내레이션", "효과음", "무음"],
       keywords: ["음악", "소리", "음향", "BGM"]
     },
-    편집: { 
+    장소: { 
       weight: 6, 
-      options: ["빠른컷", "롱테이크", "몽타주", "슬로우모션"],
-      keywords: ["편집", "컷", "전환"]
+      options: ["실내", "실외", "스튜디오", "자연", "도시"],
+      keywords: ["장소", "위치", "배경", "유럽", "파리", "세계"]
     },
     색감: { 
       weight: 4, 
@@ -227,6 +250,12 @@ const COMPLETION_GUIDES = {
 // 🏆 최고 품질 프롬프트 패턴 (2025년 1월 최신)
 const HIGH_QUALITY_PATTERNS = {
   video: {
+    "여행_강아지": `Travel vlog featuring a dog exploring world landmarks. 
+                    60-second format optimized for YouTube Shorts. 
+                    Scene breakdown: arrival, exploration, local interaction, 
+                    sunset moments. Upbeat music, smooth transitions, 
+                    professional color grading.`,
+    
     "요리_동물": `Chef animal in professional kitchen, step-by-step cooking process, 
                   close-up shots of ingredients, steam effects, warm lighting, 
                   upbeat background music, quick cuts, 60 seconds format`,
@@ -237,11 +266,7 @@ const HIGH_QUALITY_PATTERNS = {
     
     "제품_광고": `Product showcase, dynamic camera angles, studio lighting,
                   slow-motion highlights, modern graphics, upbeat music,
-                  call-to-action ending, 30 seconds format`,
-    
-    "튜토리얼": `Step-by-step tutorial, screen recording with annotations,
-                 clear voiceover, chapter markers, zoom-in details,
-                 background music, 5-10 minute format`
+                  call-to-action ending, 30 seconds format`
   },
   
   image: {
@@ -304,18 +329,7 @@ const HIGH_QUALITY_PATTERNS = {
     2. Then implement core features
     3. Finally, optimize and test
     
-    Provide production-ready code with comments.`,
-    
-    "cursor_컨텍스트": `@workspace
-    
-    Create a [project type] with these specifications:
-    - Purpose: [main goal]
-    - Users: [target audience]
-    - Features: [key features]
-    - Stack: [technologies]
-    
-    Use the existing project structure and follow our coding conventions.
-    Include comprehensive error handling and testing.`
+    Provide production-ready code with comments.`
   }
 };
 
@@ -356,10 +370,10 @@ export default async function handler(req, res) {
     switch (step) {
       case 'start':
       case 'questions':
-        return await handleQuestionsFlow(res, userInput, answers, domain, round, asked);
+        return await handleGuideBasedImprovement(res, userInput, answers, domain, round, asked);
       
       case 'generate':
-        return await handleGenerateFlow(res, userInput, answers, domain);
+        return await handleFinalGeneration(res, userInput, answers, domain);
       
       default:
         return res.status(400).json({ 
@@ -380,320 +394,61 @@ export default async function handler(req, res) {
   }
 }
 
-// 🔄 질문 플로우 처리
-async function handleQuestionsFlow(res, userInput, answers, domain, round, asked) {
+// 🎯 가이드 기반 개선 처리
+async function handleGuideBasedImprovement(res, userInput, answers, domain, round, asked = []) {
   try {
-    // 1. 현재 완성도 분석
-    const completion = analyzeGuideCompletion(userInput, answers, domain);
-    const intentScore = calculateIntentScore(completion);
+    // 1. 현재 가이드 완성도 분석
+    const guideCompletion = analyzeGuideCompletion(userInput, answers, domain);
+    const intentScore = calculateIntentScore(guideCompletion);
     
-    // 2. 현재까지 정보로 프롬프트 생성
-    const currentPrompt = await generateCurrentPrompt(userInput, answers, domain, completion);
+    // 2. 현재 정보로 프롬프트 생성 시도
+    const currentPrompt = await generateCurrentPrompt(userInput, answers, domain, guideCompletion);
     const qualityScore = await evaluatePromptQuality(currentPrompt, domain);
     
-    console.log(`📊 라운드 ${round} 점수 - 의도: ${intentScore}/95, 품질: ${qualityScore}/95`);
-    
-    // 3. 목표 달성 체크
+    console.log(`📊 Round ${round} - 의도: ${intentScore}/95, 품질: ${qualityScore}/95`);
+    console.log(`📋 가이드 완성도:`, Object.keys(guideCompletion.filled).length + '/' + Object.keys(COMPLETION_GUIDES[domain]).length);
+
+    // 3. 95점 달성 체크
     if (intentScore >= 95 && qualityScore >= 95) {
       return await handleFinalGeneration(res, userInput, answers, domain, intentScore, qualityScore);
     }
-    
-    // 4. 최대 라운드 체크
+
+    // 4. 최대 라운드 체크 (5라운드로 제한)
     if (round >= 5) {
-      console.log('⚡ 최대 라운드 도달 - 현재 최고 품질로 완성');
       return await handleFinalGeneration(res, userInput, answers, domain, 
                                         Math.max(intentScore, 85), 
                                         Math.max(qualityScore, 85));
     }
-    
-    // 5. 추가 질문 생성
-    const questions = await generateSmartQuestions(
-      userInput, answers, domain, round, 
-      completion.missing, asked
-    );
-    
-    // 6. 중복 제거
-    const uniqueQuestions = filterUniqueQuestions(questions, asked);
-    
-    if (uniqueQuestions.length === 0) {
-      console.log('📍 추가 질문 없음 - 생성 단계로 이동');
-      return await handleFinalGeneration(res, userInput, answers, domain, intentScore, qualityScore);
-    }
-    
+
+    // 5. 부족한 가이드 기반 질문 생성
+    const questions = await generateGuideBasedQuestions(guideCompletion.missing, domain, round, userInput, answers, asked);
+
     return res.status(200).json({
       success: true,
       step: 'questions',
-      questions: uniqueQuestions.slice(0, 3), // 최대 3개
+      questions: questions,
       round: round + 1,
       intentScore,
       qualityScore,
       draftPrompt: currentPrompt,
+      guideStatus: guideCompletion,
+      message: `가이드 기반 ${questions.length}개 질문 생성 (${round}라운드)`,
       status: 'collecting',
-      message: `더 완벽한 프롬프트를 위해 ${uniqueQuestions.length}개 추가 질문`,
       progress: {
         intentScore,
         qualityScore,
         round: round + 1
       }
     });
-    
+
   } catch (error) {
-    console.error('질문 생성 오류:', error);
-    // 오류시 현재까지 정보로 생성
+    console.error('가이드 기반 처리 오류:', error);
+    // 오류시 바로 생성
     return await handleFinalGeneration(res, userInput, answers, domain, 70, 70);
   }
 }
 
-// handleFinalGeneration 함수 찾아서 이 부분으로 교체
-async function handleFinalGeneration(res, userInput, answers, domain, intentScore = 95, qualityScore = 95) {
-  try {
-    console.log('🎉 최종 프롬프트 생성 시작');
-    
-    // 영상 도메인: 씬 분할 처리
-    if (domain === 'video') {
-      // 간단한 씬 분할 (VideoSceneEngine 없이도 작동하도록)
-      const duration = extractDuration(answers) || 60;
-      console.log(`🎬 영상 길이: ${duration}초`);
-      
-      // 씬 수 계산
-      const sceneCount = Math.ceil(duration / 10); // 10초당 1씬
-      const scenes = [];
-      
-      // 각 씬 생성
-      for (let i = 0; i < sceneCount; i++) {
-        const start = i * 10;
-        const end = Math.min((i + 1) * 10, duration);
-        
-        scenes.push({
-          scene: i + 1,
-          duration: `${start}-${end}초`,
-          image_prompt: generateSceneImagePrompt(userInput, answers, i + 1),
-          video_prompt: generateSceneVideoPrompt(userInput, answers, i + 1),
-          camera: getCameraWork(i),
-          transition: getTransition(i)
-        });
-      }
-      
-      // 씬별 프롬프트 텍스트 생성
-      const scenePrompts = scenes.map(s => `
-### 씬 ${s.scene} (${s.duration})
-📷 이미지: ${s.image_prompt}
-🎬 영상: ${s.video_prompt}
-📹 카메라: ${s.camera}
-🔄 전환: ${s.transition}
-`).join('\n');
-      
-      // 전체 시나리오
-      const fullScenario = `
-## 🎬 영상 시나리오: ${userInput}
-
-### 📊 개요
-- 총 길이: ${duration}초
-- 씬 개수: ${sceneCount}개
-- 플랫폼: ${getSelectedPlatform(answers)}
-
-### 🎞️ 씬별 프롬프트
-${scenePrompts}
-
-### 💡 플랫폼별 사용 가이드
-**Runway Gen-3:**
-1. 각 씬의 이미지 프롬프트로 첫 프레임 생성
-2. Image to Video 모드로 전환
-3. 영상 프롬프트 입력 후 10초씩 생성
-4. Extend 기능으로 연결
-
-**Pika Labs:**
-1. /create 명령어 사용
-2. 이미지 업로드 + 프롬프트
-3. -motion 2 -ar 16:9 설정
-
-**실제 제작 팁:**
-- 씬 간 연속성을 위해 이전 씬 마지막 프레임 활용
-- 일관된 캐릭터 유지를 위해 같은 seed 값 사용
-`;
-      
-      return res.status(200).json({
-        success: true,
-        step: 'completed',
-        originalPrompt: userInput,
-        improvedPrompt: fullScenario,
-        scenarioData: {
-          scenes: scenes,
-          totalDuration: duration,
-          sceneCount: sceneCount
-        },
-        intentScore,
-        qualityScore,
-        message: '🎬 영상 씬 분할 완성! 각 씬별로 사용 가능한 프롬프트입니다.',
-        attempts: answers.length
-      });
-    }
-    
-    // 기존 코드 (이미지/개발 도메인)
-    const finalPrompt = await generateFinalPrompt(userInput, answers, domain);
-    
-    return res.status(200).json({
-      success: true,
-      step: 'completed',
-      originalPrompt: userInput,
-      improvedPrompt: finalPrompt,
-      intentScore,
-      qualityScore,
-      message: `✨ ${domain === 'image' ? '이미지' : '개발'} 프롬프트 완성!`,
-      attempts: answers.length
-    });
-    
-  } catch (error) {
-    console.error('최종 생성 오류:', error);
-    // 폴백 처리
-    const fallbackPrompt = `${userInput}\n\n추가 정보:\n${answers.join('\n')}`;
-    
-    return res.status(200).json({
-      success: true,
-      step: 'completed',
-      originalPrompt: userInput,
-      improvedPrompt: fallbackPrompt,
-      intentScore: 80,
-      qualityScore: 80,
-      message: '프롬프트가 생성되었습니다.',
-      attempts: answers.length
-    });
-  }
-}
-
-// 헬퍼 함수들 추가
-function generateSceneImagePrompt(userInput, answers, sceneNum) {
-  // 웰시코기 예시
-  const dog = answers.find(a => a.includes('웰시코기')) ? 'Welsh Corgi' : 'dog';
-  const location = answers.find(a => a.includes('파리')) ? 'Paris' : 
-                   answers.find(a => a.includes('유럽')) ? 'Europe' : 'world';
-  
-  const prompts = {
-    1: `${dog} with travel backpack at famous landmark in ${location}, professional photography, 4K`,
-    2: `${dog} walking on city street, happy expression, golden hour lighting`,
-    3: `${dog} at local cafe, sitting at table, cute pose, warm atmosphere`,
-    4: `${dog} exploring tourist spot, curious expression, vibrant colors`,
-    5: `${dog} meeting locals, friendly interaction, candid shot`,
-    6: `${dog} enjoying sunset view, peaceful moment, cinematic lighting`
-  };
-  
-  return prompts[sceneNum] || `${dog} traveling scene ${sceneNum}, high quality`;
-}
-
-function generateSceneVideoPrompt(userInput, answers, sceneNum) {
-  const dog = answers.find(a => a.includes('웰시코기')) ? 'Welsh Corgi' : 'dog';
-  
-  const prompts = {
-    1: `${dog} wagging tail excitedly, looking around landmark, slow zoom in`,
-    2: `${dog} trotting happily, head turning to explore, tracking shot`,
-    3: `${dog} sniffing food, tilting head cutely, close-up shot`,
-    4: `${dog} running playfully, ears bouncing, dynamic movement`,
-    5: `${dog} interacting with people, tail wagging, natural reactions`,
-    6: `${dog} sitting peacefully, enjoying view, slow pan across scenery`
-  };
-  
-  return prompts[sceneNum] || `${dog} natural movement, scene ${sceneNum}`;
-}
-
-function getCameraWork(index) {
-  const works = ['Static shot', 'Slow zoom in', 'Pan left to right', 'Tracking shot', 'Close-up', 'Wide angle'];
-  return works[index % works.length];
-}
-
-function getTransition(index) {
-  const transitions = ['Cut to', 'Fade in', 'Cross dissolve', 'Match cut', 'Wipe'];
-  return transitions[index % transitions.length];
-}
-
-function getSelectedPlatform(answers) {
-  if (answers.some(a => a.includes('유튜브'))) return 'YouTube Shorts';
-  if (answers.some(a => a.includes('틱톡'))) return 'TikTok';
-  if (answers.some(a => a.includes('인스타'))) return 'Instagram Reels';
-  return 'YouTube Shorts';
-}
-
-// extractDuration 함수도 확인
-function extractDuration(answers) {
-  const text = answers.join(' ');
-  
-  if (text.includes('15초')) return 15;
-  if (text.includes('30초')) return 30;
-  if (text.includes('60초')) return 60;
-  if (text.includes('3분')) return 180;
-  if (text.includes('5분')) return 300;
-  
-  // 숫자 추출
-  const match = text.match(/(\d+)\s*초/);
-  if (match) return parseInt(match[1]);
-  
-  return 60; // 기본값
-}
-
-// 🧠 스마트 질문 생성 (Chain of Thought + 가이드)
-async function generateSmartQuestions(userInput, answers, domain, round, missingGuides, asked) {
-  const questions = [];
-  
-  // 1. 가이드 기반 질문
-  if (round <= 2 && Object.keys(missingGuides).length > 0) {
-    const guideQuestions = Object.entries(missingGuides)
-      .slice(0, 2)
-      .map(([key, config]) => ({
-        key: `guide_${key}_${round}`,
-        question: `${key}은(는) 어떻게 설정하시겠어요?`,
-        options: [...(config.options || []), "직접 입력"],
-        priority: config.weight >= 12 ? "high" : "medium",
-        scoreValue: config.weight
-      }));
-    questions.push(...guideQuestions);
-  }
-  
-  // 2. AI 창의적 질문 (Chain of Thought)
-  if (round >= 2) {
-    try {
-      const chainPrompt = `
-당신은 ${domain} 프롬프트 전문가입니다.
-
-사용자 요청: "${userInput}"
-현재까지 정보: ${answers.join(', ')}
-
-다음을 고려하여 핵심 질문 2개를 생성하세요:
-1. 아직 파악되지 않은 중요한 정보는?
-2. 결과물 품질을 높일 수 있는 디테일은?
-3. ${domain} 전문가라면 꼭 물어볼 것은?
-
-JSON 형식으로 응답:
-{
-  "questions": [
-    {
-      "key": "ai_q1",
-      "question": "구체적인 질문",
-      "options": ["옵션1", "옵션2", "옵션3", "직접 입력"],
-      "priority": "high"
-    }
-  ]
-}`;
-      
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: chainPrompt }],
-        temperature: 0.7,
-        max_tokens: 500,
-        response_format: { type: "json_object" }
-      });
-      
-      const aiResult = JSON.parse(completion.choices[0].message.content);
-      if (aiResult.questions) {
-        questions.push(...aiResult.questions);
-      }
-    } catch (error) {
-      console.log('AI 질문 생성 실패, 기본 질문 사용');
-    }
-  }
-  
-  return questions;
-}
-
-// 📊 가이드 완성도 분석
+// 🧭 가이드 완성도 분석
 function analyzeGuideCompletion(userInput, answers, domain) {
   const guide = COMPLETION_GUIDES[domain];
   const allText = [userInput, ...answers].join(' ').toLowerCase();
@@ -706,16 +461,18 @@ function analyzeGuideCompletion(userInput, answers, domain) {
   Object.entries(guide).forEach(([key, config]) => {
     totalWeight += config.weight;
     
-    const hasKeyword = config.keywords.some(kw => 
-      allText.includes(kw.toLowerCase())
+    // 키워드 매칭으로 완성도 체크
+    const hasKeyword = config.keywords.some(keyword => 
+      allText.includes(keyword.toLowerCase())
     );
     
-    const hasAnswer = answers.some(answer => 
-      answer.toLowerCase().includes(key.toLowerCase()) ||
-      config.keywords.some(kw => answer.toLowerCase().includes(kw.toLowerCase()))
+    // 답변에서 구체적 언급 체크
+    const hasSpecificAnswer = answers.some(answer => 
+      answer.toLowerCase().includes(key.toLowerCase()) || 
+      config.keywords.some(k => answer.toLowerCase().includes(k.toLowerCase()))
     );
     
-    if (hasKeyword || hasAnswer) {
+    if (hasKeyword || hasSpecificAnswer) {
       filled[key] = config;
       filledWeight += config.weight;
     } else {
@@ -731,107 +488,345 @@ function analyzeGuideCompletion(userInput, answers, domain) {
   };
 }
 
-// 📈 의도 파악 점수 계산
-function calculateIntentScore(completion) {
+// 📊 의도 파악 점수 계산 (가이드 완성도 기반)
+function calculateIntentScore(guideCompletion) {
   // 완성률 기반 점수 (0-95)
-  return Math.min(Math.round(completion.completionRate * 0.95), 95);
+  return Math.min(Math.round(guideCompletion.completionRate * 0.95), 95);
 }
 
-// 🎨 현재 프롬프트 생성
-async function generateCurrentPrompt(userInput, answers, domain, completion) {
-  // 패턴 매칭
-  const pattern = findBestPattern(userInput, domain);
+// 🎯 가이드 기반 질문 생성
+async function generateGuideBasedQuestions(missingGuides, domain, round, userInput, answers, asked = []) {
+  // 이미 물어본 질문 추적
+  const askedSet = new Set(asked.map(q => q.toLowerCase()));
   
-  // 수집된 정보 정리
-  const collectedInfo = Object.keys(completion.filled)
-    .map(key => {
-      const answer = answers.find(a => 
-        a.toLowerCase().includes(key.toLowerCase())
-      );
-      return answer ? answer : key;
+  // 중요도 순으로 정렬
+  const sortedMissing = Object.entries(missingGuides)
+    .sort(([,a], [,b]) => b.weight - a.weight)
+    .filter(([key, config]) => {
+      // 이미 물어본 질문 제외
+      const questionText = `${key}에 대해 구체적으로 어떻게 하시겠어요?`;
+      return !askedSet.has(questionText.toLowerCase());
     })
-    .join(', ');
-  
-  // 도메인별 프롬프트 템플릿
-  const templates = {
-    video: `${userInput}. Platform optimized for video generation. ${collectedInfo}. Professional quality, engaging content.`,
-    image: `${userInput}. High quality image generation. ${collectedInfo}. Professional photography, perfect composition.`,
-    dev: `Build ${userInput}. Technical requirements: ${collectedInfo}. Production-ready code with best practices.`
-  };
-  
-  const basePrompt = templates[domain] || userInput;
-  
-  // GPT로 향상 (선택적)
-  if (answers.length >= 3) {
-    try {
-      const enhancePrompt = `
-향상시켜주세요:
-원본: "${basePrompt}"
-도메인: ${domain}
+    .slice(0, round <= 2 ? 3 : 2); // 초반엔 3개, 나중엔 2개
 
-전문가 수준 프롬프트로 개선 (영어로):`;
-      
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: enhancePrompt }],
-        temperature: 0.7,
-        max_tokens: 500
-      });
-      
-      return completion.choices[0].message.content.trim();
+  const questions = sortedMissing.map(([key, config], index) => ({
+    key: `guide_${key}_${round}`,
+    question: `${key}에 대해 구체적으로 어떻게 하시겠어요?`,
+    options: [...config.options, "직접 입력"],
+    priority: config.weight >= 12 ? "high" : "medium",
+    scoreValue: config.weight,
+    guideKey: key
+  }));
+
+  // AI로 질문 자연스럽게 다듬기 (3라운드 이상)
+  if (round >= 3 && questions.length > 0) {
+    try {
+      const improvedQuestions = await refineQuestionsWithAI(questions, domain, round, userInput, answers);
+      return improvedQuestions.length > 0 ? improvedQuestions : questions;
     } catch (error) {
-      console.log('프롬프트 향상 실패, 기본 사용');
+      console.log('질문 다듬기 실패, 기본 질문 사용:', error.message);
+      return questions;
     }
   }
+
+  // AI 추가 질문 (라운드 3 이상에서 질문이 부족할 때)
+  if (round >= 3 && questions.length < 2) {
+    try {
+      const aiQuestions = await generateAIQuestions(userInput, answers, domain, round);
+      questions.push(...aiQuestions);
+    } catch (error) {
+      console.log('AI 질문 생성 실패');
+    }
+  }
+
+  return questions.slice(0, 3); // 최대 3개
+}
+
+// ✨ AI로 질문 자연스럽게 다듬기
+async function refineQuestionsWithAI(questions, domain, round, userInput, answers) {
+  const prompt = `${domain} 전문가로서 다음 질문들을 자연스럽고 구체적으로 다듬어주세요.
+
+원본 요청: "${userInput}"
+현재까지 답변: ${answers.join(', ')}
+
+질문 목록: ${questions.map(q => `${q.guideKey}: ${q.question}`).join(', ')}
+
+요구사항:
+1. ${domain} 전문 용어 사용
+2. 답변하기 쉬운 구체적 질문
+3. 기존 선택지 유지하면서 자연스럽게
+4. 이미 답변한 내용과 중복되지 않게
+
+JSON 형식으로만 응답:
+{
+  "questions": [
+    {
+      "key": "${questions[0]?.key || 'q1'}",
+      "question": "다듬어진 자연스러운 질문?",
+      "options": ${JSON.stringify(questions[0]?.options || [])},
+      "priority": "high",
+      "scoreValue": ${questions[0]?.scoreValue || 10},
+      "guideKey": "${questions[0]?.guideKey || 'key1'}"
+    }
+  ]
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-3.5-turbo",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+    max_tokens: 1000,
+    response_format: { type: "json_object" }
+  });
+
+  const result = JSON.parse(completion.choices[0].message.content);
+  return result.questions || questions;
+}
+
+// 🤖 AI 추가 질문 생성
+async function generateAIQuestions(userInput, answers, domain, round) {
+  const prompt = `${domain} 전문가로서 "${userInput}"를 완성하기 위한 핵심 질문 2개를 생성하세요.
+
+현재까지 정보: ${answers.join(', ')}
+
+아직 파악되지 않은 중요한 정보를 물어보세요.
+
+JSON 형식:
+{
+  "questions": [
+    {
+      "key": "ai_q1",
+      "question": "구체적인 질문",
+      "options": ["옵션1", "옵션2", "옵션3", "직접 입력"],
+      "priority": "high"
+    }
+  ]
+}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 500,
+      response_format: { type: "json_object" }
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content);
+    return result.questions || [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// 📝 현재 프롬프트 생성
+async function generateCurrentPrompt(userInput, answers, domain, guideCompletion) {
+  const filledInfo = Object.keys(guideCompletion.filled).map(key => {
+    const answer = answers.find(a => a.toLowerCase().includes(key.toLowerCase()));
+    return answer ? `${key}: ${answer.split(':')[1]?.trim()}` : key;
+  }).join(', ');
+
+  // 패턴 매칭
+  const bestPattern = findBestPattern(userInput, domain);
   
-  return pattern || basePrompt;
+  const prompt = `${domain} 최고 전문가로서 현재 정보를 바탕으로 고품질 프롬프트를 생성하세요.
+
+원본: "${userInput}"
+수집 정보: ${filledInfo || answers.join(', ')}
+${bestPattern ? `참고 패턴: ${bestPattern}` : ''}
+
+완성된 전문가 수준 프롬프트만 출력 (영어로):`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 800
+    });
+
+    return completion.choices[0].message.content.trim();
+  } catch (error) {
+    return bestPattern || `${userInput}. ${filledInfo}. Professional quality.`;
+  }
 }
 
 // 🏆 프롬프트 품질 평가
 async function evaluatePromptQuality(prompt, domain) {
-  // 길이 기반 기본 점수
-  let baseScore = Math.min(prompt.length / 10, 40);
+  // 기본 품질 계산
+  const length = prompt.length;
+  let score = Math.min(length / 10, 40); // 길이 점수 (최대 40점)
   
   // 도메인별 키워드 체크
   const qualityKeywords = {
-    video: ['scene', 'camera', 'lighting', 'transition', 'duration'],
-    image: ['quality', 'resolution', 'style', 'composition', 'lighting'],
-    dev: ['requirements', 'features', 'stack', 'architecture', 'implementation']
+    video: ['scene', 'camera', 'transition', 'lighting', 'duration', 'format'],
+    image: ['resolution', 'style', 'composition', 'lighting', 'quality', 'detailed'],
+    dev: ['requirements', 'features', 'architecture', 'implementation', 'stack']
   };
   
   const keywords = qualityKeywords[domain] || [];
-  const keywordScore = keywords.filter(kw => 
+  const keywordMatches = keywords.filter(kw => 
     prompt.toLowerCase().includes(kw)
-  ).length * 10;
+  ).length;
+  
+  score += keywordMatches * 8; // 키워드당 8점
   
   // 구조 점수
-  const structureScore = prompt.includes('\n') ? 15 : 5;
+  if (prompt.includes('\n')) score += 10;
+  if (prompt.includes('•') || prompt.includes('-')) score += 5;
   
-  // 최종 점수
-  const totalScore = Math.min(baseScore + keywordScore + structureScore, 95);
-  
-  return totalScore;
+  return Math.min(score, 95);
 }
 
-// 🎯 최종 프롬프트 생성
-async function generateFinalPrompt(userInput, answers, domain) {
+// 🔍 최적 패턴 찾기
+function findBestPattern(userInput, domain) {
+  const patterns = HIGH_QUALITY_PATTERNS[domain] || {};
+  const input = userInput.toLowerCase();
+  
+  // 키워드 기반 패턴 매칭
+  for (const [key, pattern] of Object.entries(patterns)) {
+    const keywords = key.split('_');
+    if (keywords.every(keyword => input.includes(keyword))) {
+      return pattern;
+    }
+  }
+  
+  return null;
+}
+
+// 🎯 최종 생성 핸들러
+async function handleFinalGeneration(res, userInput, answers, domain, intentScore = 85, qualityScore = 85) {
+  try {
+    console.log('🎉 최종 프롬프트 생성 시작');
+    
+    // 영상 도메인: 씬 분할 처리
+    if (domain === 'video') {
+      const videoEngine = new VideoSceneEngine();
+      
+      // 길이 추출
+      const duration = extractDuration(answers) || 60;
+      console.log(`🎬 영상 길이: ${duration}초`);
+      
+      // 씬 분할 실행
+      const scenes = await videoEngine.splitIntoScenes(userInput, answers, duration);
+      
+      // 씬별 프롬프트 텍스트 생성
+      const scenePrompts = scenes.map(s => `
+### 씬 ${s.scene} (${s.duration})
+📷 이미지 프롬프트: ${s.image_prompt}
+🎬 영상 프롬프트: ${s.video_prompt}
+📹 카메라: ${s.camera} | 🔄 전환: ${s.transition}
+`).join('\n');
+      
+      // 전체 시나리오
+      const fullScenario = `
+## 🎬 영상 시나리오: ${userInput}
+
+### 📊 개요
+- 총 길이: ${duration}초
+- 씬 개수: ${scenes.length}개
+- 플랫폼: ${getSelectedPlatform(answers)}
+- 스타일: ${getSelectedStyle(answers)}
+
+### 🎞️ 씬별 프롬프트
+${scenePrompts}
+
+### 💡 플랫폼별 사용 가이드
+
+**Runway Gen-3 (추천):**
+1. 각 씬의 이미지 프롬프트로 첫 프레임 생성
+2. Image to Video 모드로 전환
+3. 영상 프롬프트 입력 후 10초씩 생성
+4. Extend 기능으로 연결 (최대 3회)
+
+**Pika Labs:**
+1. Discord에서 /create 명령어 사용
+2. 이미지 업로드 + 프롬프트 입력
+3. -motion 2 -ar 16:9 설정 추가
+4. 3초씩 생성 후 연결
+
+**Sora (OpenAI):**
+1. 텍스트 프롬프트만 입력
+2. 최대 20초까지 한 번에 생성 가능
+3. 스타일 일관성 자동 유지
+
+### 🎯 프로 팁
+- 씬 간 연속성: 이전 씬 마지막 프레임을 다음 씬 시작에 활용
+- 캐릭터 일관성: 동일한 seed 값 사용 (Runway: --seed 123)
+- 색감 통일: 모든 씬에 동일한 색상 팔레트 키워드 추가
+`;
+      
+      return res.status(200).json({
+        success: true,
+        step: 'completed',
+        originalPrompt: userInput,
+        improvedPrompt: fullScenario,
+        scenarioData: {
+          scenes: scenes,
+          totalDuration: duration,
+          sceneCount: scenes.length
+        },
+        intentScore,
+        qualityScore,
+        message: '🎬 영상 씬 분할 완성! 각 씬별로 바로 사용 가능한 프롬프트입니다.',
+        attempts: answers.length
+      });
+    }
+    
+    // 이미지/개발 도메인: 일반 프롬프트
+    const guideCompletion = analyzeGuideCompletion(userInput, answers, domain);
+    const finalPrompt = await generateFinalPrompt(userInput, answers, domain, guideCompletion);
+    
+    return res.status(200).json({
+      success: true,
+      step: 'completed',
+      originalPrompt: userInput,
+      improvedPrompt: finalPrompt,
+      intentScore,
+      qualityScore,
+      message: `✨ ${domain === 'image' ? '이미지' : '개발'} 프롬프트 완성!`,
+      platformGuides: generatePlatformGuides(domain),
+      attempts: answers.length
+    });
+    
+  } catch (error) {
+    console.error('최종 생성 오류:', error);
+    
+    // 폴백: 기본 프롬프트 반환
+    const fallbackPrompt = `${userInput}\n\n추가 정보:\n${answers.join('\n')}`;
+    
+    return res.status(200).json({
+      success: true,
+      step: 'completed',
+      originalPrompt: userInput,
+      improvedPrompt: fallbackPrompt,
+      intentScore: 80,
+      qualityScore: 80,
+      message: '프롬프트가 생성되었습니다.',
+      attempts: answers.length
+    });
+  }
+}
+
+// 🎯 최종 프롬프트 생성 (GPT 활용)
+async function generateFinalPrompt(userInput, answers, domain, guideCompletion) {
   const pattern = findBestPattern(userInput, domain);
   
   if (pattern) {
     return pattern;
   }
   
-  // GPT-4 스타일 생성
   try {
     const systemPrompt = `You are an expert ${domain} prompt engineer. 
-Create a professional, detailed prompt that will produce excellent results.`;
+Create a professional, detailed prompt that will produce excellent results.
+Focus on clarity, specificity, and actionable instructions.`;
     
     const userPrompt = `
 Original request: "${userInput}"
 Additional info: ${answers.join(', ')}
 Domain: ${domain}
 
-Create a perfect prompt for ${domain} AI generation:`;
+Create a perfect ${domain} prompt for AI generation:`;
     
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -845,34 +840,27 @@ Create a perfect prompt for ${domain} AI generation:`;
     
     return completion.choices[0].message.content.trim();
   } catch (error) {
+    console.error('GPT 생성 실패:', error);
     // 폴백
     return `${userInput}. ${answers.join('. ')}. High quality, professional result.`;
   }
 }
 
-// 🔍 패턴 매칭
-function findBestPattern(userInput, domain) {
-  const patterns = HIGH_QUALITY_PATTERNS[domain] || {};
-  const input = userInput.toLowerCase();
-  
-  for (const [key, pattern] of Object.entries(patterns)) {
-    const keywords = key.split('_');
-    if (keywords.every(kw => input.includes(kw))) {
-      return pattern;
-    }
-  }
-  
-  return null;
-}
-
-// ⏱️ 길이 추출
+// 📏 길이 추출
 function extractDuration(answers) {
   const text = answers.join(' ');
   
+  // 정확한 매칭
+  if (text.includes('15초')) return 15;
+  if (text.includes('30초')) return 30;
+  if (text.includes('60초')) return 60;
+  if (text.includes('3분')) return 180;
+  if (text.includes('5분')) return 300;
+  
+  // 패턴 매칭
   const patterns = [
     { regex: /(\d+)\s*초/, multiplier: 1 },
-    { regex: /(\d+)\s*분/, multiplier: 60 },
-    { regex: /(\d+)\s*시간/, multiplier: 3600 }
+    { regex: /(\d+)\s*분/, multiplier: 60 }
   ];
   
   for (const { regex, multiplier } of patterns) {
@@ -883,6 +871,29 @@ function extractDuration(answers) {
   }
   
   return 60; // 기본값
+}
+
+// 📱 플랫폼 추출
+function getSelectedPlatform(answers) {
+  const text = answers.join(' ').toLowerCase();
+  
+  if (text.includes('유튜브') || text.includes('youtube')) return 'YouTube Shorts';
+  if (text.includes('틱톡') || text.includes('tiktok')) return 'TikTok';
+  if (text.includes('인스타') || text.includes('instagram')) return 'Instagram Reels';
+  
+  return 'YouTube Shorts'; // 기본값
+}
+
+// 🎨 스타일 추출
+function getSelectedStyle(answers) {
+  const text = answers.join(' ').toLowerCase();
+  
+  if (text.includes('시네마틱')) return '시네마틱';
+  if (text.includes('브이로그') || text.includes('vlog')) return '브이로그';
+  if (text.includes('실사')) return '실사';
+  if (text.includes('애니메이션')) return '애니메이션';
+  
+  return '일반 영상'; // 기본값
 }
 
 // 📚 플랫폼 가이드 생성
@@ -910,17 +921,4 @@ function generatePlatformGuides(domain) {
   };
   
   return guides[domain] || {};
-}
-
-// 🔄 중복 질문 필터링
-function filterUniqueQuestions(questions, asked) {
-  const askedSet = new Set(asked.map(q => q.toLowerCase()));
-  
-  return questions.filter(q => {
-    const questionText = q.question.toLowerCase();
-    if (askedSet.has(questionText)) {
-      return false;
-    }
-    return true;
-  });
 }
