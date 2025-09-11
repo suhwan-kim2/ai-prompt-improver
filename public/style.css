@@ -668,3 +668,77 @@ button:disabled {
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* 씬 카드 개선 */
+.scene-card {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  margin: 20px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.scene-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.scene-concept {
+  background: rgba(139, 92, 246, 0.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  color: #a78bfa;
+}
+
+.prompt-section {
+  margin: 15px 0;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  border-left: 3px solid #3b82f6;
+}
+
+.prompt-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.copy-btn {
+  padding: 6px 12px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 6px;
+  color: #93c5fd;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.copy-btn:hover {
+  background: rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.prompt-content {
+  color: #e5e7eb;
+  line-height: 1.6;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 14px;
+}
+
+.scene-settings {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(59, 130, 246, 0.2);
+  color: #94a3b8;
+  font-size: 13px;
+}
