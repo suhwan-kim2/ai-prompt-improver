@@ -141,7 +141,6 @@ async function requestAIQuestions(step) {
     } else {
       const text = await response.text();
       console.warn('서버가 JSON이 아닌 응답을 반환했습니다:', text.slice(0, 500));
-      // 비-JSON 에러를 사용자에게도 전달
       return handleAPIError({
         title: '🧩 서버 응답 오류',
         message: '서버가 올바른 데이터 형식을 반환하지 않았습니다.',
@@ -594,7 +593,7 @@ async function skipQuestions() {
   await requestAIQuestions('generate');
 }
 
-// ✅ 바로 generate 호출
+// ✅ 바로 generate 호출 (강화: content-type 검사/에러 처리)
 async function goGenerate() {
   hideAllSections();
   const payload = {
@@ -605,54 +604,89 @@ async function goGenerate() {
     round: state.round,
     asked: state.asked, // ⬅️ 중복 방지용
   };
-  const res = await fetch('/api/improve-prompt', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  handleAPIResponse(data);
+  try {
+    const res = await fetch('/api/improve-prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const ctype = res.headers.get('content-type') || '';
+    let data;
+    if (ctype.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      console.warn('JSON이 아닌 응답:', text.slice(0, 500));
+      return handleAPIError({
+        title: '🧩 서버 응답 오류',
+        message: '프롬프트 생성 중 비정상 응답을 받았습니다.',
+        action: '잠시 후 다시 시도해주세요.',
+        canRetry: true
+      });
+    }
+    handleAPIResponse(data);
+  } catch (e) {
+    console.error('goGenerate 네트워크 오류:', e);
+    handleNetworkError(e);
+  }
 }
 
-// 🎉 최종 결과 표시
+// 🎉 최종 결과 표시 (개선: 씬 카드 포함, 안전한 복사 버튼, 모든 도메인 공통 렌더)
 function showFinalResult(result) {
   console.log('🎉 최종 결과 표시');
-   
-  if (state.domain === 'video' && result.scenarioData) {
+
+  if (typeof result.intentScore === 'number') state.intentScore = result.intentScore;
+  if (typeof result.qualityScore === 'number') state.qualityScore = result.qualityScore;
+  updateScoreDisplay();
+
+  const improved = (result.improvedPrompt || '').toString();
+  const answersListHTML = state.answers.length > 0
+    ? `
+      <div class="additional-info">
+        <h4>💬 추가된 정보 (${state.answers.length}개)</h4>
+        <div class="answers-list">
+          ${state.answers.map(a => `<div class="answer-item">${escapeHtml(a)}</div>`).join('')}
+        </div>
+      </div>`
+    : '';
+
+  // 씬 카드(비디오 도메인일 때만)
+  let scenesSectionHTML = '';
+  if (state.domain === 'video' && result.scenarioData && Array.isArray(result.scenarioData.scenes)) {
     const scenes = result.scenarioData.scenes || [];
-     // 씬별 카드 UI (복사 버튼 포함)
     const scenesHTML = scenes.map(s => `
       <div class="scene-card">
         <div class="scene-header">
-          <h4>📎 씬 ${s.scene} (${s.duration})</h4>
-          <span class="scene-concept">${s.concept || ''}</span>
+          <h4>📎 씬 ${escapeHtml(String(s.scene ?? ''))} (${escapeHtml(String(s.duration ?? ''))})</h4>
+          <span class="scene-concept">${escapeHtml(String(s.concept || ''))}</span>
         </div>
-        
         <div class="prompt-section image-prompt">
           <div class="prompt-label">
             📷 이미지 생성용
-            <button class="copy-btn" onclick="copyText('${btoa(s.image_prompt)}')">
-              📋 복사
-            </button>
+            <button class="copy-btn" onclick="copyText(this, '${encodeURIComponent(String(s.image_prompt || ''))}')">📋 복사</button>
           </div>
-          <div class="prompt-content">${escapeHtml(s.image_prompt)}</div>
+          <div class="prompt-content">${escapeHtml(String(s.image_prompt || ''))}</div>
         </div>
-        
         <div class="prompt-section video-prompt">
           <div class="prompt-label">
             🎬 영상 생성용
-            <button class="copy-btn" onclick="copyText('${btoa(s.video_prompt)}')">
-              📋 복사
-            </button>
+            <button class="copy-btn" onclick="copyText(this, '${encodeURIComponent(String(s.video_prompt || ''))}')">📋 복사</button>
           </div>
-          <div class="prompt-content">${escapeHtml(s.video_prompt)}</div>
+          <div class="prompt-content">${escapeHtml(String(s.video_prompt || ''))}</div>
         </div>
-        
         <div class="scene-settings">
-          ⚙️ ${s.camera} | ${s.transition}
+          ⚙️ ${escapeHtml(String(s.camera || ''))} | ${escapeHtml(String(s.transition || ''))}
         </div>
       </div>
     `).join('');
+
+    scenesSectionHTML = `
+      <div class="scenes-section">
+        <h3>🎬 씬별 프롬프트</h3>
+        ${scenesHTML}
+      </div>
+    `;
+  }
 
   const finalHTML = `
     <div class="final-container">
@@ -668,26 +702,22 @@ function showFinalResult(result) {
         <div class="original-section">
           <h3>📝 원본 프롬프트</h3>
           <div class="prompt-text original">${escapeHtml(state.userInput)}</div>
-          ${state.answers.length > 0 ? `
-            <div class="additional-info">
-              <h4>💬 추가된 정보 (${state.answers.length}개)</h4>
-              <div class="answers-list">
-                ${state.answers.map(a => `<div class="answer-item">${escapeHtml(a)}</div>`).join('')}
-              </div>
-            </div>` : ''}
+          ${answersListHTML}
         </div>
 
         <div class="improved-section">
           <h3>✨ AI가 개선한 전문급 프롬프트</h3>
-          <div class="prompt-text improved">${escapeHtml(result.improvedPrompt)}</div>
+          <div class="prompt-text improved">${escapeHtml(improved)}</div>
           <div class="improvement-stats">
             <span class="stat">원본: ${state.userInput.length}자</span>
-            <span class="stat">개선: ${result.improvedPrompt.length}자</span>
+            <span class="stat">개선: ${improved.length}자</span>
             <span class="stat">개선 시도: ${result.attempts || 1}회</span>
             <span class="stat">라운드: ${state.round}회</span>
           </div>
         </div>
       </div>
+
+      ${scenesSectionHTML}
 
       <div class="action-buttons">
         <button class="btn btn-primary" onclick="copyToClipboard()">📋 개선된 프롬프트 복사</button>
@@ -708,7 +738,7 @@ function showFinalResult(result) {
     finalSection.scrollIntoView({ behavior: 'smooth' });
   }
 
-  window.lastImproved = result.improvedPrompt;
+  window.lastImproved = improved;
 }
 
 // 📊 점수 표시 업데이트
@@ -740,7 +770,7 @@ function getPriorityText(priority) {
   return map[priority] || '📋 보통';
 }
 
-// 📋 클립보드 복사
+// 📋 클립보드 복사 (최종 프롬프트)
 async function copyToClipboard() {
   if (!window.lastImproved) return alert('복사할 내용이 없습니다.');
   try {
@@ -762,6 +792,38 @@ async function copyToClipboard() {
     alert('클립보드에 복사되었습니다!');
   }
 }
+
+// 🔤 씬 카드 내 텍스트 복사(버튼 인자 사용, UTF-8 안전)
+window.copyText = function(btnEl, encodedText) {
+  try {
+    const text = decodeURIComponent(encodedText || '');
+    navigator.clipboard.writeText(text).then(() => {
+      if (btnEl) {
+        const original = btnEl.textContent;
+        btnEl.textContent = '✅ 복사됨!';
+        btnEl.disabled = true;
+        setTimeout(() => {
+          btnEl.textContent = original || '📋 복사';
+          btnEl.disabled = false;
+        }, 2000);
+      } else {
+        alert('복사 완료!');
+      }
+    }).catch(() => {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      alert('복사 완료!');
+    });
+  } catch (e) {
+    console.error('복사 중 오류:', e);
+    alert('복사에 실패했습니다.');
+  }
+};
 
 // 🔄 새 프롬프트 만들기
 function startNew() {
@@ -817,10 +879,12 @@ function getQualityGrade(score) {
   return 'D급 (개선 필요)';
 }
 
-// ❌ 상세 모달 닫기
+// ❌ 상세 모달 닫기 (안정화)
 function closeDetails() {
   const modal = $("detailsModal");
-  if (modal) document.body.removeChild(modal);
+  if (modal && modal.parentElement) {
+    modal.parentElement.remove(); // 컨테이너ごと 제거 (부모-자식 관계 안전)
+  }
 }
 
 // 🎨 UI 유틸
@@ -911,19 +975,7 @@ if (typeof window !== 'undefined') {
   window.state = state;
 }
 
-window.copyText = function(encodedText) {
-  const text = atob(encodedText);
-  navigator.clipboard.writeText(text).then(() => {
-    // 복사 완료 피드백
-    event.target.textContent = '✅ 복사됨!';
-    setTimeout(() => {
-      event.target.textContent = '📋 복사';
-    }, 2000);
-  });
-}
-
 // 🎯 전역 함수 exports
-
 window.startImprovement = startImprovement;
 window.toggleOption = toggleOption;
 window.submitTextAnswer = submitTextAnswer;
