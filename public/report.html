@@ -22,12 +22,101 @@
             <li>이 도구는 <strong>신고문 작성과 기록 관리</strong>만 도와줍니다. 신고 접수는 형이 직접 해당 창구에서 제출하세요.</li>
             <li><strong>직접 확인한 판매글만</strong> 신고하세요. 확인 없이 추측으로 신고하면 무고·명예훼손 책임을 질 수 있습니다.</li>
             <li>같은 대상을 여러 창구에 중복 신고하거나 반복 제출하는 것은 처리만 늦어집니다. 한 창구에 한 번이 원칙입니다.</li>
-            <li>입력한 내용은 <strong>이 브라우저에만</strong> 저장됩니다. 서버로 전송되지 않습니다.</li>
+            <li>자동 추출한 값은 <strong>틀릴 수 있습니다.</strong> 신고문을 만들기 전에 각 항목을 눈으로 확인하세요.</li>
+            <li>입력·기록은 <strong>이 브라우저에만</strong> 저장됩니다. 주소로 페이지를 읽을 때만 해당 주소가 서버를 거칩니다.</li>
         </ul>
     </section>
 
-    <!-- 📝 대상 정보 입력 -->
+    <!-- 🔀 입력 방식 -->
     <section class="panel">
+        <h3 class="panel-title">입력 방식</h3>
+        <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="auto">① 자동 탐색</button>
+            <button class="mode-tab" data-mode="url">② 주소·본문 입력</button>
+            <button class="mode-tab" data-mode="manual">③ 직접 입력</button>
+        </div>
+        <p class="mode-desc" id="modeDesc"></p>
+    </section>
+
+    <!-- ① 자동 탐색 -->
+    <section class="panel mode-panel" data-mode-panel="auto">
+        <h3 class="panel-title">🔎 감시 목록</h3>
+        <p class="hint mb">감시할 공연과 정가를 등록해두면, 붙여넣은 검색 결과에서 조건을 넘는 판매글만 골라냅니다.
+            정가는 예매처에서 확인한 값을 직접 넣어주세요 — 이 값이 모든 판정의 기준입니다.</p>
+
+        <div class="field-grid">
+            <div class="field">
+                <label for="wlName">공연·경기명 <span class="req">*</span></label>
+                <input type="text" id="wlName" placeholder="예: OOO 단독 콘서트 2026 서울">
+            </div>
+            <div class="field">
+                <label for="wlFace">정가(1매) <span class="req">*</span></label>
+                <input type="text" id="wlFace" inputmode="numeric" placeholder="예: 154000">
+            </div>
+            <div class="field">
+                <label for="wlKeywords">검색 키워드</label>
+                <input type="text" id="wlKeywords" placeholder="쉼표로 구분. 예: OOO 양도, OOO 콘서트, OOO 티켓">
+            </div>
+            <div class="field">
+                <label for="wlRatio">신고 후보 기준 배율</label>
+                <input type="text" id="wlRatio" inputmode="decimal" placeholder="예: 1.5 (정가의 1.5배 이상)">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button id="wlAddBtn" class="btn btn-primary">감시 목록에 추가</button>
+        </div>
+        <div id="watchlistTable" class="log-table mb"></div>
+
+        <h4 class="sub-title">검색 결과 붙여넣기</h4>
+        <p class="hint mb">중고거래 앱·SNS에서 위 키워드로 검색한 뒤, <strong>결과 화면을 전체 선택해 복사(Ctrl+A → Ctrl+C)</strong>하고 그대로 붙여넣으세요.
+            여러 건을 한 번에 쪼개서 조건과 맞춰봅니다.</p>
+        <div class="field">
+            <textarea id="bulkInput" rows="8" placeholder="검색 결과를 붙여넣으세요. 판매글 여러 개가 섞여 있어도 가격 단위로 나눠 분석합니다."></textarea>
+        </div>
+        <div class="btn-row">
+            <button id="scanBtn" class="btn btn-primary">후보 추출</button>
+            <button id="clearQueueBtn" class="btn btn-ghost">후보 큐 비우기</button>
+        </div>
+
+        <h4 class="sub-title">신고 후보 <span class="count-badge" id="queueCount">0건</span></h4>
+        <div id="queueTable" class="log-table"></div>
+    </section>
+
+    <!-- ② 주소·본문 입력 -->
+    <section class="panel mode-panel hidden" data-mode-panel="url">
+        <h3 class="panel-title">🔗 판매글 주소 또는 본문</h3>
+
+        <div class="field">
+            <label for="fetchUrl">판매글 주소(URL)</label>
+            <div class="inline-row">
+                <input type="text" id="fetchUrl" placeholder="https:// …">
+                <button id="fetchBtn" class="btn">페이지 읽기</button>
+            </div>
+            <p class="hint">공개 페이지만 읽힙니다. 로그인이 필요한 앱·SNS는 아래에 본문을 직접 붙여넣으세요.</p>
+        </div>
+
+        <div class="field">
+            <label for="pasteInput">판매글 본문 붙여넣기</label>
+            <textarea id="pasteInput" rows="8" placeholder="판매글 제목과 본문을 복사해 붙여넣으세요. 가격·좌석·날짜·정황 키워드를 자동으로 뽑아냅니다."></textarea>
+        </div>
+
+        <div class="btn-row">
+            <button id="parseBtn" class="btn btn-primary">분석</button>
+        </div>
+
+        <div id="fetchStatus" class="warn-box hidden"></div>
+
+        <div id="extractPanel" class="hidden">
+            <h4 class="sub-title">추출 결과 — 체크한 항목만 양식에 채웁니다</h4>
+            <div id="extractTable" class="extract-table"></div>
+            <div class="btn-row">
+                <button id="applyBtn" class="btn btn-primary">양식에 채우기</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 📝 대상 정보 입력 -->
+    <section class="panel" id="formSection">
         <h3 class="panel-title">1️⃣ 신고 대상 정보</h3>
 
         <div class="field-grid">
@@ -193,6 +282,7 @@
     </section>
 
 </main>
+<script src="./listing-parser.js"></script>
 <script src="./report.js"></script>
 </body>
 </html>

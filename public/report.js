@@ -4,6 +4,14 @@
  */
 
 const STORAGE_KEY = 'scalpingReportLog';
+const WATCHLIST_KEY = 'scalpingWatchlist';
+const QUEUE_KEY = 'scalpingCandidates';
+
+const MODE_DESC = {
+  auto: '감시 목록에 공연과 정가를 등록하고, 검색 결과를 붙여넣으면 조건을 넘는 판매글만 골라 후보 큐에 쌓습니다. 후보를 고르면 양식이 채워지고, 제출은 형이 직접 합니다.',
+  url: '판매글 주소를 넣거나 본문을 붙여넣으면 가격·좌석·날짜·정황을 뽑아 양식을 채웁니다. 추출값을 확인한 뒤 신고문을 생성하세요.',
+  manual: '모든 항목을 직접 입력합니다. 추출이 잘 안 되는 판매글이나, 현장에서 목격한 경우에 쓰세요.'
+};
 
 /* 공식 신고 창구.
  * 기관 사이트는 개편이 잦아 링크가 끊길 수 있다. 화면에도 안내 문구를 함께 띄운다. */
@@ -58,24 +66,28 @@ function formatWon(n) {
   return n.toLocaleString('ko-KR') + '원';
 }
 
-function readStorage() {
+function readStorage(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key || STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.warn('기록을 읽을 수 없습니다:', e);
+    console.warn('저장된 값을 읽을 수 없습니다:', e);
     return [];
   }
 }
 
-function writeStorage(list) {
+function writeStorage(list, key) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(key || STORAGE_KEY, JSON.stringify(list));
     return true;
   } catch (e) {
-    console.warn('기록을 저장할 수 없습니다:', e);
+    console.warn('값을 저장할 수 없습니다:', e);
     return false;
   }
+}
+
+function newId() {
+  return Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 }
 
 function checkedValues(boxId) {
@@ -496,12 +508,555 @@ function resetInputs() {
   renderAnalysis();
 }
 
+/* ---------- 모드 전환 ---------- */
+
+function setMode(mode) {
+  document.querySelectorAll('.mode-tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.mode === mode);
+  });
+  document.querySelectorAll('.mode-panel').forEach((p) => {
+    p.classList.toggle('hidden', p.dataset.modePanel !== mode);
+  });
+  $('modeDesc').textContent = MODE_DESC[mode] || '';
+}
+
+/* ---------- 감시 목록 ---------- */
+
+function renderWatchlist() {
+  const list = readStorage(WATCHLIST_KEY);
+  const box = $('watchlistTable');
+
+  if (!list.length) {
+    box.innerHTML = '<p class="hint">등록된 공연이 없습니다. 공연명과 정가를 넣고 추가하세요.</p>';
+    return;
+  }
+
+  box.innerHTML = '';
+  list.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'log-row';
+
+    const main = document.createElement('div');
+    main.className = 'log-main';
+    main.textContent = item.eventName;
+
+    const meta = document.createElement('div');
+    meta.className = 'log-meta';
+    meta.textContent = [
+      `정가 ${formatWon(item.faceValue)}`,
+      `기준 ${item.minRatio}배 이상`,
+      item.keywords ? `키워드: ${item.keywords}` : '키워드 없음'
+    ].join(' | ');
+
+    const del = document.createElement('button');
+    del.className = 'btn btn-ghost btn-small';
+    del.textContent = '삭제';
+    del.addEventListener('click', () => {
+      writeStorage(readStorage(WATCHLIST_KEY).filter((w) => w.id !== item.id), WATCHLIST_KEY);
+      renderWatchlist();
+    });
+
+    row.append(main, meta, del);
+    box.appendChild(row);
+  });
+}
+
+function addWatchItem() {
+  const eventName = $('wlName').value.trim();
+  const faceValue = toNumber($('wlFace').value);
+  const ratio = parseFloat($('wlRatio').value) || 1.5;
+
+  if (!eventName || !faceValue) {
+    alert('공연명과 정가는 반드시 입력해야 합니다. 정가가 없으면 배율을 계산할 수 없습니다.');
+    return;
+  }
+
+  const list = readStorage(WATCHLIST_KEY);
+  list.push({
+    id: newId(),
+    eventName: eventName,
+    faceValue: faceValue,
+    keywords: $('wlKeywords').value.trim(),
+    minRatio: ratio < 1 ? 1.5 : ratio
+  });
+
+  if (!writeStorage(list, WATCHLIST_KEY)) {
+    alert('브라우저 저장공간을 사용할 수 없어 감시 목록을 저장하지 못했습니다.');
+    return;
+  }
+
+  ['wlName', 'wlFace', 'wlKeywords', 'wlRatio'].forEach((id) => { $(id).value = ''; });
+  renderWatchlist();
+}
+
+/* ---------- 판매 경로 추측 ---------- */
+
+const PLATFORM_HINTS = [
+  { re: /daangn|당근/i, value: '중고거래 앱(당근·번개장터 등)' },
+  { re: /bunjang|번개장터/i, value: '중고거래 앱(당근·번개장터 등)' },
+  { re: /joonggonara|중고나라|cafe\.naver/i, value: '중고거래 커뮤니티/카페' },
+  { re: /twitter\.com|x\.com|트위터/i, value: 'X(트위터)' },
+  { re: /instagram|인스타/i, value: '인스타그램' },
+  { re: /open\.kakao|오픈채팅|텔레그램|t\.me/i, value: '오픈채팅·텔레그램' },
+  { re: /interpark|yes24|ticketlink|melon|예매처/i, value: '공식 예매처 내 2차거래' }
+];
+
+function guessPlatform(text) {
+  for (const hint of PLATFORM_HINTS) {
+    if (hint.re.test(text)) return hint.value;
+  }
+  return '';
+}
+
+/* ---------- 후보 큐 ---------- */
+
+let lastScanSummary = '';
+
+function scanBulk() {
+  const text = $('bulkInput').value.trim();
+  if (!text) {
+    alert('검색 결과를 붙여넣어 주세요.');
+    return;
+  }
+
+  const catalog = readStorage(WATCHLIST_KEY);
+  if (!catalog.length) {
+    alert('먼저 감시 목록에 공연과 정가를 등록하세요. 정가가 없으면 신고 조건을 판정할 수 없습니다.');
+    return;
+  }
+
+  const results = window.ListingParser.parseSearchResults(text, { catalog: catalog });
+  const queue = readStorage(QUEUE_KEY);
+  const log = readStorage(STORAGE_KEY);
+
+  let added = 0, below = 0, unknown = 0, duplicate = 0;
+
+  results.forEach((r) => {
+    const entry = r.catalogEntry;
+    const f = r.fields;
+
+    // 감시 목록에 없는 공연은 정가 기준이 없어 판정할 수 없다.
+    if (!entry) { unknown++; return; }
+
+    const excerpt = r.raw.replace(/\s+/g, ' ').trim().slice(0, 300);
+
+    // 이미 큐에 있거나 이미 신고 기록이 있는 대상은 건너뛴다.
+    const dupInQueue = queue.some((q) => q.excerpt === excerpt);
+    const dupInLog = log.some((l) =>
+      l.eventName === entry.eventName && f.seller && l.seller === f.seller);
+    if (dupInQueue || dupInLog) { duplicate++; return; }
+
+    if (!f.askPrice) { unknown++; return; }
+
+    const ratio = f.askPrice / entry.faceValue;
+    if (ratio < entry.minRatio) { below++; return; }
+
+    queue.push({
+      id: newId(),
+      foundAt: new Date().toLocaleString('ko-KR'),
+      eventName: entry.eventName,
+      eventDate: f.eventDate,
+      seat: f.seat,
+      faceValue: entry.faceValue,
+      askPrice: f.askPrice,
+      ratio: Number(ratio.toFixed(2)),
+      seller: f.seller,
+      platform: guessPlatform(r.raw),
+      grounds: r.grounds,
+      signalLabels: r.signalLabels,
+      warnings: r.warnings,
+      excerpt: excerpt
+    });
+    added++;
+  });
+
+  writeStorage(queue, QUEUE_KEY);
+
+  lastScanSummary = `총 ${results.length}건 분석 → 후보 ${added}건 추가` +
+    `, 기준 미달 ${below}건, 판정 불가 ${unknown}건, 중복 ${duplicate}건 제외.`;
+
+  renderQueue();
+
+  if (!added) {
+    alert('조건을 넘는 판매글을 찾지 못했습니다.\n\n' + lastScanSummary);
+  }
+}
+
+function renderQueue() {
+  const queue = readStorage(QUEUE_KEY);
+  $('queueCount').textContent = queue.length + '건';
+
+  const box = $('queueTable');
+  box.innerHTML = '';
+
+  if (lastScanSummary) {
+    const s = document.createElement('p');
+    s.className = 'scan-summary';
+    s.textContent = lastScanSummary;
+    box.appendChild(s);
+  }
+
+  if (!queue.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = '후보가 없습니다. 검색 결과를 붙여넣고 후보 추출을 눌러주세요.';
+    box.appendChild(p);
+    return;
+  }
+
+  queue.slice().reverse().forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'queue-row';
+
+    const head = document.createElement('div');
+    head.className = 'queue-head';
+
+    const title = document.createElement('span');
+    title.className = 'log-main';
+    title.textContent = c.eventName;
+
+    const badge = document.createElement('span');
+    badge.className = 'ratio-badge ' + (c.ratio >= 2 ? 'high' : 'mid');
+    badge.textContent = c.ratio + '배';
+
+    head.append(title, badge);
+
+    const meta = document.createElement('div');
+    meta.className = 'log-meta';
+    meta.textContent = [
+      `${formatWon(c.faceValue)} → ${formatWon(c.askPrice)}`,
+      c.seat || '좌석 미확인',
+      c.seller || '판매자 미확인',
+      c.platform || '경로 미확인'
+    ].join(' | ');
+
+    const excerpt = document.createElement('div');
+    excerpt.className = 'queue-excerpt';
+    excerpt.textContent = c.excerpt;
+
+    const actions = document.createElement('div');
+    actions.className = 'btn-row queue-actions';
+
+    const use = document.createElement('button');
+    use.className = 'btn btn-small btn-primary';
+    use.textContent = '양식에 채우기';
+    use.addEventListener('click', () => loadCandidate(c.id));
+
+    const drop = document.createElement('button');
+    drop.className = 'btn btn-ghost btn-small';
+    drop.textContent = '제외';
+    drop.addEventListener('click', () => {
+      writeStorage(readStorage(QUEUE_KEY).filter((q) => q.id !== c.id), QUEUE_KEY);
+      renderQueue();
+    });
+
+    actions.append(use, drop);
+    row.append(head, meta, excerpt);
+
+    if (c.signalLabels && c.signalLabels.length) {
+      const tags = document.createElement('div');
+      tags.className = 'tag-row';
+      c.signalLabels.forEach((l) => {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = l;
+        tags.appendChild(tag);
+      });
+      row.appendChild(tags);
+    }
+
+    row.appendChild(actions);
+    box.appendChild(row);
+  });
+}
+
+/* ---------- 발견 경위 초안 ---------- */
+
+function draftContext(src) {
+  const ratio = src.faceValue ? (src.askPrice / src.faceValue).toFixed(1) : '?';
+  const lines = [
+    `${new Date().toLocaleDateString('ko-KR')} ${src.platform || '(판매 경로)'}에서 '${src.eventName}' 관련 판매글을 발견했습니다.`,
+    `정가 ${formatWon(src.faceValue)} 좌석을 ${formatWon(src.askPrice)}(정가의 ${ratio}배)에 판매하고 있습니다.`
+  ];
+  if (src.signalLabels && src.signalLabels.length) {
+    lines.push(`판매글에서 다음 정황이 확인됩니다: ${src.signalLabels.join(', ')}.`);
+  }
+  if (src.excerpt) {
+    lines.push(`판매글 원문 일부: "${src.excerpt}"`);
+  }
+  lines.push('(※ 이 내용은 자동 생성된 초안입니다. 직접 확인한 사실에 맞게 고쳐주세요.)');
+  return lines.join('\n');
+}
+
+function fillForm(src) {
+  if (src.eventName) $('eventName').value = src.eventName;
+  if (src.eventDate) $('eventDate').value = src.eventDate;
+  if (src.venue) $('venue').value = src.venue;
+  if (src.seat) $('seat').value = src.seat;
+  if (src.faceValue) $('faceValue').value = src.faceValue.toLocaleString('ko-KR');
+  if (src.askPrice) $('askPrice').value = src.askPrice.toLocaleString('ko-KR');
+  if (src.seller) $('seller').value = src.seller;
+  if (src.url) $('url').value = src.url;
+
+  if (src.platform) {
+    const option = Array.from($('platform').options).find((o) => o.value === src.platform);
+    if (option) $('platform').value = src.platform;
+  }
+
+  if (src.grounds && src.grounds.length) {
+    $('groundsBox').querySelectorAll('input[type="checkbox"]').forEach((el) => {
+      if (src.grounds.includes(el.value)) el.checked = true;
+    });
+  }
+
+  if (src.draftContext && !$('context').value.trim()) {
+    $('context').value = draftContext(src);
+  }
+
+  // 자동으로 채운 값은 사실 확인을 다시 받는다.
+  $('confirmCheck').checked = false;
+  $('generateBtn').disabled = true;
+  $('copyBtn').disabled = true;
+  $('saveBtn').disabled = true;
+  $('output').value = '';
+  lastGenerated = null;
+
+  renderAnalysis();
+
+  const notes = ['자동으로 채운 값입니다. <strong>각 항목과 발견 경위를 직접 확인하고 고친 뒤</strong> 아래 확인란을 체크하세요.'];
+  if (src.warnings && src.warnings.length) notes.push(...src.warnings);
+
+  // 자동 추출로는 채워지지 않는 항목(특히 판매 경로)을 바로 알려준다.
+  const still = missingFields(collect());
+  if (still.length) {
+    notes.push('아직 비어 있는 필수 항목: <strong>' + still.join(', ') + '</strong>');
+  }
+
+  showWarnings(notes);
+
+  $('formSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function loadCandidate(id) {
+  const c = readStorage(QUEUE_KEY).find((q) => q.id === id);
+  if (!c) return;
+  fillForm(Object.assign({}, c, { draftContext: true }));
+}
+
+/* ---------- 주소·본문 분석 ---------- */
+
+let lastExtract = null;
+
+function showFetchStatus(message, isError) {
+  const box = $('fetchStatus');
+  if (!message) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    return;
+  }
+  box.classList.remove('hidden');
+  box.className = 'warn-box' + (isError ? '' : ' info');
+  box.innerHTML = '<p>' + message + '</p>';
+}
+
+async function fetchListing() {
+  const url = $('fetchUrl').value.trim();
+  if (!url) {
+    alert('판매글 주소를 입력하세요.');
+    return;
+  }
+
+  showFetchStatus('페이지를 읽고 있습니다…', false);
+  $('fetchBtn').disabled = true;
+
+  try {
+    const res = await fetch('/api/fetch-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+
+    if (!res.ok) {
+      showFetchStatus(
+        `페이지 조회 기능을 쓸 수 없습니다 (HTTP ${res.status}). ` +
+        '배포된 서버에서만 동작합니다. <strong>판매글 본문을 복사해 아래에 붙여넣으면</strong> 그대로 분석됩니다.',
+        true
+      );
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      showFetchStatus(
+        `${data.error || '페이지를 읽지 못했습니다.'} ${data.hint || ''}`.trim(),
+        true
+      );
+      return;
+    }
+
+    const parts = [data.meta.title, data.meta.description, data.text].filter(Boolean);
+    $('pasteInput').value = parts.join('\n\n');
+
+    showFetchStatus(
+      data.wall
+        ? `${data.wall} 읽어온 내용이 부족하면 판매글 본문을 직접 붙여넣어 주세요.`
+        : '페이지를 읽었습니다. 아래 내용을 확인하고 분석을 눌러주세요.',
+      Boolean(data.wall)
+    );
+
+    runParse();
+  } catch (e) {
+    showFetchStatus(
+      '페이지 조회에 실패했습니다: ' + (e.message || e) +
+      '. 판매글 본문을 복사해 아래에 붙여넣으면 그대로 분석됩니다.',
+      true
+    );
+  } finally {
+    $('fetchBtn').disabled = false;
+  }
+}
+
+const EXTRACT_LABELS = {
+  eventName: '공연·경기명',
+  eventDate: '공연 일시',
+  seat: '좌석',
+  faceValue: '정가',
+  askPrice: '요구 금액',
+  seller: '판매자',
+  url: '판매글 주소'
+};
+
+const CONF_LABELS = { high: '높음', mid: '보통', low: '확인 필요' };
+
+function runParse() {
+  const text = $('pasteInput').value.trim();
+  if (!text) {
+    alert('판매글 본문을 붙여넣거나 주소로 페이지를 읽어주세요.');
+    return;
+  }
+
+  const result = window.ListingParser.parseListing(text, {
+    catalog: readStorage(WATCHLIST_KEY),
+    url: $('fetchUrl').value.trim()
+  });
+
+  result.fields.platform = guessPlatform(text + ' ' + $('fetchUrl').value);
+  lastExtract = result;
+  renderExtract(result);
+}
+
+function renderExtract(result) {
+  const box = $('extractTable');
+  box.innerHTML = '';
+
+  Object.keys(EXTRACT_LABELS).forEach((key) => {
+    const value = result.fields[key];
+    const conf = result.confidence[key] || 'low';
+    const display = typeof value === 'number'
+      ? (value ? formatWon(value) : '')
+      : (value || '');
+
+    const row = document.createElement('label');
+    row.className = 'extract-row';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.field = key;
+    cb.disabled = !display;
+    // 신뢰도가 낮은 값은 기본으로 적용하지 않는다.
+    cb.checked = Boolean(display) && conf !== 'low';
+
+    const name = document.createElement('span');
+    name.className = 'extract-name';
+    name.textContent = EXTRACT_LABELS[key];
+
+    const val = document.createElement('span');
+    val.className = 'extract-value' + (display ? '' : ' empty');
+    val.textContent = display || '추출 실패 — 직접 입력하세요';
+
+    const badge = document.createElement('span');
+    badge.className = 'conf-badge conf-' + conf;
+    badge.textContent = CONF_LABELS[conf];
+
+    row.append(cb, name, val, badge);
+    box.appendChild(row);
+  });
+
+  if (result.signalLabels.length) {
+    const tags = document.createElement('div');
+    tags.className = 'tag-row';
+    const lead = document.createElement('span');
+    lead.className = 'hint';
+    lead.textContent = '감지된 정황: ';
+    tags.appendChild(lead);
+    result.signalLabels.forEach((l) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = l;
+      tags.appendChild(tag);
+    });
+    box.appendChild(tags);
+  }
+
+  if (result.warnings.length) {
+    const warn = document.createElement('div');
+    warn.className = 'warn-box';
+    result.warnings.forEach((w) => {
+      const p = document.createElement('p');
+      p.textContent = w;
+      warn.appendChild(p);
+    });
+    box.appendChild(warn);
+  }
+
+  $('extractPanel').classList.remove('hidden');
+}
+
+function applyExtract() {
+  if (!lastExtract) return;
+
+  const picked = {};
+  $('extractTable').querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    if (cb.checked) picked[cb.dataset.field] = lastExtract.fields[cb.dataset.field];
+  });
+
+  picked.platform = lastExtract.fields.platform;
+  picked.grounds = lastExtract.grounds;
+  picked.signalLabels = lastExtract.signalLabels;
+  picked.warnings = lastExtract.warnings;
+  picked.excerpt = lastExtract.raw.replace(/\s+/g, ' ').trim().slice(0, 300);
+  picked.draftContext = Boolean(picked.eventName && picked.askPrice);
+
+  fillForm(picked);
+}
+
 /* ---------- 초기화 ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
   renderChannels();
   renderAnalysis();
   renderLog();
+  renderWatchlist();
+  renderQueue();
+  setMode('auto');
+
+  document.querySelectorAll('.mode-tab').forEach((tab) => {
+    tab.addEventListener('click', () => setMode(tab.dataset.mode));
+  });
+
+  $('wlAddBtn').addEventListener('click', addWatchItem);
+  $('scanBtn').addEventListener('click', scanBulk);
+  $('fetchBtn').addEventListener('click', fetchListing);
+  $('parseBtn').addEventListener('click', runParse);
+  $('applyBtn').addEventListener('click', applyExtract);
+
+  $('clearQueueBtn').addEventListener('click', () => {
+    if (!confirm('후보 큐를 비웁니다. 계속할까요?')) return;
+    writeStorage([], QUEUE_KEY);
+    lastScanSummary = '';
+    renderQueue();
+  });
 
   ['faceValue', 'askPrice'].forEach((id) => {
     $(id).addEventListener('input', renderAnalysis);

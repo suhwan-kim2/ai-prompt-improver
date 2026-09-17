@@ -260,7 +260,186 @@
   color: #7f91a8;
 }
 
+/* 모드 탭 */
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: 10px;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  background: rgba(15, 20, 32, 0.7);
+  color: #b9c7db;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-tab:hover { border-color: rgba(59, 130, 246, 0.45); }
+
+.mode-tab.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  color: #e8eef7;
+}
+
+.mode-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #a9b8cc;
+}
+
+.sub-title {
+  margin: 22px 0 8px;
+  font-size: 1rem;
+  color: #dbe7f7;
+}
+
+.mb { margin-bottom: 14px; }
+
+.inline-row {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-row input { flex: 1; }
+.inline-row .btn { width: auto; white-space: nowrap; }
+
+/* 후보 큐 */
+.scan-summary {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  font-size: 0.85rem;
+  color: #bfdbfe;
+}
+
+.queue-row {
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(15, 20, 32, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.16);
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.ratio-badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ratio-badge.mid { background: rgba(251, 191, 36, 0.18); color: #fbbf24; }
+.ratio-badge.high { background: rgba(248, 113, 113, 0.18); color: #f87171; }
+
+.queue-excerpt {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.82rem;
+  color: #9fb0c6;
+  line-height: 1.5;
+  max-height: 72px;
+  overflow: hidden;
+}
+
+.queue-actions { margin: 12px 0 0; }
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  font-size: 0.76rem;
+  color: #fca5a5;
+}
+
+/* 추출 결과 */
+.extract-table {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.extract-row {
+  display: grid;
+  grid-template-columns: auto 100px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(15, 20, 32, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  cursor: pointer;
+}
+
+.extract-row input { width: auto; margin: 0; padding: 0; accent-color: #3b82f6; }
+
+.extract-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #b9c7db;
+}
+
+.extract-value {
+  font-size: 0.9rem;
+  color: #e8eef7;
+  word-break: break-all;
+}
+
+.extract-value.empty { color: #6b7d94; font-style: italic; }
+
+.conf-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.conf-high { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.conf-mid { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+.conf-low { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+
+.warn-box.info {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(30, 58, 92, 0.4);
+  color: #bfdbfe;
+}
+
 @media (max-width: 640px) {
+  .mode-tabs { flex-direction: column; }
+  .inline-row { flex-direction: column; }
+  .inline-row .btn { width: 100%; }
+  .extract-row { grid-template-columns: auto 1fr auto; }
+  .extract-name { grid-column: 2; }
+  .extract-value { grid-column: 2; }
+
   .field-grid,
   .check-grid,
   .channel-list,
