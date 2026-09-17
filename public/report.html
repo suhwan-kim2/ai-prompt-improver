@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>암표 신고 도우미</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./report.css">
+</head>
+<body>
+<main class="main-container">
+
+    <header class="header-section">
+        <h1 class="main-title">암표 신고 도우미</h1>
+        <p class="subtitle">판매글 정보 → 채널별 신고문 자동 작성 · 제출은 직접</p>
+    </header>
+
+    <!-- ⚠️ 사용 원칙 -->
+    <section class="panel notice-panel">
+        <h3 class="panel-title">⚠️ 먼저 읽어주세요</h3>
+        <ul class="notice-list">
+            <li>이 도구는 <strong>신고문 작성과 기록 관리</strong>만 도와줍니다. 신고 접수는 형이 직접 해당 창구에서 제출하세요.</li>
+            <li><strong>직접 확인한 판매글만</strong> 신고하세요. 확인 없이 추측으로 신고하면 무고·명예훼손 책임을 질 수 있습니다.</li>
+            <li>같은 대상을 여러 창구에 중복 신고하거나 반복 제출하는 것은 처리만 늦어집니다. 한 창구에 한 번이 원칙입니다.</li>
+            <li>입력한 내용은 <strong>이 브라우저에만</strong> 저장됩니다. 서버로 전송되지 않습니다.</li>
+        </ul>
+    </section>
+
+    <!-- 📝 대상 정보 입력 -->
+    <section class="panel">
+        <h3 class="panel-title">1️⃣ 신고 대상 정보</h3>
+
+        <div class="field-grid">
+            <div class="field">
+                <label for="eventName">공연·경기명 <span class="req">*</span></label>
+                <input type="text" id="eventName" placeholder="예: OOO 단독 콘서트 2026 서울">
+            </div>
+            <div class="field">
+                <label for="eventDate">공연 일시</label>
+                <input type="text" id="eventDate" placeholder="예: 2026-03-14 19:00">
+            </div>
+            <div class="field">
+                <label for="venue">공연 장소</label>
+                <input type="text" id="venue" placeholder="예: 서울 OO체육관">
+            </div>
+            <div class="field">
+                <label for="seat">좌석 정보</label>
+                <input type="text" id="seat" placeholder="예: 1층 A구역 3열 12번 (2연석)">
+            </div>
+            <div class="field">
+                <label for="faceValue">정가(1매) <span class="req">*</span></label>
+                <input type="text" id="faceValue" inputmode="numeric" placeholder="예: 154000">
+            </div>
+            <div class="field">
+                <label for="askPrice">요구 금액(1매) <span class="req">*</span></label>
+                <input type="text" id="askPrice" inputmode="numeric" placeholder="예: 600000">
+            </div>
+            <div class="field">
+                <label for="platform">판매 경로 <span class="req">*</span></label>
+                <select id="platform">
+                    <option value="">선택하세요</option>
+                    <option>중고거래 앱(당근·번개장터 등)</option>
+                    <option>중고거래 커뮤니티/카페</option>
+                    <option>티켓 재판매 사이트</option>
+                    <option>X(트위터)</option>
+                    <option>인스타그램</option>
+                    <option>오픈채팅·텔레그램</option>
+                    <option>공식 예매처 내 2차거래</option>
+                    <option>공연장 현장</option>
+                    <option>기타</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="seller">판매자 식별정보 <span class="req">*</span></label>
+                <input type="text" id="seller" placeholder="닉네임 / 계정 ID / 연락처">
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="url">판매글 주소(URL)</label>
+            <input type="text" id="url" placeholder="https:// … (링크가 없으면 비워두고 판매자 정보만 입력)">
+        </div>
+
+        <div class="field">
+            <label for="context">발견 경위 및 정황 <span class="req">*</span></label>
+            <textarea id="context" rows="4" placeholder="예: 2026-02-10 22시경 OO앱에서 '공연명 양도' 검색 중 발견. 판매자가 정가 154,000원 좌석을 60만원에 올렸고, 문의하니 '선입금만 받는다'고 답변. 동일 계정이 같은 공연 좌석 5건을 동시 판매 중."></textarea>
+        </div>
+
+        <div class="field">
+            <label>부정판매 의심 근거 (해당하는 항목 체크)</label>
+            <div class="check-grid" id="groundsBox">
+                <label class="check"><input type="checkbox" value="정가를 크게 초과하는 금액을 요구함"> 정가 초과 웃돈 요구</label>
+                <label class="check"><input type="checkbox" value="동일 판매자가 같은 공연의 다수 좌석을 동시에 판매 중임"> 동일인 다수 좌석 보유</label>
+                <label class="check"><input type="checkbox" value="판매자가 여러 공연의 인기 좌석을 반복적으로 판매하고 있음"> 여러 공연 반복 판매</label>
+                <label class="check"><input type="checkbox" value="매크로 프로그램 이용 정황이 있음(예매 개시 직후 대량 확보, 판매자 스스로 언급 등)"> 매크로 이용 정황</label>
+                <label class="check"><input type="checkbox" value="예매처 약관상 금지된 양도·재판매를 공개적으로 권유하고 있음"> 약관상 금지 재판매</label>
+                <label class="check"><input type="checkbox" value="선입금만 요구하고 안전결제를 거부함(사기 의심)"> 선입금 요구·안전결제 거부</label>
+                <label class="check"><input type="checkbox" value="타인 명의 예매·대리 입장을 안내하고 있음"> 타인 명의 입장 안내</label>
+            </div>
+        </div>
+
+        <div class="field">
+            <label>확보한 증거 (체크한 항목이 신고문에 기재됩니다)</label>
+            <div class="check-grid" id="evidenceBox">
+                <label class="check"><input type="checkbox" value="판매글 전체 화면 캡처(URL·작성시각 포함)"> 판매글 캡처</label>
+                <label class="check"><input type="checkbox" value="판매자와의 대화 내용 캡처"> 대화 캡처</label>
+                <label class="check"><input type="checkbox" value="판매자 프로필·판매 목록 캡처"> 프로필/판매목록 캡처</label>
+                <label class="check"><input type="checkbox" value="해당 공연 정가 확인 자료(예매처 가격표 캡처)"> 정가 확인 자료</label>
+                <label class="check"><input type="checkbox" value="입금 계좌·연락처 등 판매자가 안내한 정보"> 계좌·연락처 정보</label>
+            </div>
+        </div>
+
+        <div class="field-grid">
+            <div class="field">
+                <label for="reporterName">신고인 성명</label>
+                <input type="text" id="reporterName" placeholder="신고문에 들어갈 이름 (선택)">
+            </div>
+            <div class="field">
+                <label for="reporterContact">신고인 연락처</label>
+                <input type="text" id="reporterContact" placeholder="회신받을 연락처/이메일 (선택)">
+            </div>
+        </div>
+    </section>
+
+    <!-- 📊 자동 판정 -->
+    <section class="panel">
+        <h3 class="panel-title">2️⃣ 자동 분석</h3>
+        <div class="analysis-grid">
+            <div class="stat">
+                <span class="stat-label">웃돈</span>
+                <span class="stat-value" id="statDiff">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">정가 대비</span>
+                <span class="stat-value" id="statRatio">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">신고 적합도</span>
+                <span class="stat-value" id="statVerdict">—</span>
+            </div>
+        </div>
+        <p class="analysis-note" id="analysisNote">정가와 요구 금액을 입력하면 분석 결과가 표시됩니다.</p>
+    </section>
+
+    <!-- 📮 신고 채널 -->
+    <section class="panel">
+        <h3 class="panel-title">3️⃣ 신고 채널 선택</h3>
+        <div class="channel-list" id="channelList"></div>
+        <p class="hint">공식 창구 주소는 개편될 수 있습니다. 링크가 열리지 않으면 기관 홈페이지에서 '신고' 메뉴를 찾아주세요.</p>
+    </section>
+
+    <!-- ✅ 생성 -->
+    <section class="panel">
+        <h3 class="panel-title">4️⃣ 신고문 생성</h3>
+
+        <label class="confirm-box">
+            <input type="checkbox" id="confirmCheck">
+            <span>위 내용은 <strong>내가 직접 확인한 사실</strong>이며, 추측이나 허위 내용이 아님을 확인합니다.</span>
+        </label>
+
+        <div class="btn-row">
+            <button id="generateBtn" class="btn btn-primary" disabled>신고문 생성</button>
+            <button id="copyBtn" class="btn" disabled>복사</button>
+            <button id="saveBtn" class="btn" disabled>기록에 저장</button>
+            <button id="resetBtn" class="btn btn-ghost">입력 초기화</button>
+        </div>
+
+        <div id="warnBox" class="warn-box hidden"></div>
+
+        <textarea id="output" class="output-area" rows="22" readonly placeholder="생성된 신고문이 여기에 표시됩니다."></textarea>
+    </section>
+
+    <!-- 📒 기록 -->
+    <section class="panel">
+        <h3 class="panel-title">5️⃣ 신고 기록 <span class="count-badge" id="logCount">0건</span></h3>
+        <div class="btn-row">
+            <button id="exportBtn" class="btn">CSV 내보내기</button>
+            <button id="clearLogBtn" class="btn btn-ghost">기록 전체 삭제</button>
+        </div>
+        <div id="logTable" class="log-table"></div>
+    </section>
+
+    <!-- 📚 참고 -->
+    <section class="panel">
+        <h3 class="panel-title">📚 참고: 관련 법령</h3>
+        <ul class="notice-list">
+            <li><strong>공연법 제4조의2 / 제41조</strong> — 매크로 프로그램을 이용한 입장권 부정판매 금지. 위반 시 1년 이하 징역 또는 1천만원 이하 벌금.</li>
+            <li><strong>국민체육진흥법</strong> — 체육경기 입장권의 매크로 이용 부정판매 금지 규정이 별도로 있습니다.</li>
+            <li><strong>경범죄 처벌법 제3조 제2항 제4호</strong> — 공연장·경기장·역 등 <em>현장</em>에서 웃돈을 받고 되파는 행위. 20만원 이하 벌금·구류·과료.</li>
+            <li>온라인 웃돈 거래는 위 조항으로 곧바로 처벌되지 않는 경우가 많습니다. 이때는 <strong>예매처·플랫폼 약관 위반 신고</strong>가 가장 실효적이며, 선입금 후 미이행이면 <strong>사기</strong>로 경찰 신고 대상입니다.</li>
+            <li>조문 내용은 개정될 수 있으니 국가법령정보센터(law.go.kr)에서 최신 조문을 확인하세요.</li>
+        </ul>
+    </section>
+
+</main>
+<script src="./report.js"></script>
+</body>
+</html>

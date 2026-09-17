@@ -1,0 +1,270 @@
+/* 암표 신고 도우미 전용 스타일 (style.css 위에 덧입힘) */
+
+.main-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.panel-title {
+  margin: 0 0 16px;
+  font-size: 1.15rem;
+  color: #dbe7f7;
+}
+
+/* 안내 패널 */
+.notice-panel {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(60, 40, 10, 0.35);
+}
+
+.notice-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.93rem;
+  color: #cbd5e1;
+}
+
+.notice-list li { margin-bottom: 8px; }
+.notice-list li:last-child { margin-bottom: 0; }
+
+/* 입력 */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.field { margin-bottom: 16px; }
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #b9c7db;
+}
+
+.req { color: #f87171; }
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.check,
+.confirm-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #cbd5e1;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.check input,
+.confirm-box input {
+  width: auto;
+  margin: 2px 0 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: #3b82f6;
+}
+
+.confirm-box {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 12px;
+  background: rgba(15, 20, 32, 0.6);
+}
+
+/* 분석 */
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(15, 20, 32, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #8fa3bd;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #e8eef7;
+}
+
+.verdict-low { color: #94a3b8; }
+.verdict-mid { color: #fbbf24; }
+.verdict-high { color: #f87171; }
+
+.analysis-note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #a9b8cc;
+}
+
+/* 채널 */
+.channel-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.channel-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.18);
+  background: rgba(15, 20, 32, 0.65);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.channel-card:hover { border-color: rgba(59, 130, 246, 0.45); }
+
+.channel-card.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.channel-name {
+  font-weight: 700;
+  font-size: 0.98rem;
+  margin-bottom: 6px;
+  color: #e8eef7;
+}
+
+.channel-desc {
+  font-size: 0.85rem;
+  color: #a9b8cc;
+  margin-bottom: 8px;
+}
+
+.channel-hint {
+  font-size: 0.8rem;
+  color: #7f91a8;
+}
+
+.channel-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.channel-link:hover { text-decoration: underline; }
+
+/* 버튼 줄 */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.btn-row .btn { width: auto; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #cbd5e1;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+/* 경고 */
+.warn-box {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(70, 48, 10, 0.4);
+  font-size: 0.9rem;
+  color: #fde68a;
+}
+
+.warn-box p { margin: 0 0 8px; }
+.warn-box p:last-child { margin-bottom: 0; }
+
+.hidden { display: none; }
+
+/* 출력 */
+.output-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* 기록 */
+.count-badge {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #93c5fd;
+  margin-left: 6px;
+}
+
+.log-table { display: grid; gap: 8px; }
+
+.log-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(15, 20, 32, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+}
+
+.log-main {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #e8eef7;
+}
+
+.log-meta {
+  grid-column: 1;
+  font-size: 0.78rem;
+  color: #8fa3bd;
+}
+
+.log-row .btn-small { grid-row: 1 / span 2; grid-column: 2; }
+
+.hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #7f91a8;
+}
+
+@media (max-width: 640px) {
+  .field-grid,
+  .check-grid,
+  .channel-list,
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
