@@ -482,3 +482,14 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 신고센터 폼 채우기 절차 */
+.steps {
+  margin: 0 0 14px;
+  padding-left: 22px;
+  font-size: 0.9rem;
+  color: #cbd5e1;
+}
+
+.steps li { margin-bottom: 6px; }
+.steps a { color: #60a5fa; }

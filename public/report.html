@@ -163,16 +163,49 @@
                 <label for="platform">판매 경로 <span class="req">*</span></label>
                 <select id="platform">
                     <option value="">선택하세요</option>
-                    <option>중고거래 앱(당근·번개장터 등)</option>
-                    <option>중고거래 커뮤니티/카페</option>
-                    <option>티켓 재판매 사이트</option>
-                    <option>X(트위터)</option>
-                    <option>인스타그램</option>
-                    <option>오픈채팅·텔레그램</option>
-                    <option>공식 예매처 내 2차거래</option>
-                    <option>공연장 현장</option>
-                    <option>기타</option>
+                    <option value="J">중고나라</option>
+                    <option value="B">번개장터</option>
+                    <option value="D">당근마켓</option>
+                    <option value="T">티켓베이</option>
+                    <option value="S">SNS(엑스·인스타그램·페이스북·텔레그램 등)</option>
+                    <option value="P">기타(블로그·카페·커뮤니티 등)</option>
                 </select>
+                <p class="hint">공식 신고센터의 선택 항목과 동일하게 맞췄습니다.</p>
+            </div>
+            <div class="field">
+                <label for="showType">공연 종류</label>
+                <select id="showType">
+                    <option value="1">음악(콘서트)</option>
+                    <option value="2">음악(페스티벌)</option>
+                    <option value="3">뮤지컬</option>
+                    <option value="4">클래식</option>
+                    <option value="5">기타</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="ticketSite">예매처</label>
+                <select id="ticketSite">
+                    <option value="01">NOL티켓(인터파크)</option>
+                    <option value="02">YES24</option>
+                    <option value="03">티켓링크</option>
+                    <option value="04">멜론티켓</option>
+                    <option value="05">쿠팡플레이</option>
+                    <option value="06">기타</option>
+                </select>
+                <input type="text" id="ticketSiteEtc" placeholder="예매처가 '기타'일 때 이름을 적어주세요">
+            </div>
+            <div class="field">
+                <label for="sellerIdType">판매자 식별정보 종류</label>
+                <select id="sellerIdType">
+                    <option value="03">닉네임</option>
+                    <option value="01">ID</option>
+                    <option value="02">계정</option>
+                    <option value="04">상품번호</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="foundAt">부정거래 발견 일시</label>
+                <input type="datetime-local" id="foundAt">
             </div>
             <div class="field">
                 <label for="seller">판매자 식별정보 <span class="req">*</span></label>
@@ -288,6 +321,33 @@
         <div id="warnBox" class="warn-box hidden"></div>
 
         <textarea id="output" class="output-area" rows="22" readonly placeholder="생성된 신고문이 여기에 표시됩니다."></textarea>
+    </section>
+
+    <!-- 🏛️ 국가 신고센터 폼 채우기 -->
+    <section class="panel">
+        <h3 class="panel-title">🏛️ 국가 신고센터 폼에 바로 채우기</h3>
+        <p class="hint mb">공연분야 온라인 암표신고센터의 실제 입력 항목에 맞춰 값을 넣어줍니다.
+            <strong>제출 버튼은 누르지 않습니다</strong> — 채워진 내용을 확인하고 형이 직접 접수하세요.
+            본인인증(휴대전화)과 이메일은 형이 직접 입력해야 합니다.</p>
+
+        <div class="bookmarklet-box">
+            <a id="formFiller" class="bookmarklet-link" href="#" draggable="true">📝 신고서 채우기</a>
+            <span class="hint">← 이것도 북마크 바로 드래그 (한 번만)</span>
+        </div>
+
+        <ol class="steps">
+            <li>위 「신고서 채우기」를 북마크 바에 담아둡니다 (처음 한 번만).</li>
+            <li>신고문을 생성한 뒤 <strong>아래 「폼 데이터 복사」</strong>를 누릅니다.</li>
+            <li><a href="https://ent.kocca.kr/ticket/receive.do" target="_blank" rel="noopener noreferrer">공연분야 온라인 암표신고센터 신고서 ↗</a>를 엽니다.</li>
+            <li>북마크 바의 「신고서 채우기」를 누릅니다. 클립보드 읽기를 허용하면 항목이 채워집니다.</li>
+            <li>내용을 검토하고 증빙파일을 첨부한 뒤 형이 직접 제출합니다.</li>
+        </ol>
+
+        <div class="btn-row">
+            <button id="copyPayloadBtn" class="btn btn-primary" disabled>폼 데이터 복사</button>
+            <button id="copyFillerBtn" class="btn btn-small">채우기 코드 복사</button>
+        </div>
+        <p class="hint" id="payloadHint">신고문을 먼저 생성하면 활성화됩니다.</p>
     </section>
 
     <!-- 📒 기록 -->

@@ -64,6 +64,7 @@ const REWARD_INFO = {
 
 let selectedChannel = CHANNELS[0];
 let lastGenerated = null;
+let lastGovPayload = null;
 
 /* ---------- 유틸 ---------- */
 
@@ -117,6 +118,11 @@ function collect() {
     seat: $('seat').value.trim(),
     bookingRef: $('bookingRef').value.trim(),
     reportType: $('reportType').value,
+    showType: $('showType').value,
+    ticketSite: $('ticketSite').value,
+    ticketSiteEtc: $('ticketSiteEtc').value.trim(),
+    sellerIdType: $('sellerIdType').value,
+    foundAt: $('foundAt').value,
     faceValue: toNumber($('faceValue').value),
     askPrice: toNumber($('askPrice').value),
     platform: $('platform').value,
@@ -216,7 +222,7 @@ function buildReport(d, channel) {
   L(`[입장권 ${typeLabel}(암표) 신고] ${d.eventName}`);
   L();
   L('■ 1. 신고 대상');
-  L(`- 판매 경로: ${d.platform}`);
+  L(`- 판매 경로: ${platformLabel(d.platform)}`);
   if (d.url) L(`- 판매글 주소: ${d.url}`);
   if (d.seller) L(`- 판매자 식별정보: ${d.seller}`);
   L();
@@ -374,7 +380,7 @@ function exportCsv() {
 
   const rows = log.map((r) => [
     r.savedAt, r.channelName, r.eventName, r.eventDate, r.venue, r.seat, r.bookingRef,
-    r.platform, r.seller, r.url, r.faceValue, r.askPrice, r.ratio,
+    platformLabel(r.platform), r.seller, r.url, r.faceValue, r.askPrice, r.ratio,
     (r.grounds || []).join(' / ')
   ].map(escape).join(','));
 
@@ -425,7 +431,9 @@ function generate() {
     $('output').value = '';
     $('copyBtn').disabled = true;
     $('saveBtn').disabled = true;
+    $('copyPayloadBtn').disabled = true;
     lastGenerated = null;
+    lastGovPayload = null;
     return;
   }
 
@@ -450,6 +458,12 @@ function generate() {
   $('copyBtn').disabled = false;
   $('saveBtn').disabled = false;
   lastGenerated = { data: d, channel: selectedChannel, text, ratio: a.ratio };
+
+  lastGovPayload = buildGovPayload(d);
+  $('copyPayloadBtn').disabled = false;
+  $('payloadHint').textContent =
+    `신고센터 폼으로 넘길 준비가 됐습니다. 내용란 ${lastGovPayload.CONTENTS.length}/500자. ` +
+    '직접 입력해야 하는 항목: ' + lastGovPayload._skipped.join(', ');
 }
 
 async function copyOutput() {
@@ -522,6 +536,8 @@ function resetInputs() {
   $('confirmCheck').checked = false;
   $('output').value = '';
   lastGenerated = null;
+  lastGovPayload = null;
+  $('copyPayloadBtn').disabled = true;
   $('generateBtn').disabled = true;
   $('copyBtn').disabled = true;
   $('saveBtn').disabled = true;
@@ -612,14 +628,27 @@ function addWatchItem() {
 
 /* ---------- 판매 경로 추측 ---------- */
 
+/* 공식 신고센터의 판매 경로 코드. 신고문에는 코드가 아니라 이름을 쓴다. */
+const PLATFORM_LABELS = {
+  J: '중고나라',
+  B: '번개장터',
+  D: '당근마켓',
+  T: '티켓베이',
+  S: 'SNS(엑스·인스타그램·페이스북·텔레그램 등)',
+  P: '기타(블로그·카페·커뮤니티 등)'
+};
+
+function platformLabel(code) {
+  return PLATFORM_LABELS[code] || code || '';
+}
+
 const PLATFORM_HINTS = [
-  { re: /daangn|당근/i, value: '중고거래 앱(당근·번개장터 등)' },
-  { re: /bunjang|번개장터/i, value: '중고거래 앱(당근·번개장터 등)' },
-  { re: /joonggonara|중고나라|cafe\.naver/i, value: '중고거래 커뮤니티/카페' },
-  { re: /twitter\.com|x\.com|트위터/i, value: 'X(트위터)' },
-  { re: /instagram|인스타/i, value: '인스타그램' },
-  { re: /open\.kakao|오픈채팅|텔레그램|t\.me/i, value: '오픈채팅·텔레그램' },
-  { re: /interpark|yes24|ticketlink|melon|예매처/i, value: '공식 예매처 내 2차거래' }
+  { re: /joonggonara|중고나라|cafe\.naver/i, value: 'J' },
+  { re: /bunjang|번개장터/i, value: 'B' },
+  { re: /daangn|당근/i, value: 'D' },
+  { re: /ticketbay|티켓베이/i, value: 'T' },
+  { re: /twitter\.com|x\.com|트위터|instagram|인스타|facebook|페이스북|t\.me|텔레그램/i, value: 'S' },
+  { re: /blog|cafe|community|카페|블로그/i, value: 'P' }
 ];
 
 function guessPlatform(text) {
@@ -749,7 +778,7 @@ function renderQueue() {
       `${formatWon(c.faceValue)} → ${formatWon(c.askPrice)}`,
       c.seat || '좌석 미확인',
       c.seller || '판매자 미확인',
-      c.platform || '경로 미확인'
+      platformLabel(c.platform) || '경로 미확인'
     ].join(' | ');
 
     const excerpt = document.createElement('div');
@@ -797,7 +826,7 @@ function renderQueue() {
 function draftContext(src) {
   const ratio = src.faceValue ? (src.askPrice / src.faceValue).toFixed(1) : '?';
   const lines = [
-    `${new Date().toLocaleDateString('ko-KR')} ${src.platform || '(판매 경로)'}에서 '${src.eventName}' 관련 판매글을 발견했습니다.`,
+    `${new Date().toLocaleDateString('ko-KR')} ${platformLabel(src.platform) || '(판매 경로)'}에서 '${src.eventName}' 관련 판매글을 발견했습니다.`,
     `정가 ${formatWon(src.faceValue)} 좌석을 ${formatWon(src.askPrice)}(정가의 ${ratio}배)에 판매하고 있습니다.`
   ];
   if (src.signalLabels && src.signalLabels.length) {
@@ -926,6 +955,129 @@ function consumeBookmarkletPayload() {
   runParse();
   $('extractPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   return true;
+}
+
+/* ---------- 국가 신고센터 폼 ---------- */
+
+/* 공연분야 온라인 암표신고센터(ent.kocca.kr/ticket/receive.do)의 실제 입력 항목.
+ * 사이트 개편으로 이름이 바뀌면 이 표와 아래 채우기 코드를 함께 고쳐야 한다. */
+const GOV_FORM = {
+  url: 'https://ent.kocca.kr/ticket/receive.do',
+  text: {
+    TITLE: 'eventName',
+    PAYMENT_ORG: 'faceValue',
+    PAYMENT_USE: 'askPrice',
+    SEAT_NUMBER: 'seat',
+    RESERVATION_NUMBER: 'bookingRef'
+  }
+};
+
+/** datetime-local 입력이 받는 'YYYY-MM-DDTHH:MM' 형태로 맞춘다. 불완전하면 비운다. */
+function toDateTimeLocal(value) {
+  const s = String(value || '').trim();
+  const m = s.match(/(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return '';
+  const hh = m[4] ? String(m[4]).padStart(2, '0') : '00';
+  return `${m[1]}-${m[2]}-${m[3]}T${hh}:${m[5] || '00'}`;
+}
+
+/* 신고서 항목의 길이 제한. 실제 폼에서 확인한 값이며,
+ * 내용란은 maxlength 속성은 없지만 화면 카운터가 500자로 제한한다. */
+const GOV_LIMITS = { CONTENTS: 500, TITLE: 82, ITEM: 166 };
+
+function cut(value, limit) {
+  const s = String(value || '');
+  return s.length > limit ? s.slice(0, limit - 1) + '…' : s;
+}
+
+/* 내용란에는 개별 항목에 이미 들어간 값(공연명·가격·좌석·링크)을 반복하지 않고
+ * 발견 경위와 의심 근거만 담는다. 500자 제한 안에 들어가야 한다. */
+function buildGovContents(d) {
+  const parts = [d.context];
+  if (d.grounds.length) {
+    parts.push('[의심 근거] ' + d.grounds.map((g) => g.replace(/\(.*?\)/g, '').trim()).join(' / '));
+  }
+  let text = parts.filter(Boolean).join('\n\n');
+
+  // 근거까지 넣어 넘치면 근거를 먼저 줄인다.
+  if (text.length > GOV_LIMITS.CONTENTS) {
+    text = cut(d.context, GOV_LIMITS.CONTENTS);
+  }
+  return text;
+}
+
+function buildGovPayload(d) {
+  const showDt = toDateTimeLocal(d.eventDate);
+  const foundDt = toDateTimeLocal(d.foundAt);
+
+  const contents = buildGovContents(d);
+
+  const skipped = [];
+  if (!showDt) skipped.push('공연일시(연·월·일이 모두 필요)');
+  if (!foundDt) skipped.push('부정거래 발견 일시');
+  if (!d.bookingRef) skipped.push('예매번호');
+  skipped.push('부정거래 매수', '휴대전화 본인인증', 'E-mail', '증빙파일 첨부');
+
+  return {
+    v: 1,
+    TITLE: cut(d.eventName, GOV_LIMITS.TITLE),
+    SHOW_DT: showDt,
+    PAYMENT_ORG: String(d.faceValue || ''),
+    PAYMENT_USE: String(d.askPrice || ''),
+    INVALID_SEL_DT: foundDt,
+    SEAT_NUMBER: d.seat,
+    RESERVATION_NUMBER: d.bookingRef,
+    showType: d.showType,
+    paySite: d.platform,
+    ticketSite: d.ticketSite,
+    ticketSiteEtc: d.ticketSiteEtc,
+    sellerIdType: d.sellerIdType,
+    sellerId: cut(d.seller, GOV_LIMITS.ITEM),
+    link: cut(d.url, GOV_LIMITS.ITEM),
+    CONTENTS: contents,
+    _skipped: skipped
+  };
+}
+
+/* 신고센터 폼 페이지에서 실행돼 클립보드의 값을 각 항목에 넣는다.
+ * 제출은 하지 않는다 — 검토와 접수는 사용자가 한다. */
+function buildFormFiller() {
+  const src = `(function(){
+function set(id,v){var e=document.getElementById(id);if(!e||v===undefined||v===null||v==='')return 0;
+e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
+e.style.outline='2px solid #22c55e';return 1;}
+function tick(id){var e=document.getElementById(id);if(!e)return 0;if(!e.checked){e.click();}
+if(!e.checked){e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));}
+e.style.outline='2px solid #22c55e';return 1;}
+function fill(d){
+if(!d||d.v!==1){alert('암표 신고 도우미에서 「폼 데이터 복사」를 먼저 누르세요.');return;}
+var n=0;
+n+=set('TITLE',d.TITLE);n+=set('SHOW_DT',d.SHOW_DT);n+=set('PAYMENT_ORG',d.PAYMENT_ORG);
+n+=set('PAYMENT_USE',d.PAYMENT_USE);n+=set('INVALID_SEL_DT',d.INVALID_SEL_DT);
+n+=set('SEAT_NUMBER',d.SEAT_NUMBER);n+=set('RESERVATION_NUMBER',d.RESERVATION_NUMBER);
+n+=set('CONTENTS',d.CONTENTS);
+if(d.showType)n+=tick('showType'+d.showType);
+if(d.paySite)n+=tick('paySiteTypeCd'+d.paySite);
+if(d.ticketSite){n+=tick('ticketSiteCd'+d.ticketSite);
+if(d.ticketSite==='06'&&d.ticketSiteEtc)n+=set('ticetSiteText',d.ticketSiteEtc);}
+if(d.sellerId&&d.sellerIdType){n+=tick('invalidInfoCd'+d.sellerIdType);
+n+=set('invalidInfoCd'+d.sellerIdType+'_item',d.sellerId);}
+if(d.link){n+=tick('selInfoTypeCd04');n+=set('selInfoTypeCd04_item',d.link);}
+var msg=n+'개 항목을 채웠습니다(초록 테두리).\\n\\n제출은 하지 않았습니다. 내용을 검토하고 직접 접수하세요.';
+if(d._skipped&&d._skipped.length)msg+='\\n\\n직접 입력해야 하는 항목:\\n· '+d._skipped.join('\\n· ');
+alert(msg);
+}
+function parse(t){try{return JSON.parse(t);}catch(e){return null;}}
+if(!document.getElementById('TITLE')){
+alert('이 페이지는 암표 신고서 화면이 아닙니다.\\n${GOV_FORM.url} 를 먼저 여세요.');return;}
+if(navigator.clipboard&&navigator.clipboard.readText){
+navigator.clipboard.readText().then(function(t){var d=parse(t);
+if(d)fill(d);else{var m=window.prompt('클립보드에서 데이터를 찾지 못했습니다. 복사한 폼 데이터를 붙여넣어 주세요.');if(m)fill(parse(m));}})
+.catch(function(){var m=window.prompt('클립보드를 읽을 수 없습니다. 복사한 폼 데이터를 붙여넣어 주세요.');if(m)fill(parse(m));});
+}else{var m=window.prompt('복사한 폼 데이터를 붙여넣어 주세요.');if(m)fill(parse(m));}
+})()`.replace(/\n/g, '');
+
+  return 'javascript:' + encodeURIComponent(src);
 }
 
 /* ---------- 주소·본문 분석 ---------- */
@@ -1149,6 +1301,36 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   consumeBookmarkletPayload();
+
+  const filler = buildFormFiller();
+  $('formFiller').setAttribute('href', filler);
+  $('formFiller').addEventListener('click', (e) => {
+    e.preventDefault();
+    alert('이 버튼도 북마크 바로 끌어다 놓는 것입니다.\n' +
+      '신고서 페이지에서 북마크를 누르면 항목이 채워집니다.');
+  });
+
+  $('copyFillerBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(decodeURIComponent(filler));
+      flash($('copyFillerBtn'), '복사됨');
+    } catch (e) { flash($('copyFillerBtn'), '복사 실패'); }
+  });
+
+  $('copyPayloadBtn').addEventListener('click', async () => {
+    if (!lastGovPayload) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(lastGovPayload));
+      flash($('copyPayloadBtn'), '복사됨 — 신고서에서 북마크 클릭');
+    } catch (e) {
+      alert('클립보드에 복사하지 못했습니다. 아래 값을 직접 복사하세요.\n\n' +
+        JSON.stringify(lastGovPayload));
+    }
+  });
+
+  // 발견 일시 기본값은 지금 시각으로 둔다.
+  const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  $('foundAt').value = now.toISOString().slice(0, 16);
 
   $('wlAddBtn').addEventListener('click', addWatchItem);
   $('scanBtn').addEventListener('click', scanBulk);
