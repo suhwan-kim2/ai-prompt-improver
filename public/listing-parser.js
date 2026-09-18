@@ -171,8 +171,13 @@
         result.askPrice = candidates[0].value;
         result.askConf = 'low';
       }
+      const shown = prices.slice(0, 6).map((p) => p.value.toLocaleString('ko-KR')).join(', ');
       result.warnings.push(
-        `금액이 ${prices.length}개 발견됐습니다(${prices.map((p) => p.value.toLocaleString('ko-KR')).join(', ')}). 정가와 요구 금액이 맞는지 직접 확인하세요.`
+        `금액이 ${prices.length}개 발견됐습니다(${shown}${prices.length > 6 ? ' …' : ''}). ` +
+        (prices.length > 6
+          ? '관련상품·추천 목록의 가격까지 섞여 들어온 것으로 보입니다. ' +
+            '판매글에서 제목과 가격, 좌석 부분만 드래그해 선택한 뒤 북마클릿을 누르면 훨씬 정확합니다.'
+          : '정가와 요구 금액이 맞는지 직접 확인하세요.')
       );
     }
 
@@ -185,6 +190,24 @@
 
   /* ---------- 날짜 ---------- */
 
+  /* '11/7' 같은 표기. 페이지네이션('1 / 1')을 날짜로 오인하지 않도록
+   * 주변에 공연 관련 단어가 있을 때만 인정한다. */
+  function matchSlashDate(text) {
+    const CONTEXT = /(공연|콘서트|첫콘|막콘|중콘|경기|투어|일자|날짜|회차)/;
+    // 슬래시 주변에 공백·줄바꿈을 허용하지 않는다. 허용하면 페이지네이션
+    // '1 / 1'을 1월 1일로 읽어버린다(실제로 겪음).
+    const re = /\b(\d{1,2})\/(\d{1,2})\b/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const month = parseInt(m[1], 10);
+      const day = parseInt(m[2], 10);
+      if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+      const around = text.slice(Math.max(0, m.index - 25), m.index + 25);
+      if (CONTEXT.test(around)) return [m[0], month, day];
+    }
+    return null;
+  }
+
   function extractDate(text) {
     let m = text.match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?/);
     let date = '';
@@ -194,6 +217,19 @@
     if (m) {
       date = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
       conf = 'high';
+      // 지난 공연 날짜는 페이지 다른 곳에서 딸려온 값일 가능성이 크다.
+      const year = parseInt(m[1], 10);
+      const thisYear = new Date().getFullYear();
+      if (year < thisYear || year > thisYear + 2) {
+        conf = 'low';
+        warning = `추출한 공연 일시(${date})가 판매 중인 공연으로는 어색합니다. ` +
+          '페이지의 다른 날짜를 잘못 읽었을 수 있으니 직접 확인하세요.';
+      }
+    } else if ((m = matchSlashDate(text))) {
+      date = `${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+      // 슬래시 표기는 연도도 없고 오인 여지가 커서 자동 적용하지 않는다.
+      conf = 'low';
+      warning = `공연 일시를 '${date}'로 읽었습니다(연도 없음). 맞는지 확인하고 연도와 함께 직접 넣어주세요.`;
     } else {
       m = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
       if (m) {
@@ -219,7 +255,7 @@
   function extractSeat(text) {
     const parts = [];
     const patterns = [
-      /(\d)\s*층/,
+      /([1-9])\s*층/,
       /([A-Za-z가-힣]{1,3})\s*구역/,
       /(\d{1,2})\s*열/,
       /스탠딩\s*([A-Za-z]|\d{1,2})?/,
@@ -250,9 +286,12 @@
 
   /* ---------- 판매자 ---------- */
 
+  /* 플랫폼 자신의 공식 계정. 페이지 머리말·푸터에 박혀 있어 판매자로 오인하기 쉽다. */
+  const PLATFORM_HANDLES = /^(bunjang|daangn|joongna|joonggonara|karrot|번개장터|당근|중고나라|naver|kakao|instagram|facebook|twitter|x|youtube|tiktok|help|support|official|cs)$/i;
+
   function extractSeller(text) {
     let m = text.match(/@([A-Za-z0-9_]{3,30})/);
-    if (m) return { value: '@' + m[1], confidence: 'high' };
+    if (m && !PLATFORM_HANDLES.test(m[1])) return { value: '@' + m[1], confidence: 'high' };
 
     m = text.match(/(?:닉네임|판매자|아이디|ID)\s*[:：]?\s*([A-Za-z0-9가-힣_.\-]{2,24})/);
     if (m) return { value: m[1], confidence: 'mid' };
@@ -281,14 +320,36 @@
     return null;
   }
 
-  function extractEventName(text, catalog) {
+  function isPlatformName(s) {
+    return PLATFORM_HANDLES.test(String(s).replace(/\s/g, ''));
+  }
+
+  /* 거래 페이지에서는 상품 제목이 가격 바로 위에 온다. 첫 줄이 사이트명이나
+   * 내비게이션일 때 이 위치를 대신 본다. */
+  function titleNearPrice(text, firstPriceIndex) {
+    if (firstPriceIndex === undefined || firstPriceIndex === null) return '';
+    const lines = text.slice(0, firstPriceIndex).split('\n')
+      .map((l) => l.trim()).filter(Boolean);
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 3; i--) {
+      if (lines[i].length >= 8 && !isPlatformName(lines[i])) return lines[i].slice(0, 60);
+    }
+    return '';
+  }
+
+  function extractEventName(text, catalog, firstPriceIndex) {
     const hit = matchCatalog(text, catalog);
     if (hit) return { value: hit.eventName, confidence: 'high', catalogEntry: hit };
 
     // 제목처럼 보이는 첫 줄을 후보로 쓴다. 확정하지 않고 확인을 받는다.
     const firstLine = text.split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
     const cleaned = firstLine.replace(/^[\[\]#*\-·\s]+/, '').slice(0, 60);
-    return { value: cleaned, confidence: cleaned ? 'low' : 'low', catalogEntry: null };
+
+    if (cleaned && cleaned.length >= 8 && !isPlatformName(cleaned)) {
+      return { value: cleaned, confidence: 'low', catalogEntry: null };
+    }
+
+    // 첫 줄이 사이트명·내비게이션이면 가격 위쪽 제목을 후보로 쓴다.
+    return { value: titleNearPrice(text, firstPriceIndex), confidence: 'low', catalogEntry: null };
   }
 
   /* ---------- 정황 ---------- */
@@ -322,8 +383,9 @@
     const options = opts || {};
     const body = [fromMeta(options.meta), text || ''].filter(Boolean).join('\n');
 
-    const event = extractEventName(body, options.catalog);
     const prices = extractPrices(body);
+    const firstPrice = findPrices(body)[0];
+    const event = extractEventName(body, options.catalog, firstPrice && firstPrice.index);
     const date = extractDate(body);
     const seat = extractSeat(body);
     const bookingRef = extractBookingRef(body);

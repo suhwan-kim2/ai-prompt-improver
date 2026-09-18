@@ -873,12 +873,28 @@ function loadCandidate(id) {
  * 자바스크립트로 본문을 그리는 사이트에서도 그대로 동작한다. */
 function buildBookmarklet() {
   const target = location.origin + location.pathname;
+  /* 페이지 전체 텍스트를 넘기면 관련상품·추천·푸터의 가격까지 섞여 들어와
+   * 추출이 망가진다(실제 중고거래 페이지에서 금액이 19개 잡힌 사례). 그래서
+   * 선택 영역 → 본문 컨테이너 → 잘라낸 body 순으로 범위를 좁혀서 넘긴다. */
   const src = `(function(){
 try{
+var CUT=/(비슷해요|비슷한\\s*상품|이런\\s*상품|관련\\s*상품|추천\\s*상품|함께\\s*본|최근\\s*본|다른\\s*상품|인기\\s*상품|상점정보|판매자의\\s*다른|카테고리\\s*홈|이\\s*상품과)/;
+function txt(e){return e&&(e.innerText||'')||'';}
+function meta(p){var m=document.querySelector('meta[property="'+p+'"],meta[name="'+p+'"]');return m&&m.content||'';}
+function main(){
+var c=['[class*="ProductDetail"]','[class*="product-detail"]','[class*="ProductInfo"]','[class*="product-info"]','[itemprop="description"]','article','main','[role="main"]'];
+for(var i=0;i<c.length;i++){var e=document.querySelector(c[i]);if(txt(e).length>120&&txt(e).length<txt(document.body).length*0.8)return e;}
+return document.body;
+}
 var s=(window.getSelection&&String(window.getSelection())||'').trim();
-var t=s||(document.body&&document.body.innerText||'');
+var t=s||txt(main());
+var cut=t.search(CUT); if(!s&&cut>60)t=t.slice(0,cut);
 t=t.replace(/[ \\t]+/g,' ').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,6000);
-var d={u:location.href,t:document.title||'',x:t};
+var site=meta('og:site_name');
+var h1=txt(document.querySelector('h1')).trim();
+var ti=meta('og:title')||h1||document.title||'';
+if(site&&ti.replace(/\\s/g,'')===site.replace(/\\s/g,''))ti=h1||'';
+var d={u:location.href,t:ti,x:t,sel:!!s};
 window.open('${target}#listing='+encodeURIComponent(JSON.stringify(d)),'_blank');
 }catch(e){alert('수집에 실패했습니다: '+e.message);}
 })()`.replace(/\n/g, '');
