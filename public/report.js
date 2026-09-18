@@ -866,6 +866,52 @@ function loadCandidate(id) {
   fillForm(Object.assign({}, c, { draftContext: true }));
 }
 
+/* ---------- 북마클릿 ---------- */
+
+/* 판매글 페이지에서 실행돼 제목·본문·주소를 이 페이지로 넘긴다.
+ * 사용자의 브라우저가 이미 그려 놓은 화면을 읽으므로 로그인이 필요한 앱이나
+ * 자바스크립트로 본문을 그리는 사이트에서도 그대로 동작한다. */
+function buildBookmarklet() {
+  const target = location.origin + location.pathname;
+  const src = `(function(){
+try{
+var s=(window.getSelection&&String(window.getSelection())||'').trim();
+var t=s||(document.body&&document.body.innerText||'');
+t=t.replace(/[ \\t]+/g,' ').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,6000);
+var d={u:location.href,t:document.title||'',x:t};
+window.open('${target}#listing='+encodeURIComponent(JSON.stringify(d)),'_blank');
+}catch(e){alert('수집에 실패했습니다: '+e.message);}
+})()`.replace(/\n/g, '');
+
+  return 'javascript:' + encodeURIComponent(src);
+}
+
+/** 북마클릿이 넘긴 데이터를 받아 바로 분석한다. */
+function consumeBookmarkletPayload() {
+  const match = location.hash.match(/^#listing=(.*)$/);
+  if (!match) return false;
+
+  let payload;
+  try {
+    payload = JSON.parse(decodeURIComponent(match[1]));
+  } catch (e) {
+    console.warn('북마클릿 데이터를 읽을 수 없습니다:', e);
+    return false;
+  }
+
+  // 주소창에 본문이 남아 있지 않도록 즉시 지운다.
+  history.replaceState(null, '', location.pathname + location.search);
+
+  setMode('url');
+  $('fetchUrl').value = payload.u || '';
+  $('pasteInput').value = [payload.t, payload.x].filter(Boolean).join('\n\n');
+
+  showFetchStatus('북마클릿으로 판매글을 가져왔습니다. 추출 결과를 확인하세요.', false);
+  runParse();
+  $('extractPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return true;
+}
+
 /* ---------- 주소·본문 분석 ---------- */
 
 let lastExtract = null;
@@ -1068,6 +1114,25 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.mode-tab').forEach((tab) => {
     tab.addEventListener('click', () => setMode(tab.dataset.mode));
   });
+
+  const bookmarklet = buildBookmarklet();
+  $('bookmarklet').setAttribute('href', bookmarklet);
+  $('bookmarklet').addEventListener('click', (e) => {
+    e.preventDefault();
+    alert('이 버튼은 눌러서 쓰는 게 아니라 북마크 바로 끌어다 놓는 것입니다.\n' +
+      '그 다음 판매글 페이지에서 북마크를 누르세요.');
+  });
+
+  $('copyBookmarkletBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(decodeURIComponent(bookmarklet));
+      flash($('copyBookmarkletBtn'), '복사됨 — 북마크 주소란에 붙여넣기');
+    } catch (e) {
+      flash($('copyBookmarkletBtn'), '복사 실패');
+    }
+  });
+
+  consumeBookmarkletPayload();
 
   $('wlAddBtn').addEventListener('click', addWatchItem);
   $('scanBtn').addEventListener('click', scanBulk);
