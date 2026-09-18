@@ -235,6 +235,12 @@
     return { value: seat, confidence: seat ? (parts.length >= 2 ? 'high' : 'mid') : 'low' };
   }
 
+  /** 예매번호. 신고센터가 좌석번호와 함께 유효 접수의 필수 요건으로 보는 값이다. */
+  function extractBookingRef(text) {
+    const m = text.match(/(?:예매\s*번호|예매번호|주문\s*번호|티켓\s*번호)\s*[:：]?\s*([A-Za-z0-9\-]{6,24})/);
+    return m ? { value: m[1], confidence: 'high' } : { value: '', confidence: 'low' };
+  }
+
   function extractQuantity(text) {
     const m = text.match(/(\d{1,2})\s*(?:연석|매|장)/);
     if (!m) return { value: 0, confidence: 'low' };
@@ -320,6 +326,7 @@
     const prices = extractPrices(body);
     const date = extractDate(body);
     const seat = extractSeat(body);
+    const bookingRef = extractBookingRef(body);
     const qty = extractQuantity(body);
     const seller = extractSeller(body);
     const signals = extractSignals(body);
@@ -346,8 +353,12 @@
     if (!prices.askPrice) {
       warnings.push('요구 금액을 찾지 못했습니다. 직접 입력하세요.');
     }
-
     const seatText = [seat.value, qty.value ? `(${qty.value}매)` : ''].filter(Boolean).join(' ');
+
+    if (!seat.value && !bookingRef.value) {
+      warnings.push('좌석번호도 예매번호도 찾지 못했습니다. 신고센터는 둘 중 하나가 특정되지 않으면 ' +
+        '유효한 접수로 처리하지 않으니, 판매글에서 확인해 직접 넣어주세요.');
+    }
 
     return {
       fields: {
@@ -355,6 +366,7 @@
         eventDate: date.value,
         venue: '',
         seat: seatText,
+        bookingRef: bookingRef.value,
         faceValue: faceValue,
         askPrice: prices.askPrice,
         seller: seller.value,
@@ -365,6 +377,7 @@
         eventDate: date.confidence,
         venue: 'low',
         seat: seat.confidence,
+        bookingRef: bookingRef.confidence,
         faceValue: faceConf,
         askPrice: prices.askConf,
         seller: seller.confidence,

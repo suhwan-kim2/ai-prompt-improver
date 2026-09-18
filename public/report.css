@@ -47,6 +47,14 @@
 
 .req { color: #f87171; }
 
+.req-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #fbbf24;
+}
+
 .check-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

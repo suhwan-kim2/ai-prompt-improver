@@ -17,38 +17,50 @@ const MODE_DESC = {
  * 기관 사이트는 개편이 잦아 링크가 끊길 수 있다. 화면에도 안내 문구를 함께 띄운다. */
 const CHANNELS = [
   {
-    id: 'platform',
-    name: '판매 플랫폼 / 예매처 신고',
-    desc: '가장 빠르고 실효적. 게시글 삭제·계정 정지·예매 취소까지 이어짐',
-    url: '',
-    urlHint: '판매글 내 "신고" 버튼 또는 예매처 고객센터 → 부정거래 신고',
-    ask: '해당 게시글 삭제 및 판매자 계정에 대한 이용제한, 부정 예매로 확인될 경우 해당 예매건 취소 조치를 요청합니다.'
+    id: 'culture',
+    name: '공연 암표 통합신고센터',
+    desc: '문체부·한국콘텐츠진흥원 운영. 과징금 부과와 포상금 지급이 여기서 나온다',
+    url: 'https://www.culture.go.kr/singo/',
+    urlHint: 'culture.go.kr/singo → 공연 분야 신고 (온라인 접수만 가능)',
+    ask: '공연법상 입장권 부정판매에 해당하는지 확인하여 과징금 부과 등 필요한 조치를 요청합니다.',
+    needsRef: true
   },
   {
-    id: 'kopis',
-    name: '공연 암표 신고 (KOPIS)',
-    desc: '문화체육관광부·예술경영지원센터 운영 공연 암표 신고 창구',
-    url: 'https://www.kopis.or.kr',
-    urlHint: 'KOPIS 접속 → 암표 신고 게시판',
-    ask: '공연 입장권 부정판매 정황에 대한 확인 및 관련 조치를 요청합니다.'
+    id: 'prosports',
+    name: '프로스포츠 암표신고센터',
+    desc: '야구·축구 등 프로스포츠 경기 입장권은 이쪽으로',
+    url: 'https://www.prosports.or.kr/report/m01/main',
+    urlHint: '한국프로스포츠협회 온라인 암표신고센터',
+    ask: '국민체육진흥법상 입장권 부정판매에 해당하는지 확인하여 필요한 조치를 요청합니다.',
+    needsRef: true
+  },
+  {
+    id: 'platform',
+    name: '판매 플랫폼 / 예매처 신고',
+    desc: '가장 빠름. 게시글 삭제·계정 정지·예매 취소로 이어짐 (포상금 대상 아님)',
+    url: '',
+    urlHint: '판매글 내 "신고" 버튼 또는 예매처 고객센터 → 부정거래 신고',
+    ask: '해당 게시글 삭제 및 판매자 계정에 대한 이용제한, 부정 예매로 확인될 경우 해당 예매건 취소 조치를 요청합니다.',
+    needsRef: false
   },
   {
     id: 'ecrm',
     name: '경찰 사이버범죄 신고 (ECRM)',
-    desc: '선입금 후 미이행 등 사기 피해가 있거나 매크로 부정판매가 명확할 때',
+    desc: '선입금 후 미이행 등 사기 피해가 실제로 발생했을 때',
     url: 'https://ecrm.police.go.kr',
     urlHint: '경찰청 사이버범죄 신고상담시스템',
-    ask: '위 행위에 대한 수사 및 법령 위반 여부 확인을 요청합니다.'
-  },
-  {
-    id: 'epeople',
-    name: '국민신문고',
-    desc: '소관 기관이 불분명하거나 제도 개선을 함께 요구할 때',
-    url: 'https://www.epeople.go.kr',
-    urlHint: '국민신문고 → 민원 신청',
-    ask: '위 사안에 대한 소관 기관의 확인 및 조치, 처리 결과 회신을 요청합니다.'
+    ask: '위 행위에 대한 수사 및 법령 위반 여부 확인을 요청합니다.',
+    needsRef: false
   }
 ];
+
+/* 2026-08-28 시행된 공연법·국민체육진흥법 시행령 개정 기준 포상금 안내 */
+const REWARD_INFO = {
+  sale: '부정판매 신고: 해당 판매자에게 부과된 과징금의 50% 범위에서 포상금이 지급될 수 있습니다. ' +
+    '과징금은 판매금액의 2배~50배로 차등 부과됩니다.',
+  purchase: '부정구매 신고: 최대 5,000만원 이내에서 포상금이 지급될 수 있습니다. ' +
+    '재판매를 목적으로 표를 부정하게 구매한 행위가 대상입니다.'
+};
 
 let selectedChannel = CHANNELS[0];
 let lastGenerated = null;
@@ -103,6 +115,8 @@ function collect() {
     eventDate: $('eventDate').value.trim(),
     venue: $('venue').value.trim(),
     seat: $('seat').value.trim(),
+    bookingRef: $('bookingRef').value.trim(),
+    reportType: $('reportType').value,
     faceValue: toNumber($('faceValue').value),
     askPrice: toNumber($('askPrice').value),
     platform: $('platform').value,
@@ -124,6 +138,10 @@ function missingFields(d) {
   if (!d.platform) missing.push('판매 경로');
   if (!d.seller && !d.url) missing.push('판매자 식별정보 또는 판매글 주소');
   if (!d.context) missing.push('발견 경위');
+  // 신고센터는 좌석번호 또는 예매번호가 특정되지 않으면 유효 접수로 처리하지 않는다.
+  if (selectedChannel.needsRef && !d.seat && !d.bookingRef) {
+    missing.push('좌석번호 또는 예매번호(둘 중 하나 필수)');
+  }
   return missing;
 }
 
@@ -194,7 +212,8 @@ function buildReport(d, channel) {
   const lines = [];
   const L = (s) => lines.push(s === undefined ? '' : s);
 
-  L(`[입장권 부정판매(암표) 신고] ${d.eventName}`);
+  const typeLabel = d.reportType === 'purchase' ? '부정구매' : '부정판매';
+  L(`[입장권 ${typeLabel}(암표) 신고] ${d.eventName}`);
   L();
   L('■ 1. 신고 대상');
   L(`- 판매 경로: ${d.platform}`);
@@ -205,7 +224,8 @@ function buildReport(d, channel) {
   L(`- 명칭: ${d.eventName}`);
   if (d.eventDate) L(`- 일시: ${d.eventDate}`);
   if (d.venue) L(`- 장소: ${d.venue}`);
-  if (d.seat) L(`- 좌석: ${d.seat}`);
+  if (d.seat) L(`- 좌석번호: ${d.seat}`);
+  if (d.bookingRef) L(`- 예매번호: ${d.bookingRef}`);
   L();
   L('■ 3. 가격');
   L(`- 정가(1매): ${formatWon(d.faceValue)}`);
@@ -347,13 +367,13 @@ function exportCsv() {
     return;
   }
 
-  const headers = ['저장일시', '신고채널', '공연명', '공연일시', '장소', '좌석',
+  const headers = ['저장일시', '신고채널', '공연명', '공연일시', '장소', '좌석번호', '예매번호',
     '판매경로', '판매자', '판매글주소', '정가', '요구금액', '배율', '의심근거'];
 
   const escape = (v) => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"';
 
   const rows = log.map((r) => [
-    r.savedAt, r.channelName, r.eventName, r.eventDate, r.venue, r.seat,
+    r.savedAt, r.channelName, r.eventName, r.eventDate, r.venue, r.seat, r.bookingRef,
     r.platform, r.seller, r.url, r.faceValue, r.askPrice, r.ratio,
     (r.grounds || []).join(' / ')
   ].map(escape).join(','));
@@ -463,6 +483,7 @@ function saveToLog() {
     eventDate: d.eventDate,
     venue: d.venue,
     seat: d.seat,
+    bookingRef: d.bookingRef,
     platform: d.platform,
     seller: d.seller,
     url: d.url,
@@ -493,7 +514,7 @@ function flash(btn, message) {
 function resetInputs() {
   if (!confirm('입력한 대상 정보를 모두 지웁니다. 계속할까요? (신고 기록은 유지됩니다)')) return;
 
-  ['eventName', 'eventDate', 'venue', 'seat', 'faceValue', 'askPrice',
+  ['eventName', 'eventDate', 'venue', 'seat', 'bookingRef', 'faceValue', 'askPrice',
     'seller', 'url', 'context'].forEach((id) => { $(id).value = ''; });
   $('platform').value = '';
   document.querySelectorAll('#groundsBox input, #evidenceBox input')
@@ -657,6 +678,7 @@ function scanBulk() {
       eventName: entry.eventName,
       eventDate: f.eventDate,
       seat: f.seat,
+      bookingRef: f.bookingRef,
       faceValue: entry.faceValue,
       askPrice: f.askPrice,
       ratio: Number(ratio.toFixed(2)),
@@ -793,6 +815,7 @@ function fillForm(src) {
   if (src.eventDate) $('eventDate').value = src.eventDate;
   if (src.venue) $('venue').value = src.venue;
   if (src.seat) $('seat').value = src.seat;
+  if (src.bookingRef) $('bookingRef').value = src.bookingRef;
   if (src.faceValue) $('faceValue').value = src.faceValue.toLocaleString('ko-KR');
   if (src.askPrice) $('askPrice').value = src.askPrice.toLocaleString('ko-KR');
   if (src.seller) $('seller').value = src.seller;
@@ -920,7 +943,8 @@ async function fetchListing() {
 const EXTRACT_LABELS = {
   eventName: '공연·경기명',
   eventDate: '공연 일시',
-  seat: '좌석',
+  seat: '좌석번호',
+  bookingRef: '예매번호',
   faceValue: '정가',
   askPrice: '요구 금액',
   seller: '판매자',
@@ -1075,6 +1099,14 @@ document.addEventListener('DOMContentLoaded', () => {
       $('saveBtn').disabled = true;
     }
   });
+
+  const updateRewardHint = () => {
+    $('rewardHint').textContent = REWARD_INFO[$('reportType').value] || '';
+  };
+  $('reportType').addEventListener('change', updateRewardHint);
+  updateRewardHint();
+
+  $('bookingRef').addEventListener('input', () => { if (lastGenerated) generate(); });
 
   $('generateBtn').addEventListener('click', generate);
   $('copyBtn').addEventListener('click', copyOutput);

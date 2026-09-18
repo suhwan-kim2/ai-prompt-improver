@@ -166,8 +166,24 @@
         </div>
 
         <div class="field">
+            <label for="bookingRef">예매번호 <span class="req">*</span>
+                <span class="req-note">좌석번호 또는 예매번호 중 <strong>하나는 반드시</strong> 있어야 유효 접수됩니다</span>
+            </label>
+            <input type="text" id="bookingRef" placeholder="판매글에 노출된 예매번호 (좌석번호를 위에 적었으면 비워도 됨)">
+        </div>
+
+        <div class="field">
             <label for="url">판매글 주소(URL)</label>
             <input type="text" id="url" placeholder="https:// … (링크가 없으면 비워두고 판매자 정보만 입력)">
+        </div>
+
+        <div class="field">
+            <label for="reportType">신고 유형</label>
+            <select id="reportType">
+                <option value="sale">부정판매 — 상습·영업 목적으로 구입가보다 비싸게 판매</option>
+                <option value="purchase">부정구매 — 재판매 목적으로 부정하게 구매(매크로 등)</option>
+            </select>
+            <p class="hint" id="rewardHint"></p>
         </div>
 
         <div class="field">
@@ -271,13 +287,22 @@
 
     <!-- 📚 참고 -->
     <section class="panel">
-        <h3 class="panel-title">📚 참고: 관련 법령</h3>
+        <h3 class="panel-title">📚 참고: 관련 법령과 포상금</h3>
         <ul class="notice-list">
-            <li><strong>공연법 제4조의2 / 제41조</strong> — 매크로 프로그램을 이용한 입장권 부정판매 금지. 위반 시 1년 이하 징역 또는 1천만원 이하 벌금.</li>
-            <li><strong>국민체육진흥법</strong> — 체육경기 입장권의 매크로 이용 부정판매 금지 규정이 별도로 있습니다.</li>
-            <li><strong>경범죄 처벌법 제3조 제2항 제4호</strong> — 공연장·경기장·역 등 <em>현장</em>에서 웃돈을 받고 되파는 행위. 20만원 이하 벌금·구류·과료.</li>
-            <li>온라인 웃돈 거래는 위 조항으로 곧바로 처벌되지 않는 경우가 많습니다. 이때는 <strong>예매처·플랫폼 약관 위반 신고</strong>가 가장 실효적이며, 선입금 후 미이행이면 <strong>사기</strong>로 경찰 신고 대상입니다.</li>
-            <li>조문 내용은 개정될 수 있으니 국가법령정보센터(law.go.kr)에서 최신 조문을 확인하세요.</li>
+            <li><strong>2026년 8월 28일부터</strong> 공연법·국민체육진흥법 시행령 개정안이 시행돼, 부정판매자에게
+                판매금액의 <strong>2배~50배 과징금</strong>이 차등 부과됩니다.</li>
+            <li><strong>포상금</strong> — 부정판매를 신고하면 해당 판매자에게 부과된 <strong>과징금의 50% 범위</strong>에서,
+                부정구매를 신고하면 <strong>최대 5,000만원</strong> 이내에서 지급될 수 있습니다.
+                플랫폼·경찰 신고는 포상금 대상이 아닙니다.</li>
+            <li><strong>접수 요건</strong> — 신고센터는 <strong>좌석번호 또는 예매번호</strong>가 특정되지 않으면
+                유효한 접수로 처리하지 않습니다. 해당 번호가 보이는 링크나 이미지를 반드시 첨부하세요.</li>
+            <li><strong>공연법 제4조의2 / 제41조</strong> — 매크로 프로그램을 이용한 입장권 부정판매 금지.
+                위반 시 1년 이하 징역 또는 1천만원 이하 벌금.</li>
+            <li><strong>경범죄 처벌법 제3조 제2항 제4호</strong> — 공연장·경기장·역 등 <em>현장</em>에서 웃돈을 받고 되파는 행위.
+                20만원 이하 벌금·구류·과료.</li>
+            <li>선입금 후 미이행이면 <strong>사기</strong>로 경찰 신고 대상입니다.</li>
+            <li>포상금 산정 기준과 지급 절차는 신고센터 공지를 확인하세요. 문의는 공연 1533-1329,
+                스포츠 02-410-1913. 조문은 국가법령정보센터(law.go.kr)에서 최신본을 확인하세요.</li>
         </ul>
     </section>
 
