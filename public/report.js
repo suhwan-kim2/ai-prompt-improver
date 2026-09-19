@@ -9,7 +9,7 @@ const QUEUE_KEY = 'scalpingCandidates';
 
 const MODE_DESC = {
   auto: '감시 목록에 공연과 정가를 등록하고, 검색 결과를 붙여넣으면 조건을 넘는 판매글만 골라 후보 큐에 쌓습니다. 후보를 고르면 양식이 채워지고, 제출은 형이 직접 합니다.',
-  url: '판매글 주소를 넣거나 본문을 붙여넣으면 가격·좌석·날짜·정황을 뽑아 양식을 채웁니다. 추출값을 확인한 뒤 신고문을 생성하세요.',
+  url: '판매글 페이지에서 북마클릿을 한 번 누르면 제목·가격·좌석·정황을 뽑아 양식을 채웁니다. 본문을 붙여넣어도 즉시 분석됩니다. 추출값을 확인한 뒤 신고문을 생성하세요.',
   manual: '모든 항목을 직접 입력합니다. 추출이 잘 안 되는 판매글이나, 현장에서 목격한 경우에 쓰세요.'
 };
 
@@ -1097,18 +1097,28 @@ function showFetchStatus(message, isError) {
   box.innerHTML = '<p>' + message + '</p>';
 }
 
-/* 중고거래 앱·SNS는 주소만으로 읽히지 않으므로, 조회가 막혔을 때 붙여넣기가 아니라
- * 북마클릿으로 안내한다. 실제로 더 잘 되는 경로가 그쪽이다. */
+/* 주소 조회는 서버 라우트가 있는 배포에서만 동작한다. 없는 곳에서 버튼만 띄워두면
+ * 눌러도 실패하는 막다른 길이 되므로, 있을 때만 화면에 내보낸다.
+ * 라우트가 있으면 url 없는 요청에 400을 주고, 없으면 404/405가 돌아온다. */
+async function probeFetchApi() {
+  try {
+    const res = await fetch('/api/fetch-listing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    if (res.status === 400) $('urlFetchBlock').classList.remove('hidden');
+  } catch (e) {
+    // 네트워크가 막힌 경우에도 그냥 숨긴 채로 둔다.
+  }
+}
+
 function disableFetchButton(reason) {
   fetchPermanentlyDisabled = true;
-  const btn = $('fetchBtn');
-  btn.disabled = true;
-  btn.textContent = '사용 불가';
+  $('fetchBtn').disabled = true;
+  $('fetchBtn').textContent = '사용 불가';
   showFetchStatus(
-    `${reason} <strong>위의 「📌 암표 수집」 북마클릿을 쓰세요</strong> — ` +
-    '판매글 화면에서 한 번 누르면 그대로 넘어옵니다. ' +
-    '번개장터·당근처럼 자바스크립트로 본문을 그리는 곳은 주소 조회로는 어차피 내용이 비어서 옵니다. ' +
-    '아래에 본문을 직접 붙여넣어도 됩니다.',
+    `${reason} <strong>「📌 암표 수집」 북마클릿</strong>을 쓰거나 본문을 붙여넣으세요.`,
     true
   );
 }
@@ -1355,6 +1365,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('scanBtn').addEventListener('click', scanBulk);
   $('fetchBtn').addEventListener('click', fetchListing);
   $('parseBtn').addEventListener('click', runParse);
+  probeFetchApi();
+
+  // 붙여넣으면 바로 분석한다. 버튼을 한 번 더 누르게 할 이유가 없다.
+  $('pasteInput').addEventListener('paste', () => {
+    setTimeout(() => { if ($('pasteInput').value.trim()) runParse(); }, 60);
+  });
   $('applyBtn').addEventListener('click', applyExtract);
 
   $('clearQueueBtn').addEventListener('click', () => {
