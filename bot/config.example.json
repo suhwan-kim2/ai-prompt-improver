@@ -1,0 +1,19 @@
+{
+  "maxDetailPerRun": 20,
+  "delayMs": 2000,
+  "defaultMinRatio": 1.5,
+  "watchlist": [
+    {
+      "eventName": "NCT 127 NEO CITY : SEOUL - THE REDLINE",
+      "faceValue": 198000,
+      "minRatio": 1.5,
+      "keywords": ["nct127 콘서트 양도", "엔시티127 양도", "더레드라인 양도"]
+    },
+    {
+      "eventName": "예시 - 여기에 감시할 공연을 추가하세요",
+      "faceValue": 154000,
+      "minRatio": 2.0,
+      "keywords": ["공연명 양도", "공연명 티켓"]
+    }
+  ]
+}

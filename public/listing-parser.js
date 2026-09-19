@@ -255,16 +255,17 @@
   function extractSeat(text) {
     const parts = [];
     const patterns = [
-      /([1-9])\s*층/,
-      /([A-Za-z가-힣]{1,3})\s*구역/,
-      /(\d{1,2})\s*열/,
-      /스탠딩\s*([A-Za-z]|\d{1,2})?/,
-      /(플로어|플꾸|1층석|2층석|3층석|지정석|테이블석)/
+      { re: /([1-9])\s*층/ },
+      // 구역명 앞이 글자면 긴 단어의 꼬리를 구역명으로 읽게 된다("REDLINE구역" → "ine구역").
+      { re: /(?:^|[\s,./()\[\]-])([A-Za-z가-힣]{1,3})\s*구역/, fmt: (m) => m[1] + '구역' },
+      { re: /(\d{1,2})\s*열/ },
+      { re: /스탠딩\s*([A-Za-z]|\d{1,2})?/ },
+      { re: /(플로어|플꾸|1층석|2층석|3층석|지정석|테이블석)/ }
     ];
 
-    patterns.forEach((re) => {
+    patterns.forEach(({ re, fmt }) => {
       const m = text.match(re);
-      if (m) parts.push(m[0].replace(/\s+/g, ''));
+      if (m) parts.push((fmt ? fmt(m) : m[0]).replace(/\s+/g, ''));
     });
 
     const seat = Array.from(new Set(parts)).join(' ');

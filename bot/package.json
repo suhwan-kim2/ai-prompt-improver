@@ -1,0 +1,17 @@
+{
+  "name": "scalping-report-bot",
+  "version": "1.0.0",
+  "description": "암표 의심 매물을 매일 수집하고, 사용자가 승인한 건만 신고서 양식에 입력해주는 로컬 봇",
+  "type": "module",
+  "bin": { "scalping-bot": "src/index.js" },
+  "scripts": {
+    "scan": "node src/index.js scan",
+    "review": "node src/index.js review",
+    "file": "node src/index.js file",
+    "daily": "node src/index.js daily",
+    "postinstall": "playwright install chromium"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": { "playwright": "^1.56.0" },
+  "license": "MIT"
+}
