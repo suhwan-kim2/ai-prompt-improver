@@ -1083,6 +1083,7 @@ if(d)fill(d);else{var m=window.prompt('클립보드에서 데이터를 찾지 �
 /* ---------- 주소·본문 분석 ---------- */
 
 let lastExtract = null;
+let fetchPermanentlyDisabled = false;
 
 function showFetchStatus(message, isError) {
   const box = $('fetchStatus');
@@ -1094,6 +1095,22 @@ function showFetchStatus(message, isError) {
   box.classList.remove('hidden');
   box.className = 'warn-box' + (isError ? '' : ' info');
   box.innerHTML = '<p>' + message + '</p>';
+}
+
+/* 중고거래 앱·SNS는 주소만으로 읽히지 않으므로, 조회가 막혔을 때 붙여넣기가 아니라
+ * 북마클릿으로 안내한다. 실제로 더 잘 되는 경로가 그쪽이다. */
+function disableFetchButton(reason) {
+  fetchPermanentlyDisabled = true;
+  const btn = $('fetchBtn');
+  btn.disabled = true;
+  btn.textContent = '사용 불가';
+  showFetchStatus(
+    `${reason} <strong>위의 「📌 암표 수집」 북마클릿을 쓰세요</strong> — ` +
+    '판매글 화면에서 한 번 누르면 그대로 넘어옵니다. ' +
+    '번개장터·당근처럼 자바스크립트로 본문을 그리는 곳은 주소 조회로는 어차피 내용이 비어서 옵니다. ' +
+    '아래에 본문을 직접 붙여넣어도 됩니다.',
+    true
+  );
 }
 
 async function fetchListing() {
@@ -1114,10 +1131,11 @@ async function fetchListing() {
     });
 
     if (!res.ok) {
-      showFetchStatus(
-        `페이지 조회 기능을 쓸 수 없습니다 (HTTP ${res.status}). ` +
-        '배포된 서버에서만 동작합니다. <strong>판매글 본문을 복사해 아래에 붙여넣으면</strong> 그대로 분석됩니다.',
-        true
+      // 서버 라우트가 없는 곳(정적 호스팅)에서는 이 기능을 아예 쓸 수 없다.
+      // 계속 누르게 두지 말고 버튼을 잠그고 더 나은 경로로 안내한다.
+      disableFetchButton(
+        `이 주소에서는 페이지 조회를 쓸 수 없습니다 (HTTP ${res.status}). ` +
+        '서버 라우트가 있는 배포에서만 동작합니다.'
       );
       return;
     }
@@ -1146,11 +1164,12 @@ async function fetchListing() {
   } catch (e) {
     showFetchStatus(
       '페이지 조회에 실패했습니다: ' + (e.message || e) +
-      '. 판매글 본문을 복사해 아래에 붙여넣으면 그대로 분석됩니다.',
+      '. <strong>「📌 암표 수집」 북마클릿</strong>을 쓰거나, 판매글 본문을 아래에 붙여넣으세요.',
       true
     );
   } finally {
-    $('fetchBtn').disabled = false;
+    // 영구히 잠근 경우(서버 라우트 없음)에는 다시 켜지 않는다.
+    if (!fetchPermanentlyDisabled) $('fetchBtn').disabled = false;
   }
 }
 
