@@ -43,9 +43,13 @@ function buildContents(c) {
 function buildPayload(c) {
   const skipped = ['휴대전화 본인인증', 'E-mail', '부정거래 매수', '증빙파일 첨부'];
   const showDt = toDateTimeLocal(c.eventDate);
+  const link = /^https?:\/\//i.test(c.url || '') ? cut(c.url, LIMITS.ITEM) : '';
+
   if (!showDt) skipped.push('공연일시');
   if (!c.seat && !c.bookingRef) skipped.push('좌석번호 또는 예매번호');
   if (!c.ticketSite) skipped.push('예매처');
+  if (!c.seller) skipped.push('판매자 정보(ID/닉네임 등)');
+  if (!link) skipped.push('링크주소(필수)');
 
   return {
     v: 1,
@@ -60,8 +64,9 @@ function buildPayload(c) {
     showType: c.showType || '1',
     paySite: c.platform || 'B',
     ticketSite: c.ticketSite || '',
+    ticketSiteText: c.ticketSiteText || '',
     sellerId: cut(c.seller, LIMITS.ITEM),
-    link: cut(c.url, LIMITS.ITEM),
+    link,
     _skipped: skipped
   };
 }

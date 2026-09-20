@@ -2,7 +2,11 @@
  *
  * 사용자의 평소 브라우저에서 돌아간다. 자동화 브라우저에서는 본인인증(PASS)이
  * 막히는 경우가 많아, 입력만 대신하고 인증과 제출은 사용자의 브라우저에 맡긴다.
- * 제출은 하지 않는다. */
+ * 제출은 하지 않는다.
+ *
+ * 주의: 아래 코드는 한 줄로 합쳐져 북마클릿이 되므로 // 주석을 쓰면 안 된다.
+ * 주석 뒤의 코드가 전부 주석 처리되어 버린다.
+ * 링크주소 칸에는 주소 형식일 때만 넣는다 — 닉네임 등이 들어가면 신고가 어긋난다. */
 export const FILLER_SOURCE = `(function(){
 function set(id,v){var e=document.getElementById(id);if(!e||v===undefined||v===null||v==='')return 0;
 e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));
@@ -19,9 +23,10 @@ n+=set('SEAT_NUMBER',d.SEAT_NUMBER);n+=set('RESERVATION_NUMBER',d.RESERVATION_NU
 n+=set('CONTENTS',d.CONTENTS);
 if(d.showType)n+=tick('showType'+d.showType);
 if(d.paySite)n+=tick('paySiteTypeCd'+d.paySite);
-if(d.ticketSite)n+=tick('ticketSiteCd'+d.ticketSite);
+if(d.ticketSite){n+=tick('ticketSiteCd'+d.ticketSite);
+if(d.ticketSite==='06'&&d.ticketSiteText)n+=set('ticetSiteText',d.ticketSiteText);}
 if(d.sellerId){n+=tick('invalidInfoCd03');n+=set('invalidInfoCd03_item',d.sellerId);}
-if(d.link){n+=tick('selInfoTypeCd04');n+=set('selInfoTypeCd04_item',d.link);}
+if(d.link&&/^https?:\\/\\//i.test(d.link)){n+=tick('selInfoTypeCd04');n+=set('selInfoTypeCd04_item',d.link);}
 var msg=n+'개 항목을 채웠습니다(초록 테두리).\\n\\n제출은 하지 않았습니다.\\n본인인증, 증빙파일 첨부, 제출은 직접 해주세요.';
 if(d._skipped&&d._skipped.length)msg+='\\n\\n직접 입력해야 하는 항목:\\n· '+d._skipped.join('\\n· ');
 alert(msg);

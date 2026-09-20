@@ -43,7 +43,33 @@ function pageExtract() {
   let title = meta('og:title') || h1 || document.title || '';
   if (site && title.replace(/\s/g, '') === site.replace(/\s/g, '')) title = h1 || '';
 
-  return { title, text: t };
+  /* 판매자 닉네임. 번개장터는 '구매하기' 바로 다음 줄에 상점명이 온다.
+   * 본문 파서는 @핸들 형태만 찾을 수 있어 이런 사이트에서는 못 잡는다. */
+  const all = (document.body.innerText || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  let seller = '';
+  const buyIdx = all.indexOf('구매하기');
+  if (buyIdx >= 0) {
+    const cand = all[buyIdx + 1] || '';
+    if (cand && cand.length <= 24 && !/^\d+$/.test(cand) && !/원$/.test(cand)) seller = cand;
+  }
+
+  return { title, text: t, seller };
+}
+
+/* 예매처 주소에서 신고서의 예매처 코드를 정한다.
+   01 NOL티켓(인터파크) 02 YES24 03 티켓링크 04 멜론티켓 05 쿠팡플레이 06 기타 */
+const TICKET_SITES = [
+  { re: /ticket\.melon\.com|melon/i, code: '04' },
+  { re: /interpark|nol\.|nolticket/i, code: '01' },
+  { re: /yes24/i, code: '02' },
+  { re: /ticketlink|ticket\.naver/i, code: '03' },
+  { re: /coupangplay|coupang/i, code: '05' }
+];
+
+export function ticketSiteCode(ticketUrl) {
+  if (!ticketUrl) return '';
+  const hit = TICKET_SITES.find((t) => t.re.test(ticketUrl));
+  return hit ? hit.code : '06';
 }
 
 /* 번개장터 검색. 검색 결과는 자바스크립트로 그려지므로 실제 브라우저로 연다. */
@@ -145,7 +171,7 @@ export async function scan({ verbose = true } = {}) {
             await page.goto(item.url, { waitUntil: 'networkidle', timeout: 60000 });
             await page.waitForTimeout(1500);
 
-            const { title, text } = await page.evaluate(pageExtract);
+            const { title, text, seller: pageSeller } = await page.evaluate(pageExtract);
             const parsed = ListingParser.parseListing([title, text].filter(Boolean).join('\n\n'), {
               catalog: [{ eventName: watch.eventName, faceValue: watch.faceValue,
                 keywords: watch.keywords.join(','), minRatio: watch.minRatio }],
@@ -181,8 +207,10 @@ export async function scan({ verbose = true } = {}) {
               eventDate: parsed.fields.eventDate || '',
               seat: parsed.fields.seat || '',
               bookingRef: parsed.fields.bookingRef || '',
-              seller: parsed.fields.seller || '',
+              // 파서가 못 잡으면 페이지에서 읽은 상점명을 쓴다.
+              seller: parsed.fields.seller || pageSeller || '',
               platform: 'B',
+              ticketSite: ticketSiteCode(watch.ticketUrl),
               grounds: parsed.grounds,
               signals: parsed.signalLabels,
               warnings: parsed.warnings,
