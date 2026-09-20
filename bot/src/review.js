@@ -1,14 +1,7 @@
 /* 후보를 하나씩 보여주고 사용자가 판단하게 한다.
  * 승인한 건만 신고서 입력 대상이 된다 — 봇이 알아서 넘기지 않는다. */
-import readline from 'readline';
+import { ask } from './prompt.js';
 import { candidates } from './store.js';
-
-const rl = () => readline.createInterface({ input: process.stdin, output: process.stdout });
-
-function ask(question) {
-  const io = rl();
-  return new Promise((resolve) => io.question(question, (a) => { io.close(); resolve(a.trim()); }));
-}
 
 const won = (n) => Number(n || 0).toLocaleString('ko-KR') + '원';
 

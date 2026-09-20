@@ -10,6 +10,8 @@ import { scan } from './scan.js';
 import { review } from './review.js';
 import { fileReports } from './file.js';
 import { refreshPrices } from './price.js';
+import { go, addWatch } from './go.js';
+import { closePrompt } from './prompt.js';
 import { candidates, filed } from './store.js';
 
 function summary() {
@@ -19,10 +21,12 @@ function summary() {
 }
 
 async function main() {
-  const cmd = process.argv[2] || 'help';
+  const cmd = process.argv[2] || 'go';
 
   try {
-    if (cmd === 'scan' || cmd === 'daily') {
+    if (cmd === 'go') {
+      await go();
+    } else if (cmd === 'scan' || cmd === 'daily') {
       console.log(`[${new Date().toLocaleString('ko-KR')}] 스캔 시작`);
       const { found, stats } = await scan();
       console.log(
@@ -32,6 +36,19 @@ async function main() {
       );
       summary();
       if (found.length) console.log('\n다음: npm run review');
+    } else if (cmd === 'add') {
+      const eventName = process.argv[3];
+      const second = process.argv[4] || '';
+      const entry = addWatch({
+        eventName,
+        ticketUrl: /^https?:\/\//.test(second) ? second : '',
+        faceValue: /^[\d,]+$/.test(second) ? parseInt(second.replace(/,/g, ''), 10) : 0
+      });
+      console.log('등록했습니다:', entry.eventName);
+      console.log('  검색 키워드:', entry.keywords.join(', '));
+      console.log(entry.ticketUrl
+        ? '  정가는 다음 실행 때 예매처에서 읽어옵니다.'
+        : `  정가: ${entry.faceValue.toLocaleString('ko-KR')}원`);
     } else if (cmd === 'price') {
       console.log('예매처에서 좌석 등급별 정가를 읽어옵니다.\n');
       await refreshPrices();
@@ -46,6 +63,13 @@ async function main() {
     } else {
       console.log(`암표 신고 봇
 
+  npm start        전체 과정을 한 번에 (설정 → 정가 → 수집 → 검토 → 입력)
+
+  공연 추가 (설정 파일을 직접 고치지 않아도 됩니다):
+  node src/index.js add "공연명" "예매처주소"
+  node src/index.js add "공연명" 154000
+
+  낱개로 돌리고 싶을 때:
   npm run price    예매처에서 등급별 정가를 읽어 config.json 에 기록
   npm run scan     감시 목록을 돌며 의심 매물 수집 + 증거 캡처
   npm run review   후보를 검토해 승인/제외
@@ -58,6 +82,8 @@ async function main() {
   } catch (e) {
     console.error('\n오류:', e.message);
     process.exitCode = 1;
+  } finally {
+    closePrompt();
   }
 }
 

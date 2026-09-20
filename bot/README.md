@@ -7,12 +7,29 @@
 본인인증·증빙첨부·제출은 사용자가 한다. 신고는 신고인 명의로 접수되고
 그 책임도 신고인이 지므로, 사람이 확인하지 않은 건은 접수되지 않는다.
 
-## 설치
+## 시작하기
+
+**Windows** — `start.bat` 을 더블클릭한다. Node.js 가 없으면 알려주고, 처음이면
+필요한 것을 알아서 설치한 뒤 실행한다.
+
+**macOS / Linux** — `./start.sh`
+
+터미널에서 직접 돌리려면:
 
 ```bash
 cd bot
-npm install          # playwright + chromium 자동 설치
-cp config.example.json config.json
+npm install     # 처음 한 번 (playwright + chromium)
+npm start       # 전체 과정을 한 번에
+```
+
+`npm start` 하나면 설정 → 정가 조회 → 수집 → 검토 → 신고서 입력까지 이어진다.
+처음 실행이면 감시할 공연을 물어보고 `config.json` 을 만들어준다.
+
+공연을 더 넣을 때도 설정 파일을 직접 고칠 필요는 없다:
+
+```bash
+node src/index.js add "공연명" "https://ticket.melon.com/performance/index.htm?prodId=..."
+node src/index.js add "공연명" 154000      # 예매처 주소 대신 정가를 직접
 ```
 
 `config.json` 에 감시할 공연을 넣는다. **예매처 공연 페이지 주소(`ticketUrl`)를
@@ -44,7 +61,9 @@ cp config.example.json config.json
 | `maxDetailPerRun` | 한 번 돌 때 상세 페이지를 여는 최대 건수 | 20 |
 | `delayMs` | 요청 사이 대기 | 2000 |
 
-## 사용
+## 단계별로 돌리기
+
+`npm start` 가 아래를 순서대로 부른다. 필요하면 따로 돌려도 된다.
 
 ```bash
 npm run price    # ⓪ 정가 조회 (자동) — 공연을 추가했을 때 한 번
@@ -110,7 +129,8 @@ npm run file     # ③ 입력 (자동) — 신고서 양식에 입력 후 정지
 
 ## 매일 자동 실행
 
-`scan` 만 걸어두고, 검토와 입력은 시간 날 때 하면 된다.
+`scan` 만 걸어두고, 검토와 입력은 시간 날 때 `npm start` 로 하면 된다
+(이미 모은 후보가 있으면 검토부터 이어진다).
 
 **macOS / Linux** — `crontab -e`
 ```

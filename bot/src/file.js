@@ -3,7 +3,7 @@
  * 절대 제출하지 않는다. 브라우저를 눈에 보이게 띄우고, 입력이 끝나면 그 자리에서
  * 멈춘 채 사용자에게 넘긴다. 본인인증·증빙첨부·제출은 사용자 몫이다.
  * 신고는 신고인 명의로 접수되고 그 책임도 신고인이 진다. */
-import readline from 'readline';
+import { ask } from './prompt.js';
 import { chromium } from 'playwright';
 import { loadConfig, ROOT } from './config.js';
 import { candidates, filed } from './store.js';
@@ -13,11 +13,6 @@ const PROFILE_DIR = path.join(ROOT, 'data', 'browser-profile');
 const LIMITS = { CONTENTS: 500, TITLE: 82, ITEM: 166 };
 
 const cut = (s, n) => (String(s || '').length > n ? String(s).slice(0, n - 1) + '…' : String(s || ''));
-
-function ask(q) {
-  const io = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((r) => io.question(q, (a) => { io.close(); r(a.trim()); }));
-}
 
 /** datetime-local 이 받는 'YYYY-MM-DDTHH:MM'. 불완전하면 비운다. */
 function toDateTimeLocal(v) {
