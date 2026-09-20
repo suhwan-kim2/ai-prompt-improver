@@ -25,7 +25,11 @@ npm start       # 전체 과정을 한 번에
 `npm start` 하나면 설정 → 정가 조회 → 수집 → 검토 → 신고서 입력까지 이어진다.
 처음 실행이면 감시할 공연을 물어보고 `config.json` 을 만들어준다.
 
-공연을 더 넣을 때도 설정 파일을 직접 고칠 필요는 없다:
+`start.bat` 은 실행하면 바로 설정 질문으로 들어간다. 그 자리에는 **값만** 넣는다
+(명령어나 따옴표를 붙여넣지 않는다). 잘못 등록했으면 `node src/index.js reset` 으로
+지우고 다시 하면 된다.
+
+공연을 더 넣을 때는 별도의 터미널에서:
 
 ```bash
 node src/index.js add "공연명" "https://ticket.melon.com/performance/index.htm?prodId=..."

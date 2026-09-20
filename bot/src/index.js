@@ -10,7 +10,7 @@ import { scan } from './scan.js';
 import { review } from './review.js';
 import { fileReports } from './file.js';
 import { refreshPrices } from './price.js';
-import { go, addWatch } from './go.js';
+import { go, addWatch, resetConfig, clean } from './go.js';
 import { closePrompt } from './prompt.js';
 import { candidates, filed } from './store.js';
 
@@ -36,9 +36,14 @@ async function main() {
       );
       summary();
       if (found.length) console.log('\n다음: npm run review');
+    } else if (cmd === 'reset') {
+      console.log(resetConfig()
+        ? '설정을 지웠습니다. 다시 실행하면 처음부터 등록할 수 있습니다.'
+        : '지울 설정이 없습니다.');
     } else if (cmd === 'add') {
       const eventName = process.argv[3];
-      const second = process.argv[4] || '';
+      // 붙여넣기로 따옴표·역슬래시가 섞여 오므로 먼저 정리한 뒤 주소인지 본다.
+      const second = clean(process.argv[4] || '');
       const entry = addWatch({
         eventName,
         ticketUrl: /^https?:\/\//.test(second) ? second : '',
@@ -68,6 +73,7 @@ async function main() {
   공연 추가 (설정 파일을 직접 고치지 않아도 됩니다):
   node src/index.js add "공연명" "예매처주소"
   node src/index.js add "공연명" 154000
+  node src/index.js reset            잘못 등록했을 때 설정 지우기
 
   낱개로 돌리고 싶을 때:
   npm run price    예매처에서 등급별 정가를 읽어 config.json 에 기록
