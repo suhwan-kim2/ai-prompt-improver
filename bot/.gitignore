@@ -1,3 +1,4 @@
-node_modules/
+# 심볼릭 링크로 만들어도 걸러지도록 슬래시 없이 적는다.
+node_modules
 config.json
-data/
+data
