@@ -28,7 +28,9 @@ const DEFAULTS = {
   watchlist: []
 };
 
-export function loadConfig() {
+/* price 명령은 정가를 받아오려고 도는 것이므로 정가가 없어도 설정을 읽을 수 있어야 한다.
+ * 그 외 명령은 정가가 없으면 배율을 낼 수 없으니 그대로 막는다. */
+export function loadConfig({ requireFaceValue = true } = {}) {
   if (!fs.existsSync(CONFIG_PATH)) {
     throw new Error(
       `설정 파일이 없습니다: ${CONFIG_PATH}\n` +
@@ -44,10 +46,12 @@ export function loadConfig() {
 
   cfg.watchlist.forEach((w, i) => {
     if (!w.eventName) throw new Error(`watchlist[${i}]: eventName 이 필요합니다.`);
-    if (!w.faceValue) {
+    if (requireFaceValue && !w.faceValue) {
       throw new Error(
-        `watchlist[${i}] "${w.eventName}": faceValue(정가)가 필요합니다. ` +
-        '예매처에서 확인한 값을 넣어주세요 — 이 값 없이는 암표인지 판단할 수 없습니다.'
+        `watchlist[${i}] "${w.eventName}": 정가를 알 수 없습니다.\n` +
+        (w.ticketUrl
+          ? '  ticketUrl 이 있으니 먼저 `npm run price` 를 돌려 정가를 받아오세요.'
+          : '  faceValue 에 예매처에서 확인한 정가를 넣거나, ticketUrl 에 공연 페이지 주소를 넣고 `npm run price` 를 돌리세요.')
       );
     }
     w.minRatio = w.minRatio || cfg.defaultMinRatio;

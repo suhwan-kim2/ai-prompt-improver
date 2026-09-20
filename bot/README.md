@@ -25,13 +25,15 @@ cp config.example.json config.json
   "watchlist": [
     {
       "eventName": "NCT 127 NEO CITY : SEOUL - THE REDLINE",
-      "faceValue": 198000,
+      "ticketUrl": "https://ticket.melon.com/performance/index.htm?prodId=213585",
       "minRatio": 1.5,
       "keywords": ["nct127 콘서트 양도", "엔시티127 양도"]
     }
   ]
 }
 ```
+
+`ticketUrl` 을 넣었다면 `faceValue` 는 비워둬도 된다 — `npm run price` 가 채운다.
 
 | 설정 | 뜻 | 기본값 |
 |---|---|---|

@@ -66,7 +66,7 @@ export function pickFaceValue(grades, listingText) {
 }
 
 export async function refreshPrices() {
-  const cfg = loadConfig();
+  const cfg = loadConfig({ requireFaceValue: false });
   const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   let changed = 0;
 

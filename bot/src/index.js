@@ -53,7 +53,7 @@ async function main() {
   node src/index.js status   현재 상태
 
   설정: config.json (config.example.json 참고)
-  정가는 예매처에서 직접 확인한 값을 넣어야 합니다.`);
+  공연을 추가하면 price → scan → review → file 순서로 돌리면 됩니다.`);
     }
   } catch (e) {
     console.error('\n오류:', e.message);
