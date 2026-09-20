@@ -5,6 +5,7 @@
   "type": "module",
   "bin": { "scalping-bot": "src/index.js" },
   "scripts": {
+    "price": "node src/index.js price",
     "scan": "node src/index.js scan",
     "review": "node src/index.js review",
     "file": "node src/index.js file",

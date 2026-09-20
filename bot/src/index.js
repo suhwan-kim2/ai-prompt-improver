@@ -9,6 +9,7 @@
 import { scan } from './scan.js';
 import { review } from './review.js';
 import { fileReports } from './file.js';
+import { refreshPrices } from './price.js';
 import { candidates, filed } from './store.js';
 
 function summary() {
@@ -31,6 +32,9 @@ async function main() {
       );
       summary();
       if (found.length) console.log('\n다음: npm run review');
+    } else if (cmd === 'price') {
+      console.log('예매처에서 좌석 등급별 정가를 읽어옵니다.\n');
+      await refreshPrices();
     } else if (cmd === 'review') {
       await review();
       summary();
@@ -42,6 +46,7 @@ async function main() {
     } else {
       console.log(`암표 신고 봇
 
+  npm run price    예매처에서 등급별 정가를 읽어 config.json 에 기록
   npm run scan     감시 목록을 돌며 의심 매물 수집 + 증거 캡처
   npm run review   후보를 검토해 승인/제외
   npm run file     승인된 건을 신고서에 입력 (제출은 직접)

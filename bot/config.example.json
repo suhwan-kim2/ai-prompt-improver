@@ -7,13 +7,22 @@
       "eventName": "NCT 127 NEO CITY : SEOUL - THE REDLINE",
       "faceValue": 198000,
       "minRatio": 1.5,
-      "keywords": ["nct127 콘서트 양도", "엔시티127 양도", "더레드라인 양도"]
+      "keywords": [
+        "nct127 콘서트 양도",
+        "엔시티127 양도",
+        "더레드라인 양도"
+      ],
+      "ticketUrl": "https://ticket.melon.com/performance/index.htm?prodId=213585"
     },
     {
       "eventName": "예시 - 여기에 감시할 공연을 추가하세요",
       "faceValue": 154000,
       "minRatio": 2.0,
-      "keywords": ["공연명 양도", "공연명 티켓"]
+      "keywords": [
+        "공연명 양도",
+        "공연명 티켓"
+      ],
+      "ticketUrl": "예매처 공연 페이지 주소 (있으면 정가를 자동으로 읽어옵니다)"
     }
   ]
 }

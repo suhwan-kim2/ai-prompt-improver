@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 import { loadConfig, ensureDirs, SHOT_DIR } from './config.js';
 import { ListingParser } from './parser.js';
 import { candidates, filed, seen } from './store.js';
+import { pickFaceValue } from './price.js';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
@@ -155,9 +156,13 @@ export async function scan({ verbose = true } = {}) {
 
             const ask = parsed.fields.askPrice || listPrice(item.text);
             if (!ask) continue;
-            if (isJokePrice(ask, watch.faceValue, maxRatio)) { stats.joke++; continue; }
 
-            const ratio = ask / watch.faceValue;
+            // 판매글이 VIP 를 말하면 VIP 정가와 비교한다. 등급을 모르면 가장 비싼
+            // 등급을 써서 배율이 과장되지 않게 한다.
+            const faceValue = pickFaceValue(watch.faceValues, title + '\n' + text) || watch.faceValue;
+            if (isJokePrice(ask, faceValue, maxRatio)) { stats.joke++; continue; }
+
+            const ratio = ask / faceValue;
             if (ratio < watch.minRatio) { stats.below++; continue; }
 
             // 글이 내려가기 전에 증거를 남긴다.
@@ -170,7 +175,7 @@ export async function scan({ verbose = true } = {}) {
               foundAt: new Date().toISOString(),
               url: item.url,
               eventName: watch.eventName,
-              faceValue: watch.faceValue,
+              faceValue: faceValue,
               askPrice: ask,
               ratio: Number(ratio.toFixed(2)),
               eventDate: parsed.fields.eventDate || '',
