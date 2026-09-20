@@ -1,16 +1,19 @@
-/* 승인된 건을 신고서 양식에 입력한다.
+/* 승인된 건을 신고서에 넣을 수 있도록 넘겨준다.
  *
- * 절대 제출하지 않는다. 브라우저를 눈에 보이게 띄우고, 입력이 끝나면 그 자리에서
- * 멈춘 채 사용자에게 넘긴다. 본인인증·증빙첨부·제출은 사용자 몫이다.
- * 신고는 신고인 명의로 접수되고 그 책임도 신고인이 진다. */
+ * 자동화 브라우저를 띄우지 않는다. 한국 본인인증(PASS 등)은 자동화된 브라우저를
+ * 막는 경우가 많아 그 창에서는 인증을 끝낼 수 없다. 대신 사용자의 평소
+ * 브라우저로 신고서를 열고, 값은 클립보드 + 북마클릿으로 넣는다.
+ * 인증·첨부·제출은 그 브라우저에서 사용자가 한다. */
+import fs from 'fs';
+import path from 'path';
 import { ask } from './prompt.js';
-import { chromium } from 'playwright';
 import { loadConfig, ROOT } from './config.js';
 import { candidates, filed } from './store.js';
-import path from 'path';
+import { copyToClipboard, openInBrowser } from './clipboard.js';
+import { bookmarkletPage } from './filler.js';
 
-const PROFILE_DIR = path.join(ROOT, 'data', 'browser-profile');
 const LIMITS = { CONTENTS: 500, TITLE: 82, ITEM: 166 };
+const BOOKMARKLET_PATH = path.join(ROOT, 'bookmarklet.html');
 
 const cut = (s, n) => (String(s || '').length > n ? String(s).slice(0, n - 1) + '…' : String(s || ''));
 
@@ -37,41 +40,37 @@ function buildContents(c) {
   return text.length > LIMITS.CONTENTS ? cut(text, LIMITS.CONTENTS) : text;
 }
 
-/* 페이지 안에서 각 항목을 채운다. 채운 곳은 초록 테두리로 표시해 눈으로 확인할 수 있게 한다. */
-function fillForm(d) {
-  const set = (id, v) => {
-    const e = document.getElementById(id);
-    if (!e || v === undefined || v === null || v === '') return 0;
-    e.value = v;
-    e.dispatchEvent(new Event('input', { bubbles: true }));
-    e.dispatchEvent(new Event('change', { bubbles: true }));
-    e.style.outline = '2px solid #22c55e';
-    return 1;
-  };
-  const tick = (id) => {
-    const e = document.getElementById(id);
-    if (!e) return 0;
-    if (!e.checked) e.click();
-    if (!e.checked) { e.checked = true; e.dispatchEvent(new Event('change', { bubbles: true })); }
-    e.style.outline = '2px solid #22c55e';
-    return 1;
-  };
+function buildPayload(c) {
+  const skipped = ['휴대전화 본인인증', 'E-mail', '부정거래 매수', '증빙파일 첨부'];
+  const showDt = toDateTimeLocal(c.eventDate);
+  if (!showDt) skipped.push('공연일시');
+  if (!c.seat && !c.bookingRef) skipped.push('좌석번호 또는 예매번호');
+  if (!c.ticketSite) skipped.push('예매처');
 
-  let n = 0;
-  n += set('TITLE', d.TITLE);
-  n += set('SHOW_DT', d.SHOW_DT);
-  n += set('PAYMENT_ORG', d.PAYMENT_ORG);
-  n += set('PAYMENT_USE', d.PAYMENT_USE);
-  n += set('INVALID_SEL_DT', d.INVALID_SEL_DT);
-  n += set('SEAT_NUMBER', d.SEAT_NUMBER);
-  n += set('RESERVATION_NUMBER', d.RESERVATION_NUMBER);
-  n += set('CONTENTS', d.CONTENTS);
-  if (d.showType) n += tick('showType' + d.showType);
-  if (d.paySite) n += tick('paySiteTypeCd' + d.paySite);
-  if (d.ticketSite) n += tick('ticketSiteCd' + d.ticketSite);
-  if (d.sellerId) { n += tick('invalidInfoCd03'); n += set('invalidInfoCd03_item', d.sellerId); }
-  if (d.link) { n += tick('selInfoTypeCd04'); n += set('selInfoTypeCd04_item', d.link); }
-  return n;
+  return {
+    v: 1,
+    TITLE: cut(c.eventName, LIMITS.TITLE),
+    SHOW_DT: showDt,
+    PAYMENT_ORG: String(c.faceValue || ''),
+    PAYMENT_USE: String(c.askPrice || ''),
+    INVALID_SEL_DT: toDateTimeLocal((c.foundAt || '').replace('T', ' ').slice(0, 16)),
+    SEAT_NUMBER: c.seat,
+    RESERVATION_NUMBER: c.bookingRef,
+    CONTENTS: buildContents(c),
+    showType: c.showType || '1',
+    paySite: c.platform || 'B',
+    ticketSite: c.ticketSite || '',
+    sellerId: cut(c.seller, LIMITS.ITEM),
+    link: cut(c.url, LIMITS.ITEM),
+    _skipped: skipped
+  };
+}
+
+/* 북마클릿 설치 페이지는 매번 최신으로 덮어쓴다. 채우기 코드가 바뀌었는데
+ * 예전 파일이 남아 있으면 옛 코드를 북마크에 담게 된다. */
+function writeBookmarkletPage() {
+  fs.writeFileSync(BOOKMARKLET_PATH, bookmarkletPage(), 'utf8');
+  return BOOKMARKLET_PATH;
 }
 
 export async function fileReports() {
@@ -83,71 +82,53 @@ export async function fileReports() {
     return;
   }
 
-  console.log(`\n승인된 ${approved.length}건을 신고서에 입력합니다.`);
-  console.log('브라우저가 열립니다. 입력이 끝나면 멈추니, 확인하고 직접 제출하세요.');
-  console.log('본인인증·이메일·증빙첨부·제출 버튼은 봇이 건드리지 않습니다.\n');
+  const page = writeBookmarkletPage();
+  console.log(`\n승인된 ${approved.length}건을 신고서에 넣을 준비를 합니다.`);
+  console.log('형이 평소 쓰는 브라우저에서 진행합니다 — 본인인증(PASS)이 거기서만 제대로 됩니다.\n');
+  console.log('처음이라면 북마클릿부터 설치하세요 (한 번만):');
+  console.log(`  ${page}`);
+  console.log('  이 파일을 브라우저로 열고 「신고서 채우기」 버튼을 북마크 바로 드래그하면 됩니다.');
 
-  // 사용자 프로필을 유지해 본인인증 세션이 매번 날아가지 않게 한다.
-  // 평소에는 창을 띄운다. HEADLESS=1 은 자동 검증용.
-  const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: process.env.HEADLESS === '1',
-    locale: 'ko-KR',
-    viewport: { width: 1280, height: 1000 },
-    args: ['--window-size=1300,1050']
-  });
+  const openIt = await ask('\n  북마클릿 설치 페이지를 지금 열까요? [y/N] > ');
+  if (openIt.toLowerCase() === 'y') openInBrowser('file://' + page);
 
-  try {
-    for (let i = 0; i < approved.length; i++) {
-      const c = approved[i];
-      console.log(`\n[${i + 1}/${approved.length}] ${c.eventName} — ${c.ratio}배`);
+  for (let i = 0; i < approved.length; i++) {
+    const c = approved[i];
+    const payload = buildPayload(c);
+    const json = JSON.stringify(payload);
 
-      const page = ctx.pages()[0] || await ctx.newPage();
-      await page.goto(cfg.govFormUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      // 로딩 화면이 폼을 덮으므로 보이는지가 아니라 붙었는지로 기다린다.
-      await page.waitForSelector('#TITLE', { state: 'attached', timeout: 45000 });
-      await page.waitForFunction(
-        () => !/LOADING/.test((document.body.innerText || '').slice(0, 40)),
-        null, { timeout: 30000 }
-      ).catch(() => {});
-      await page.waitForTimeout(1200);
+    console.log('\n' + '─'.repeat(64));
+    console.log(`[${i + 1}/${approved.length}] ${c.eventName} — 정가의 ${c.ratio}배`);
+    console.log('─'.repeat(64));
+    console.log(`  정가      ${c.faceValue.toLocaleString('ko-KR')}원`);
+    console.log(`  요구 금액  ${c.askPrice.toLocaleString('ko-KR')}원`);
+    console.log(`  좌석번호   ${c.seat || '(없음)'}`);
+    console.log(`  판매자    ${c.seller || '(없음)'}`);
+    console.log(`  증거 캡처  ${c.evidence}`);
+    console.log(`  직접 입력  ${payload._skipped.join(', ')}`);
 
-      const payload = {
-        TITLE: cut(c.eventName, LIMITS.TITLE),
-        SHOW_DT: toDateTimeLocal(c.eventDate),
-        PAYMENT_ORG: String(c.faceValue || ''),
-        PAYMENT_USE: String(c.askPrice || ''),
-        INVALID_SEL_DT: toDateTimeLocal((c.foundAt || '').replace('T', ' ').slice(0, 16)),
-        SEAT_NUMBER: c.seat,
-        RESERVATION_NUMBER: c.bookingRef,
-        CONTENTS: buildContents(c),
-        showType: c.showType || '1',
-        paySite: c.platform || 'B',
-        ticketSite: c.ticketSite || '',
-        sellerId: cut(c.seller, LIMITS.ITEM),
-        link: cut(c.url, LIMITS.ITEM)
-      };
-
-      const filledCount = await page.evaluate(fillForm, payload);
-      console.log(`  ${filledCount}개 항목 입력 완료 (초록 테두리).`);
-
-      const todo = ['휴대전화 본인인증', 'E-mail', '부정거래 매수', '증빙파일 첨부'];
-      if (!payload.SHOW_DT) todo.push('공연일시');
-      if (!payload.RESERVATION_NUMBER && !payload.SEAT_NUMBER) todo.push('좌석번호 또는 예매번호');
-      if (!payload.ticketSite) todo.push('예매처');
-      console.log(`  직접 입력해야 할 항목: ${todo.join(', ')}`);
-      console.log(`  증거 캡처: ${c.evidence}`);
-
-      const a = await ask('\n  제출을 마쳤으면 [y], 이 건을 건너뛰려면 [s], 전체 중단은 [q] > ');
-      if (a.toLowerCase() === 'y') {
-        candidates.remove(c.id);
-        filed.add({ ...c, status: 'filed', filedAt: new Date().toISOString() });
-        console.log('  신고 기록에 저장했습니다.');
-      } else if (a.toLowerCase() === 'q') {
-        console.log('  중단합니다. 남은 건은 승인 상태로 남아 있습니다.');
-        break;
-      }
+    if (await copyToClipboard(json)) {
+      console.log('\n  ✔ 폼 데이터를 클립보드에 복사했습니다.');
+    } else {
+      console.log('\n  클립보드 복사에 실패했습니다. 아래 한 줄을 직접 복사하세요:\n');
+      console.log('  ' + json + '\n');
     }
-  } finally {
-    await ctx.close();
+
+    console.log('\n  1) 신고서 페이지를 연다');
+    console.log('  2) 북마크 바의 「신고서 채우기」를 누른다');
+    console.log('  3) 본인인증 → 증거 캡처 첨부 → 제출');
+
+    const open = await ask('\n  신고서 페이지를 열까요? [Y/n] > ');
+    if (open.toLowerCase() !== 'n') openInBrowser(cfg.govFormUrl);
+
+    const done = await ask('  제출을 마쳤으면 [y], 건너뛰려면 [s], 전체 중단은 [q] > ');
+    if (done.toLowerCase() === 'y') {
+      candidates.remove(c.id);
+      filed.add({ ...c, status: 'filed', filedAt: new Date().toISOString() });
+      console.log('  신고 기록에 저장했습니다.');
+    } else if (done.toLowerCase() === 'q') {
+      console.log('  중단합니다. 남은 건은 승인 상태로 남아 있습니다.');
+      break;
+    }
   }
 }

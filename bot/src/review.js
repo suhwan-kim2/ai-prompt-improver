@@ -5,6 +5,14 @@ import { candidates } from './store.js';
 
 const won = (n) => Number(n || 0).toLocaleString('ko-KR') + '원';
 
+/* 5nn·800번대·n열처럼 가려 적은 좌석은 좌석이 특정되지 않은 것으로 본다.
+ * 신고센터는 좌석번호나 예매번호가 특정되어야 유효 접수로 처리한다. */
+function isSeatVague(seat) {
+  const v = String(seat || '');
+  if (!v) return false;
+  return /[nN]{1,2}\s*번?대?|\d00\s*번대|[nN]{1,2}\s*열|[*x✕]/.test(v);
+}
+
 function show(c, i, total) {
   console.log('\n' + '─'.repeat(72));
   console.log(`[${i + 1}/${total}]  ${c.eventName}`);
@@ -25,6 +33,10 @@ function show(c, i, total) {
 
   if (!c.seat && !c.bookingRef) {
     console.log('\n  ✗ 좌석번호도 예매번호도 없습니다. 이대로는 신고센터가 유효 접수로 처리하지 않습니다.');
+  } else if (isSeatVague(c.seat) && !c.bookingRef) {
+    console.log(`\n  ✗ 좌석번호가 "${c.seat}" 로 가려져 있어 좌석이 특정되지 않습니다.`);
+    console.log('    이대로 내면 반려될 가능성이 큽니다. 판매자에게 물어 예매번호를 받거나,');
+    console.log('    번개장터 앱 안의 신고 기능으로 게시글을 내리는 쪽이 빠릅니다.');
   }
 }
 
@@ -51,8 +63,11 @@ export async function review() {
       const a = (await ask('\n  [y] 승인  [n] 제외  [s] 보류  [e] 값 수정  [q] 그만  > ')).toLowerCase();
 
       if (a === 'y') {
-        if (!c.seat && !c.bookingRef) {
-          const go = await ask('  좌석·예매번호가 없어 반려될 가능성이 큽니다. 그래도 승인할까요? [y/N] ');
+        const noSeat = !c.seat && !c.bookingRef;
+        const vague = isSeatVague(c.seat) && !c.bookingRef;
+        if (noSeat || vague) {
+          const why = noSeat ? '좌석·예매번호가 없어' : '좌석번호가 특정되지 않아';
+          const go = await ask(`  ${why} 반려될 가능성이 큽니다. 그래도 승인할까요? [y/N] `);
           if (go.toLowerCase() !== 'y') continue;
         }
         candidates.update(c.id, { status: 'approved', approvedAt: new Date().toISOString() });
