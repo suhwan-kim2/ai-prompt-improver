@@ -1,22 +1,48 @@
 @echo off
-REM 더블클릭으로 실행. 처음이면 필요한 것부터 설치한다.
+REM Scalping report bot launcher. Keep this file ASCII + CRLF.
+setlocal
+chcp 65001 >nul 2>&1
 cd /d "%~dp0"
-chcp 65001 >nul
+
+echo.
+echo   Scalping Report Bot
+echo   ===================
+echo.
 
 where node >nul 2>nul
-if errorlevel 1 (
-  echo Node.js 가 설치되어 있지 않습니다.
-  echo https://nodejs.org 에서 LTS 버전을 설치한 뒤 다시 실행해주세요.
-  pause
-  exit /b 1
-)
+if errorlevel 1 goto NONODE
 
-if not exist node_modules (
-  echo 처음 실행이라 필요한 것을 설치합니다. 몇 분 걸립니다...
-  call npm install
-  if errorlevel 1 ( echo 설치에 실패했습니다. & pause & exit /b 1 )
-)
+if exist node_modules goto RUN
 
-node src/index.js go
+echo   First run - installing dependencies. This takes a few minutes...
+echo.
+call npm install
+if errorlevel 1 goto INSTALLFAIL
+
+:RUN
+node src\index.js go
+if errorlevel 1 goto RUNFAIL
+goto END
+
+:NONODE
+echo   [!] Node.js is not installed.
+echo.
+echo       Install the LTS version from https://nodejs.org
+echo       then run this file again.
+goto END
+
+:INSTALLFAIL
+echo.
+echo   [!] Install failed. Check your internet connection and try again.
+echo       If it keeps failing, open a terminal here and run:  npm install
+goto END
+
+:RUNFAIL
+echo.
+echo   [!] The bot stopped with an error. The message is above.
+goto END
+
+:END
 echo.
 pause
+endlocal

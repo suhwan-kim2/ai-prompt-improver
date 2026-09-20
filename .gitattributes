@@ -1,0 +1,4 @@
+# Windows 배치 파일은 CRLF 를 유지해야 한다. LF 로 저장되면 CMD 가
+# 여러 줄 블록을 잘못 읽어 창이 그대로 닫힌다.
+*.bat text eol=crlf
+*.sh  text eol=lf
